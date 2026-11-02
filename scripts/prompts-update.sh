@@ -4,7 +4,13 @@
 # @details Clones the Prompts repository (develop branch), resolves the newest
 #     release ref, and performs a full one-way synchronization of the upstream
 #     `src/prompts` directory into the local `src/usereq/resources/prompts`
-#     target. Full synchronization overwrites every present file and removes
+#     target. Cloning tries anonymous HTTPS transports first with every
+#     interactive credential prompt disabled and then falls back to the
+#     read-only SSH transport under `ssh BatchMode`; the script embeds no
+#     user profile, token, or personal credential, and the optional
+#     `GITHUB_TOKEN` environment variable, when set, is forwarded only as
+#     a bearer header for the GitHub Releases API request. Full
+#     synchronization overwrites every present file and removes
 #     every file that no longer exists upstream by replacing the target
 #     directory with a freshly staged copy. Upstream file access and
 #     modification timestamps are preserved through `cp -p`. Before any
@@ -25,6 +31,7 @@ set -euo pipefail
 
 PROMPTS_REPO_URL_PRIMARY="https://github.com/Ogekuri/Prompts.git"
 PROMPTS_REPO_URL_FALLBACK="https://github.com/Ogekuri/Prompts"
+PROMPTS_REPO_URL_SSH="git@github.com:Ogekuri/Prompts.git"
 PROMPTS_RELEASE_API_URL="https://api.github.com/repos/Ogekuri/Prompts/releases/latest"
 PROMPTS_BRANCH="develop"
 
@@ -101,6 +108,22 @@ require_tool() {
   command -v "$1" >/dev/null 2>&1 || fail "Required tool not found: $1"
 }
 
+## @brief Executes one git command with every interactive credential prompt disabled.
+## @details Runs `git "$@"` with `GIT_TERMINAL_PROMPT=0` and
+##     `GIT_ASKPASS=/bin/true` so any credential challenge terminates
+##     immediately with an empty answer instead of blocking on terminal or
+##     askpass input; credential helpers configured on the host remain
+##     active. Runtime equals the wrapped git command. Side effects are
+##     limited to the wrapped git invocation.
+## @param[in] ... {string} Git command and arguments.
+## @return {integer} Exit status of the wrapped git command.
+## @note The updater never depends on a specific user profile, token, or
+##     interactive credential entry.
+## @satisfies SRS-379
+git_no_prompts() {
+  GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true git "$@"
+}
+
 ## @brief Reads one stored Prompts version marker file.
 ## @details Returns the first line of the marker file with all surrounding
 ##     whitespace removed when the file exists and is non-empty; otherwise
@@ -171,34 +194,48 @@ confirm_update() {
 
 ## @brief Clones the upstream Prompts develop branch into one target directory.
 ## @details Attempts a quiet, no-checkout clone of `${PROMPTS_BRANCH}` from
-##     `${PROMPTS_REPO_URL_PRIMARY}`, removes the partial destination on failure,
-##     and retries once with `${PROMPTS_REPO_URL_FALLBACK}`. Prints the resolved
+##     `${PROMPTS_REPO_URL_PRIMARY}` with every interactive credential prompt
+##     disabled, removes the partial destination on failure, retries once with
+##     `${PROMPTS_REPO_URL_FALLBACK}`, then once more with the read-only SSH
+##     transport `${PROMPTS_REPO_URL_SSH}` under `ssh BatchMode` with
+##     `accept-new` host keys so registered machine keys authenticate
+##     without any prompt. Prints the resolved
 ##     upstream URL on `stdout` so callers can capture provenance. Runtime is
 ##     dominated by git subprocess execution. Side effects include
 ##     destination-directory creation and removal.
 ## @param[in] destination {string} Target directory path for the clone.
 ## @return {string} Resolved upstream repository URL on stdout.
-## @throws Exits through `fail(...)` when both upstream URLs are unreachable.
+## @throws Exits through `fail(...)` when all three transports are
+##     unavailable without interactive credentials.
 ## @satisfies SRS-379
 clone_upstream() {
   local destination="$1"
   rm -rf "${destination}"
-  if git clone --quiet --no-checkout --branch "${PROMPTS_BRANCH}" "${PROMPTS_REPO_URL_PRIMARY}" "${destination}" 2>/dev/null; then
+  if git_no_prompts clone --quiet --no-checkout --branch "${PROMPTS_BRANCH}" "${PROMPTS_REPO_URL_PRIMARY}" "${destination}" 2>/dev/null; then
     printf '%s\n' "${PROMPTS_REPO_URL_PRIMARY}"
     return 0
   fi
   log "Primary clone failed, retrying with the fallback repository URL ..."
   rm -rf "${destination}"
-  if git clone --quiet --no-checkout --branch "${PROMPTS_REPO_URL_FALLBACK}" "${destination}" 2>/dev/null; then
+  if git_no_prompts clone --quiet --no-checkout --branch "${PROMPTS_BRANCH}" "${PROMPTS_REPO_URL_FALLBACK}" "${destination}" 2>/dev/null; then
     printf '%s\n' "${PROMPTS_REPO_URL_FALLBACK}"
     return 0
   fi
-  fail "Unable to clone Prompts from ${PROMPTS_REPO_URL_PRIMARY} or ${PROMPTS_REPO_URL_FALLBACK}."
+  log "Anonymous HTTPS clone unavailable, retrying with the read-only SSH transport ..."
+  rm -rf "${destination}"
+  if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new" \
+    git_no_prompts clone --quiet --no-checkout --branch "${PROMPTS_BRANCH}" "${PROMPTS_REPO_URL_SSH}" "${destination}" 2>/dev/null; then
+    printf '%s\n' "${PROMPTS_REPO_URL_SSH}"
+    return 0
+  fi
+  fail "Unable to clone Prompts from ${PROMPTS_REPO_URL_PRIMARY}, ${PROMPTS_REPO_URL_FALLBACK}, or ${PROMPTS_REPO_URL_SSH} without interactive credentials."
 }
 
 ## @brief Resolves the upstream synchronization ref for the cloned repository.
 ## @details Prefers the newest tag reported by the GitHub Releases API when
-##     `curl` is available and that tag exists in the local clone; otherwise
+##     `curl` is available and that tag exists in the local clone (forwarding
+##     the optional `GITHUB_TOKEN` environment variable as a bearer header
+##     when set); otherwise
 ##     selects the newest version-sorted tag reachable from `${PROMPTS_BRANCH}`;
 ##     otherwise falls back to the `${PROMPTS_BRANCH}` head. Prints the resolved
 ##     ref name on `stdout`. Runtime is dominated by one optional HTTPS request
@@ -209,9 +246,14 @@ clone_upstream() {
 resolve_release_ref() {
   local repository="$1"
   local release_tag=""
+  local curl_auth_args=()
+
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    curl_auth_args=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+  fi
 
   if command -v curl >/dev/null 2>&1; then
-    release_tag="$(curl -fsSL --max-time 20 "${PROMPTS_RELEASE_API_URL}" 2>/dev/null \
+    release_tag="$(curl -fsSL --max-time 20 "${curl_auth_args[@]}" "${PROMPTS_RELEASE_API_URL}" 2>/dev/null \
       | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
       | head -n 1 || true)"
   fi

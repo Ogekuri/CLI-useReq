@@ -192,10 +192,10 @@
 - **Type**: Process
 - **Parent Process**: `-`
 - **Entrypoint(s)**: `scripts/prompts-update.sh` [`scripts/prompts-update.sh`]
-- **Lifecycle/Trigger**: starts on shell invocation, clones the upstream Prompts `develop` branch, resolves the newest release ref through the GitHub Releases API with version-sorted tag and branch-head fallbacks, prints resolved plus stored versions, requires exact `Y` confirmation, replaces the bundled prompts directory with the timestamp-preserving staged upstream copy, and persists the resolved release version marker.
+- **Lifecycle/Trigger**: starts on shell invocation, clones the upstream Prompts `develop` branch through prompt-free anonymous HTTPS transports with a read-only `ssh BatchMode` fallback (no user profile or credential dependency), resolves the newest release ref through the GitHub Releases API with version-sorted tag and branch-head fallbacks, prints resolved plus stored versions, requires exact `Y` confirmation, replaces the bundled prompts directory with the timestamp-preserving staged upstream copy, and persists the resolved release version marker.
 - **Internal Call-Trace Tree**
   - `prompts-update.sh(...)`: shell updater for bundled prompt templates (SRS-375..SRS-380) [`scripts/prompts-update.sh`]
-    - external boundaries: `git clone`/`git checkout`/`git tag`/`git rev-parse` subprocesses, one optional GitHub Releases API `curl` request, `find`/`cp -p` staging, `mktemp`/`rm -rf` temporary-directory lifecycle with `EXIT`-trap cleanup, stdin confirmation read, `src/usereq/resources/prompts` directory replacement and `src/usereq/resources/prompts-version.txt` marker write
+    - external boundaries: `git clone`/`git checkout`/`git tag`/`git rev-parse` subprocesses with every interactive credential prompt disabled (`GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/true`) trying the anonymous HTTPS URLs first and the read-only SSH transport under `ssh BatchMode` last, one optional GitHub Releases API `curl` request with optional `GITHUB_TOKEN` bearer header, `find`/`cp -p` staging, `mktemp`/`rm -rf` temporary-directory lifecycle with `EXIT`-trap cleanup, stdin confirmation read, `src/usereq/resources/prompts` directory replacement and `src/usereq/resources/prompts-version.txt` marker write
 
 ### `PROC:gha-release-uvx`
 - **Type**: Process
