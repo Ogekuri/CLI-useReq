@@ -184,6 +184,14 @@ No explicit performance optimizations identified.
 ### 3.11 Doxygen Parsing and Field Emission
 - **SRS-213**: MUST implement the following behavior: The parser MUST recognize these Doxygen tags: @brief, @details, @param, @param[in], @param[out], @param[in,out], @return, @retval, @exception, @throws, @warning, @deprecated, @note, @see, @sa, @satisfies, @pre, @post.
 
+### 3.12 Bundled Prompts Update Script
+- **SRS-375**: `scripts/prompts-update.sh` MUST fully synchronize the upstream `src/prompts` directory of `https://github.com/Ogekuri/Prompts` into `src/usereq/resources/prompts`, overwriting existing files and removing files absent upstream.
+- **SRS-376**: `scripts/prompts-update.sh` MUST resolve the newest upstream release through the GitHub Releases API, falling back to the newest version-sorted tag reachable from `develop`, then the `develop` head.
+- **SRS-377**: `scripts/prompts-update.sh` MUST print the resolved release version and the stored version before modifications, and MUST require exact input `Y` to proceed; any other input MUST abort without modifications.
+- **SRS-378**: `scripts/prompts-update.sh` MUST report `unknown` for a missing or empty version marker and MUST write the resolved release version to `src/usereq/resources/prompts-version.txt` only after successful synchronization.
+- **SRS-379**: `scripts/prompts-update.sh` MUST clone the upstream `develop` branch into a temporary directory using the `.git` URL first and the plain URL as fallback, and MUST remove temporary directories on every exit path.
+- **SRS-380**: `scripts/prompts-update.sh` MUST preserve upstream file timestamps during synchronization and MUST NOT modify any repository content outside `src/usereq/resources/prompts` and `src/usereq/resources/prompts-version.txt`.
+
 ## 4. Test Requirements
 
 ### 4.1 Test and Verification Requirements

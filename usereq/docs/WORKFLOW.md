@@ -20,6 +20,13 @@
   - `entrypoints`: `scripts/test-install.sh`
   - `defining_files`: `scripts/test-install.sh`
   - `threads`: `no explicit threads detected`
+- `PROC:prompts-update-sh`
+  - `type`: `Process`
+  - `parent_process`: `-`
+  - `role`: `Bundled-prompts maintenance updater that synchronizes src/usereq/resources/prompts from the latest Ogekuri/Prompts release and persists the version marker`
+  - `entrypoints`: `scripts/prompts-update.sh`
+  - `defining_files`: `scripts/prompts-update.sh`
+  - `threads`: `no explicit threads detected`
 - `PROC:gha-release-uvx`
   - `type`: `Process`
   - `parent_process`: `-`
@@ -180,6 +187,15 @@
 - **Internal Call-Trace Tree**
   - `test-install.sh(...)`: disposable installation smoke-test orchestrator [`scripts/test-install.sh`]
     - external boundaries: `rm -rf`, `mkdir -p`, shell directory tests, and child-process invocation of `scripts/req.sh`
+
+### `PROC:prompts-update-sh`
+- **Type**: Process
+- **Parent Process**: `-`
+- **Entrypoint(s)**: `scripts/prompts-update.sh` [`scripts/prompts-update.sh`]
+- **Lifecycle/Trigger**: starts on shell invocation, clones the upstream Prompts `develop` branch, resolves the newest release ref through the GitHub Releases API with version-sorted tag and branch-head fallbacks, prints resolved plus stored versions, requires exact `Y` confirmation, replaces the bundled prompts directory with the timestamp-preserving staged upstream copy, and persists the resolved release version marker.
+- **Internal Call-Trace Tree**
+  - `prompts-update.sh(...)`: shell updater for bundled prompt templates (SRS-375..SRS-380) [`scripts/prompts-update.sh`]
+    - external boundaries: `git clone`/`git checkout`/`git tag`/`git rev-parse` subprocesses, one optional GitHub Releases API `curl` request, `find`/`cp -p` staging, `mktemp`/`rm -rf` temporary-directory lifecycle with `EXIT`-trap cleanup, stdin confirmation read, `src/usereq/resources/prompts` directory replacement and `src/usereq/resources/prompts-version.txt` marker write
 
 ### `PROC:gha-release-uvx`
 - **Type**: Process
