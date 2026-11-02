@@ -2,7 +2,7 @@
 description: "Implement a new requirement and make the corresponding source code changes"
 argument-hint: "Description of the new requirement/feature to implement"
 usage: >
-  Select this prompt if and only if the work is a strictly additive, backwards-compatible feature, you will append new requirement IDs to %%DOC_PATH%%/REQUIREMENTS.md (no edits/removals of existing IDs), then implement and verify the corresponding code/tests under %%SRC_PATHS%% and %%TEST_PATH%% with traceability, and update %%DOC_PATH%%/WORKFLOW.md and %%DOC_PATH%%/REFERENCES.md. Do NOT select if any existing requirement must be modified/removed, or if breaking changes/migrations are needed (use /req-change). Do NOT select if requirements must remain unchanged (use /req-fix, /req-refactor, /req-cover, /req-implement) or for read-only analysis/audits (use /req-analyze or /req-check).
+  Use when the user asks to add a strictly additive, backward-compatible feature and implement it. Append new requirement IDs to REQUIREMENTS.md, then implement and verify the corresponding code and tests under the project source directories and the project test directory. Preserve existing requirements and public behavior. Use /req-change if existing requirements must change or compatibility cannot be preserved; /req-cover or /req-implement if the feature is already required by the SRS. Do not select for requirements drafting alone.
 ---
 
 # Implement a new requirement and make the corresponding source code changes
@@ -23,6 +23,16 @@ In scope: patch-style updates to `%%DOC_PATH%%/REQUIREMENTS.md` that add the new
 - **Act as an Expert GitOps Engineer** when executing git workflows, especially when creating/removing/managing git worktrees to isolate changes safely.
 
 
+## Iteration and Context Economy
+- **CRITICAL**: Plan every Step to complete in the minimum number of iterations; batch independent reads, searches, and edits into a single response and dispatch parallel tool calls whenever no dependency forces sequencing.
+- **CRITICAL**: MUST NOT re-read, re-search, or re-fetch any file already provided as injected context or already read in the current session; reuse prior tool-output evidence instead.
+- **CRITICAL**: MUST NOT restate requirement text, prior tool output, or unchanged file contents into the context; cite them by file path, symbol, and line range, quoting only the minimal changed snippet.
+- **CRITICAL**: MUST add only information required by the active Step, a requirement ID, or explicit user-request text; omit narration, filler, restatements, and speculative commentary.
+- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `%%DOC_PATH%%/REQUIREMENTS.md`, `%%DOC_PATH%%/WORKFLOW.md`, `%%DOC_PATH%%/REFERENCES.md`, then `req --find`/`req --files-find`, then `rg`/`grep` fallback, reading only targeted constructs and line ranges.
+- **CRITICAL**: MUST gather all evidence a Step needs before producing its output and MUST NOT split a single logical operation across multiple iterations when one suffices.
+- **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
+- **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
+
 ## Pre-requisite: Execution Context
 - **CRITICAL**: All information declared in this `Pre-requisite: Execution Context` section MUST remain continuously available in the active execution context for the entire workflow and MUST NEVER be dropped, forgotten, or overwritten.
 - Generate <WORKTREE_NAME> with `req --git-wt-name`, retain the literal result for later steps, and use simple sequential execution with only linear shell commands compatible with restrictive filtering systems for all worktree operations in this workflow.
@@ -34,7 +44,7 @@ In scope: patch-style updates to `%%DOC_PATH%%/REQUIREMENTS.md` that add the new
 - You can read, write, or edit `%%DOC_PATH%%/REQUIREMENTS.md`.
 - Treat static analysis as safe. Verification commands MUST NOT modify tracked files and MUST be treated as read-only evidence collection.
 - **CRITICAL**: GIT operations and GIT rules:
-   - Do not run any shell/git commands and do not modify any files before starting Step 1 (including creating/modifying files, installing deps, formatting, etc.): **CRITICAL**: Check GIT Status.
+   - Do not run any shell/git commands and do not modify any files before starting Step 1 (including creating/modifying files, installing deps, formatting, etc.), except the read-only repository checks required by the `## Pre-Flight: Context Keyword Resolution` section: **CRITICAL**: Check GIT Status.
    - Step 1 may run only the git commands `git rev-parse --is-inside-work-tree`, `git rev-parse --verify HEAD`, `git status --porcelain`, and `git symbolic-ref -q HEAD` (plus minimal shell built-ins to combine their outputs into a single cleanliness check).
    - If the repository is NOT clean (modified files, staged changes, OR untracked files), exit immediately without changing anything.
    - At the end you MUST commit only the intended changes with a unique identifier and change description in the commit message.
@@ -150,6 +160,18 @@ During the execution flow you MUST follow these directives:
   - Complete all Steps in order; you may pause only to perform required tool calls and to wait for their responses. Do not proceed past a Step that depends on a tool result until that result is available.
   - Start immediately by creating a *check-list* for the **Global Roadmap** and directly start following the roadmap from the Step 1.
 
+
+## Pre-Flight: Context Keyword Resolution
+- **CRITICAL**: Before executing any Step, determine the concrete value of each context keyword below, validate it against repository evidence, and save all three resolved values in the active execution context; they MUST remain continuously available for the entire workflow and MUST NEVER be dropped, forgotten, or overwritten.
+- `%%DOC_PATH%%`: directory containing `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md`; normally `usereq/docs` inside the git repository root. Different projects may declare different `usereq/docs` directories, each belonging to exactly one project; determine the correct path based on the modifications this workflow will execute.
+- `%%SRC_PATHS%%`: directory containing the project sources to modify; normally `src/` inside the working git repository. Different projects may declare different `src/` paths; determine the correct working path for the current task.
+- `%%TEST_PATH%%`: directory containing the project tests; normally `tests/` inside the working git repository. Different projects may declare different `tests/` paths; determine the correct working path for the current task.
+- Resolution rules, executed in order, using read-only commands only:
+  1. Start from the substituted values provided in this prompt.
+  2. For `%%DOC_PATH%%`, verify that `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md` exist under the resolved directory.
+  3. For `%%SRC_PATHS%%` and `%%TEST_PATH%%`, select the path pertinent to the modifications this workflow will execute when multiple candidate paths exist in the working git repository.
+- **CRITICAL**: If any of the three keyword values cannot be determined correctly and unambiguously, OUTPUT exactly "ERROR: Unable to resolve context keywords!", and then terminate the execution.
+- Mandatory context loading: after successful keyword resolution, load in full into the active execution context the canonical documents used by this workflow: `%%DOC_PATH%%/REQUIREMENTS.md`, `%%DOC_PATH%%/WORKFLOW.md`, `%%DOC_PATH%%/REFERENCES.md`; treat a document already injected as prompt context as loaded and do not re-read it; keep every loaded document available for the entire workflow.
 
 ## Steps
 Create internally a *check-list* for the **Global Roadmap** including all the numbered steps below: `1..11`, and start following the roadmap at the same time, executing the tool call of Step 1 (Check GIT Status). If a tool call is required in Step 1, invoke it immediately; otherwise proceed to Step 1 without additional commentary. Do not add extra intent-adjustment checks unless explicitly listed in the Steps section.

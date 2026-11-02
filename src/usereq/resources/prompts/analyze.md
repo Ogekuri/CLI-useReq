@@ -2,7 +2,7 @@
 description: "Produce an analysis report"
 argument-hint: "Description of the analysis/investigation to perform"
 usage: >
-  Select this prompt if you need a read-only, evidence-backed investigation/triage of the current state (SRS in %%DOC_PATH%%/REQUIREMENTS.md, runtime model in %%DOC_PATH%%/WORKFLOW.md, references in %%DOC_PATH%%/REFERENCES.md, and code under %%SRC_PATHS%%) to answer a question or decide which follow-up workflow to run. Use when you must NOT change any files and the deliverable is an analysis report with concrete evidence pointers. Do NOT select if you must, (a) produce an OK/FAIL verdict for every requirement ID (use /req-check), (b) modify requirements (use /req-new or /req-change), (c) implement code/tests (use /req-fix, /req-refactor, /req-cover, /req-implement), or (d) regenerate only WORKFLOW/REFERENCES docs (use /req-workflow or /req-references).
+  Use when the user asks to investigate, explain, diagnose, or assess the current project without changing files. Produce an evidence-backed analysis report using REQUIREMENTS.md, WORKFLOW.md, REFERENCES.md, and source under the project source directories. Select for root-cause analysis or choosing a follow-up workflow, not applying fixes. Use /req-check for a complete requirement-by-requirement compliance audit. Do not select for implementation or document edits.
 ---
 
 # Produce an analysis report
@@ -23,6 +23,16 @@ In scope: read-only analysis of the above documents plus source under %%SRC_PATH
 - **Act as an Expert Debugger** when you identify a failure symptom with concrete evidence (failure evidence, stack trace, reproducible output). Only explain the root cause, not propose or implement fixes.
 - **Act as an Expert GitOps Engineer** when executing git workflows, especially when creating/removing/managing git worktrees to isolate changes safely.
 
+
+## Iteration and Context Economy
+- **CRITICAL**: Plan every Step to complete in the minimum number of iterations; batch independent reads, searches, and edits into a single response and dispatch parallel tool calls whenever no dependency forces sequencing.
+- **CRITICAL**: MUST NOT re-read, re-search, or re-fetch any file already provided as injected context or already read in the current session; reuse prior tool-output evidence instead.
+- **CRITICAL**: MUST NOT restate requirement text, prior tool output, or unchanged file contents into the context; cite them by file path, symbol, and line range, quoting only the minimal changed snippet.
+- **CRITICAL**: MUST add only information required by the active Step, a requirement ID, or explicit user-request text; omit narration, filler, restatements, and speculative commentary.
+- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `%%DOC_PATH%%/REQUIREMENTS.md`, `%%DOC_PATH%%/WORKFLOW.md`, `%%DOC_PATH%%/REFERENCES.md`, then `req --find`/`req --files-find`, then `rg`/`grep` fallback, reading only targeted constructs and line ranges.
+- **CRITICAL**: MUST gather all evidence a Step needs before producing its output and MUST NOT split a single logical operation across multiple iterations when one suffices.
+- **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
+- **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
 
 ## Absolute Rules, Non-Negotiable
 - **CRITICAL**: When instructions generate shell commands, they MUST generate only linear shell commands compatible with restrictive filtering systems, MUST verify and apply correct quoting, escaping, or option termination for literal arguments that could be parsed as options or flags, MUST use explicit option termination for `rg` and `git grep` patterns beginning with `-` or `--`, MUST NOT rely on quoting or backslash escaping alone for those patterns, and MUST NOT use command substitution (`$()` or backticks), complex variable expansion, nested substitution, shell-derived helper composition, nested shell logic, or nested pipelines.
@@ -136,6 +146,18 @@ During the execution flow you MUST follow these directives:
   - Complete all Steps in order; you may pause only to perform required tool calls and to wait for their responses. Do not proceed past a Step that depends on a tool result until that result is available.
   - Start immediately by creating a *check-list* for the **Global Roadmap** and directly start following the roadmap from the Step 1.
 
+
+## Pre-Flight: Context Keyword Resolution
+- **CRITICAL**: Before executing any Step, determine the concrete value of each context keyword below, validate it against repository evidence, and save all three resolved values in the active execution context; they MUST remain continuously available for the entire workflow and MUST NEVER be dropped, forgotten, or overwritten.
+- `%%DOC_PATH%%`: directory containing `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md`; normally `usereq/docs` inside the git repository root. Different projects may declare different `usereq/docs` directories, each belonging to exactly one project; determine the correct path based on the modifications this workflow will execute.
+- `%%SRC_PATHS%%`: directory containing the project sources to modify; normally `src/` inside the working git repository. Different projects may declare different `src/` paths; determine the correct working path for the current task.
+- `%%TEST_PATH%%`: directory containing the project tests; normally `tests/` inside the working git repository. Different projects may declare different `tests/` paths; determine the correct working path for the current task.
+- Resolution rules, executed in order, using read-only commands only:
+  1. Start from the substituted values provided in this prompt.
+  2. For `%%DOC_PATH%%`, verify that `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md` exist under the resolved directory.
+  3. For `%%SRC_PATHS%%` and `%%TEST_PATH%%`, select the path pertinent to the modifications this workflow will execute when multiple candidate paths exist in the working git repository.
+- **CRITICAL**: If any of the three keyword values cannot be determined correctly and unambiguously, OUTPUT exactly "ERROR: Unable to resolve context keywords!", and then terminate the execution.
+- Mandatory context loading: after successful keyword resolution, load in full into the active execution context the canonical documents used by this workflow: `%%DOC_PATH%%/REQUIREMENTS.md`, `%%DOC_PATH%%/WORKFLOW.md`, `%%DOC_PATH%%/REFERENCES.md`; treat a document already injected as prompt context as loaded and do not re-read it; keep every loaded document available for the entire workflow.
 
 ## Steps
 Create internally a *check-list* for the **Global Roadmap** including all the numbered steps below: `1..2`, and start following the roadmap at the same time, following the instructions of Step 1 (Check file presence). Do not add extra intent-adjustment checks unless explicitly listed in the Steps section.
