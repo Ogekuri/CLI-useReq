@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.67.0](https://github.com/Ogekuri/useReq/compare/v0.66.0..v0.67.0) - 2026-11-02
+### ⛰️  Features
+- Update prompts.
+- add prompts-update.sh syncing prompts from Ogekuri/Prompts [useReq] *(scripts)*
+  - Add scripts/prompts-update.sh modeled on pi-prompts-update.sh: clone the
+  - Ogekuri/Prompts develop branch, resolve the latest release (GitHub API with
+  - version-sorted tag and branch fallbacks), require exact Y confirmation, fully
+  - replace src/usereq/resources/prompts preserving upstream timestamps, and
+  - persist src/usereq/resources/prompts-version.txt (SRS-375..SRS-380).
+  - Add SRS section 3.12 and the PROC:prompts-update-sh WORKFLOW.md unit.
+
+### 🐛  Bug Fixes
+- clone Prompts without interactive credentials [useReq] *(scripts)*
+  - Disable every interactive git credential prompt during clone (GIT_TERMINAL_PROMPT=0,
+  - GIT_ASKPASS=/bin/true) and add the read-only SSH transport (ssh BatchMode,
+  - accept-new host keys) as final fallback after the two anonymous HTTPS URLs;
+  - restore the explicit --branch argument on the fallback clone (SRS-379).
+  - Forward the optional GITHUB_TOKEN env var as bearer header for the API request.
+  - No user profile or personal credential is embedded in the script.
+- Fix .gitignore file.
+- .gitignore file.
+
+### 🚜  Changes
+- BREAKING CHANGE: remove %%DOC_PATH%%, %%TEST_PATH%% and %%SRC_PATHS%% substitution [useReq] *(cli)*
+  - Remove substitution logic for %%DOC_PATH%%, %%TEST_PATH%% and %%SRC_PATHS%%
+  - from prompt, skill and Gemini TOML generation; keywords are preserved verbatim.
+  - Delete dead helpers compute_sub_path, format_substituted_path, make_relative_token.
+  - Narrow SRS-095 token set to %%GUIDELINES_FILES%%, %%GUIDELINES_PATH%%, %%ARGS%%.
+  - Update tests to assert keyword preservation; regenerate REFERENCES.md.
+
 ## [0.66.0](https://github.com/Ogekuri/useReq/compare/v0.65.0..v0.66.0) - 2026-04-19
 ### 📚  Documentation
 - Update README.md file.
@@ -1247,6 +1277,7 @@
 - \[0.64.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.64.0
 - \[0.65.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.65.0
 - \[0.66.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.66.0
+- \[0.67.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.67.0
 
 [0.1.0]: https://github.com/Ogekuri/useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/useReq/compare/v0.1.0..v0.2.0
@@ -1313,3 +1344,4 @@
 [0.64.0]: https://github.com/Ogekuri/useReq/compare/v0.63.0..v0.64.0
 [0.65.0]: https://github.com/Ogekuri/useReq/compare/v0.64.0..v0.65.0
 [0.66.0]: https://github.com/Ogekuri/useReq/compare/v0.65.0..v0.66.0
+[0.67.0]: https://github.com/Ogekuri/useReq/compare/v0.66.0..v0.67.0
