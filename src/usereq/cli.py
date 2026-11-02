@@ -1572,40 +1572,6 @@ def resolve_absolute(normalized: str, project_base: Path) -> Optional[Path]:
     return (project_base / candidate).resolve(strict=False)
 
 
-def format_substituted_path(value: str) -> str:
-    """!
-    @brief Uniforms path separators for substitutions.
-        @param value The path string to format.
-        @return Path string with forward slashes.
-    @details Implements the format_substituted_path function behavior with deterministic control flow.
-    """
-    if not value:
-        return ""
-    return value.replace(os.sep, "/")
-
-
-def compute_sub_path(
-    normalized: str, absolute: Optional[Path], project_base: Path
-) -> str:
-    """!
-    @brief Calculates the relative path to use in tokens.
-        @param normalized The normalized relative path.
-        @param absolute The absolute path object (can be None).
-        @param project_base The project root path.
-        @return Relative path string formatted with forward slashes.
-    @details Implements the compute_sub_path function behavior with deterministic control flow.
-    """
-    if not normalized:
-        return ""
-    if absolute:
-        try:
-            rel = absolute.relative_to(project_base)
-            return format_substituted_path(str(rel))
-        except ValueError:
-            return format_substituted_path(normalized)
-    return format_substituted_path(normalized)
-
-
 def resolve_git_root(target_path: Path) -> Path:
     """!
     @brief Resolve the git repository root for a given path.
@@ -2036,23 +2002,6 @@ def upgrade_guidelines_templates(guidelines_dest: Path, overwrite: bool = False)
                 log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_file}")
 
     return copied_count
-
-
-def make_relative_token(raw: str, keep_trailing: bool = False) -> str:
-    """!
-    @brief Normalizes the path token optionally preserving the trailing slash.
-    @details Implements the make_relative_token function behavior with deterministic control flow.
-    @param raw Input parameter `raw`.
-    @param keep_trailing Input parameter `keep_trailing`.
-    @return {str} Function return value.
-    """
-    if not raw:
-        return ""
-    normalized = raw.replace("\\", "/").strip("/")
-    if not normalized:
-        return ""
-    suffix = "/" if keep_trailing and raw.endswith("/") else ""
-    return f"{normalized}{suffix}"
 
 
 def ensure_relative(value: str, name: str, code: int) -> None:
@@ -3253,25 +3202,6 @@ def run(args: Namespace) -> None:
             git_path_abs=git_path_abs,
         )
 
-    sub_guidelines_dir = compute_sub_path(
-        normalized_guidelines, abs_guidelines, project_base
-    )
-    sub_test_dir = format_substituted_path(normalized_test).rstrip("/\\")
-    token_test_path = f"`{sub_test_dir}/`" if sub_test_dir else ""
-    sub_src_paths: list[str] = []
-    for normalized_src, abs_src in zip(normalized_src_dirs, abs_src_dirs):
-        sub_src = compute_sub_path(normalized_src, abs_src, project_base).rstrip("/\\")
-        if sub_src:
-            sub_src_paths.append(f"`{sub_src}/`")
-    token_src_paths = ", ".join(sub_src_paths)
-    if (
-        guidelines_has_trailing_slash
-        and sub_guidelines_dir
-        and not sub_guidelines_dir.endswith("/")
-    ):
-        sub_guidelines_dir += "/"
-    token_guidelines_dir = make_relative_token(sub_guidelines_dir, keep_trailing=True)
-
     req_root = project_base / ".req"
     req_root.mkdir(parents=True, exist_ok=True)
     if VERBOSE:
@@ -3313,8 +3243,6 @@ def run(args: Namespace) -> None:
     dlog(f"TESTS_DIR={normalized_test}")
     dlog(f"SRC_DIRS={normalized_src_dirs}")
     dlog(f"GUIDELINES_FILE_LIST={guidelines_file_list}")
-    dlog(f"SUB_GUIDELINES_DIR={sub_guidelines_dir}")
-    dlog(f"TOKEN_GUIDELINES_DIR={token_guidelines_dir}")
 
     codex_skills_root = None
     claude_skills_root = None
@@ -3458,9 +3386,6 @@ def run(args: Namespace) -> None:
         base_replacements = {
             "%%GUIDELINES_FILES%%": guidelines_file_list,
             "%%GUIDELINES_PATH%%": normalized_guidelines,
-            "%%DOC_PATH%%": normalized_doc,
-            "%%TEST_PATH%%": token_test_path,
-            "%%SRC_PATHS%%": token_src_paths,
         }
         prompt_replacements = {
             **base_replacements,
@@ -3529,9 +3454,6 @@ def run(args: Namespace) -> None:
             toml_replacements = {
                 "%%GUIDELINES_FILES%%": guidelines_file_list,
                 "%%GUIDELINES_PATH%%": normalized_guidelines,
-                "%%DOC_PATH%%": normalized_doc,
-                "%%TEST_PATH%%": token_test_path,
-                "%%SRC_PATHS%%": token_src_paths,
                 "%%ARGS%%": "{{args}}",
             }
             replace_tokens(dst_toml, toml_replacements)

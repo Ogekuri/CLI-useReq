@@ -1205,30 +1205,24 @@ class TestGuidelinesPathReplacement(unittest.TestCase):
             "The token %%GUIDELINES_PATH%% must be replaced with the normalized guidelines path",
         )
 
-    def test_test_path_replacement(self) -> None:
-        """REQ-092: Verifies that %%TEST_PATH%% is replaced."""
+    def test_test_path_preserved(self) -> None:
+        """REQ-092: Verifies that %%TEST_PATH%% is preserved as a normal word."""
         codex_prompt = self.TEST_DIR / ".codex" / "prompts" / "req-techpath.md"
         content = codex_prompt.read_text(encoding="utf-8")
-        self.assertNotIn(
-            "%%TEST_PATH%%", content, "The token %%TEST_PATH%% must be replaced"
-        )
         self.assertIn(
-            "TestPath: `tests/`",
+            "TestPath: %%TEST_PATH%%",
             content,
-            "The token %%TEST_PATH%% must be replaced with the normalized test path",
+            "The keyword %%TEST_PATH%% must not be processed by the installer",
         )
 
-    def test_src_paths_replacement(self) -> None:
-        """REQ-094: Verifies that %%SRC_PATHS%% is replaced."""
+    def test_src_paths_preserved(self) -> None:
+        """REQ-094: Verifies that %%SRC_PATHS%% is preserved as a normal word."""
         codex_prompt = self.TEST_DIR / ".codex" / "prompts" / "req-techpath.md"
         content = codex_prompt.read_text(encoding="utf-8")
-        self.assertNotIn(
-            "%%SRC_PATHS%%", content, "The token %%SRC_PATHS%% must be replaced"
-        )
         self.assertIn(
-            "SrcPaths: `src/`, `lib/`",
+            "SrcPaths: %%SRC_PATHS%%",
             content,
-            "The token %%SRC_PATHS%% must be replaced with the normalized src paths",
+            "The keyword %%SRC_PATHS%% must not be processed by the installer",
         )
 
 
