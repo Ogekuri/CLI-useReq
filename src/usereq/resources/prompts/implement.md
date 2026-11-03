@@ -7,17 +7,36 @@ usage: >
 
 # Implement source code from requirements from scratch
 
+## Pre-Flight: Context Keyword Resolution
+- **CRITICAL**: Complete this read-only gate before any path-dependent action or numbered Step. Immediate-start directives apply only after success; autonomous disambiguation MUST NOT guess `{{PRJ_BASE}}` or `{{GIT_BASE}}`.
+- Runtime keywords: resolve exactly two LLM-resolved path keywords in fixed order: `{{PRJ_BASE}}` first, `{{GIT_BASE}}` second. Installation has already supplied the documentation, source, and test paths; use them as fixed relative suffixes, not values to discover or replace.
+- Project base: `{{PRJ_BASE}}` is the absolute base directory of the unique target project containing its installation-supplied `%%DOC_PATH%%`, `%%SRC_PATHS%%`, and `%%TEST_PATH%%` directories.
+- Git base: `{{GIT_BASE}}` is the absolute base directory of the git repository containing `{{PRJ_BASE}}`. One git repository can contain multiple projects; repository identity alone never identifies the project.
+- Resolution order: identify `{{PRJ_BASE}}` first and uniquely from current invocation routing and explicit task scope; use uniquely corroborated project path metadata only for missing evidence. The current directory is a candidate, not a default. Conflicting bindings, multiple plausible projects, or stale cross-project values fail resolution. Source-free workflows inspect path metadata only. After `{{PRJ_BASE}}` is bound, derive `{{GIT_BASE}}` as the git repository root containing the bound project base.
+- Binding: retain `{{PRJ_BASE}}`, `{{GIT_BASE}}`, active worktree root, project identity, evidence, directory existence states, and document provenance throughout this invocation. Start fresh for each invocation; replace the bindings only after a validated context transition.
+- Paths: substitute the resolved base in each prefixed path. For an installation-supplied source list, apply the base separately to every entry; preserve order and explicit list boundaries, never split on spaces or commas. Treat paths as data and quote each resulting literal argument separately, with option termination where supported.
+- Containment: validate the base and resulting paths inside the active worktree, including symlink targets and existing ancestors of prospective paths. Accept absent directories only for authorized creation or explicitly unused source/test scopes; absence is not an unresolved base. Create nothing during pre-flight.
+- Document contract below: filenames are relative to the installation-supplied documentation path under `{{PRJ_BASE}}`. Required inputs MUST exist; creatable targets MAY be absent. Load exactly the listed existing documents in full before Steps, including existing targets; defer reads of absent creatable targets until generated. Unlisted canonical documents are not prerequisites.
+  - Required inputs: REQUIREMENTS.md.
+  - Creatable targets: WORKFLOW.md, REFERENCES.md.
+  - Load when present: REQUIREMENTS.md, WORKFLOW.md, REFERENCES.md.
+- Context reuse: treat injected or previously read content as loaded only when repository, worktree, project-area, path, and revision provenance match this binding. Current runtime attestation or unchanged-file evidence can establish a match; a basename alone cannot. Refresh stale or unverified content from the resolved path; reuse matching content without re-reading. After an edit, retain the verified updated content and invalidate superseded evidence.
+- Operation scope: run cwd-sensitive commands and configured tools from `{{PRJ_BASE}}` only when their effective scope matches the target project; otherwise use a documented explicit-path equivalent or fail resolution.
+- Activity routing: reference all project-modification and requirements-modification activities exclusively to `{{PRJ_BASE}}`; reference only working-tree creation and git-management activities to `{{GIT_BASE}}`.
+- Context transitions: after an authorized worktree change, rebase `{{PRJ_BASE}}` to the same project-relative location in the new worktree and rebase `{{GIT_BASE}}` to the new worktree's repository root. Revalidate containment and document provenance before project operations; discard old absolute paths. Reuse document contents only with verified unchanged-file evidence. A different target project requires a fresh invocation.
+- **CRITICAL**: If `{{PRJ_BASE}}` or `{{GIT_BASE}}`, required document, containment check, or effective tool scope remains unresolved or conflicting, OUTPUT exactly "ERROR: Unable to resolve context keywords!". Before isolation, terminate without cleanup; after successful isolation, follow the context-resolution failure cleanup in the isolation Step before terminating.
+
 ## Purpose
-Produce a working implementation from the normative SRS (`%%DOC_PATH%%/REQUIREMENTS.md`) by building missing functionality end-to-end (including “from scratch” where needed), so the codebase becomes fully compliant with the documented requirement IDs without changing those requirements.
+Produce a working implementation from the normative SRS (`{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`) by building missing functionality end-to-end (including “from scratch” where needed), so the codebase becomes fully compliant with the documented requirement IDs without changing those requirements.
 
 ## Scope
-In scope: read `%%DOC_PATH%%/REQUIREMENTS.md`, implement/introduce source under %%SRC_PATHS%% (including new modules/files), add tests under %%TEST_PATH%%, verify via static analysis (`req --here --static-check`) and conditional execution of existing unit tests using language-specific test-suite priority policy, update `%%DOC_PATH%%/WORKFLOW.md` and `%%DOC_PATH%%/REFERENCES.md`, and commit. Out of scope: editing requirements or introducing features not present in the SRS (use `/req-change` or `/req-new` to evolve requirements first).
+In scope: read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, implement/introduce source under {{PRJ_BASE}}/%%SRC_PATHS%% (including new modules/files), add tests under {{PRJ_BASE}}/%%TEST_PATH%%, verify via static analysis (`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check`) and conditional execution of existing unit tests using language-specific test-suite priority policy, update `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` and `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, and commit. Out of scope: editing requirements or introducing features not present in the SRS (use `/req-change` or `/req-new` to evolve requirements first).
 
 
 ## Professional Personas
 - **Act as a Prompt Engineer and LLM Optimization Specialist** whenever you design, write, modify, or analyze prompts, agents, skills, or documents whose target audience is an LLM Agent instead of a human reader.
 - **Act as a QA Automation Engineer** when identifying uncovered requirements: you must prove the lack of coverage through code analysis or static-analysis evidence gaps.
-- **Act as a Business Analyst** when mapping requirement IDs from `%%DOC_PATH%%/REQUIREMENTS.md` to observable behaviors.
+- **Act as a Business Analyst** when mapping requirement IDs from `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` to observable behaviors.
 - **Act as a Senior System Architect** when generating the **Implementation Delta** and planning the coverage strategy: ensure the new implementation integrates perfectly with the existing architecture without regressions.
 - **Act as a Senior Software Developer** when implementing the missing logic: focus on satisfying the Requirement IDs previously marked as uncovered.
 - **Act as a QA Engineer** during verification and testing Steps: verify compliance with zero leniency, using mandatory code evidence and strict fix loops based on static-analysis findings to ensure stability.
@@ -26,23 +45,24 @@ In scope: read `%%DOC_PATH%%/REQUIREMENTS.md`, implement/introduce source under 
 
 ## Iteration and Context Economy
 - **CRITICAL**: Plan every Step to complete in the minimum number of iterations; batch independent reads, searches, and edits into a single response and dispatch parallel tool calls whenever no dependency forces sequencing.
-- **CRITICAL**: MUST NOT re-read, re-search, or re-fetch any file already provided as injected context or already read in the current session; reuse prior tool-output evidence instead.
+- **CRITICAL**: Reuse injected or previously read file evidence only when repository, worktree, project-area, path, and revision identity match the active binding; do not re-read matching content. Refresh stale or unverified evidence under the pre-flight context-reuse rules.
 - **CRITICAL**: MUST NOT restate requirement text, prior tool output, or unchanged file contents into the context; cite them by file path, symbol, and line range, quoting only the minimal changed snippet.
 - **CRITICAL**: MUST add only information required by the active Step, a requirement ID, or explicit user-request text; omit narration, filler, restatements, and speculative commentary.
-- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `%%DOC_PATH%%/REQUIREMENTS.md`, `%%DOC_PATH%%/WORKFLOW.md`, `%%DOC_PATH%%/REFERENCES.md`, then `req --find`/`req --files-find`, then `rg`/`grep` fallback, reading only targeted constructs and line ranges.
+- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find`, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
 - **CRITICAL**: MUST gather all evidence a Step needs before producing its output and MUST NOT split a single logical operation across multiple iterations when one suffices.
 - **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
 - **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
 
 ## Pre-requisite: Execution Context
 - **CRITICAL**: All information declared in this `Pre-requisite: Execution Context` section MUST remain continuously available in the active execution context for the entire workflow and MUST NEVER be dropped, forgotten, or overwritten.
-- Generate <WORKTREE_NAME> with `req --git-wt-name`, retain the literal result for later steps, and use simple sequential execution with only linear shell commands compatible with restrictive filtering systems for all worktree operations in this workflow.
+- Generate <WORKTREE_NAME> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name`, retain the literal result for later steps, and use simple sequential execution with only linear shell commands compatible with restrictive filtering systems for all worktree operations in this workflow.
 
 
 ## Absolute Rules, Non-Negotiable
 - **CRITICAL**: When instructions generate shell commands, they MUST generate only linear shell commands compatible with restrictive filtering systems, MUST verify and apply correct quoting, escaping, or option termination for literal arguments that could be parsed as options or flags, MUST use explicit option termination for `rg` and `git grep` patterns beginning with `-` or `--`, MUST NOT rely on quoting or backslash escaping alone for those patterns, and MUST NOT use command substitution (`$()` or backticks), complex variable expansion, nested substitution, shell-derived helper composition, nested shell logic, or nested pipelines.
-- **CRITICAL**: NEVER write, modify, edit, or delete files outside of the active git worktree directory, except under `/tmp`, and except for worktree operations executed through `req --git-wt-create <WORKTREE_NAME>` and `req --git-wt-delete <WORKTREE_NAME>`.
-- You MUST read `%%DOC_PATH%%/REQUIREMENTS.md`, but you MUST NOT modify it in this workflow.
+- **CRITICAL**: Every `req` invocation MUST carry the mandatory parameters `--prj-base={{PRJ_BASE}}` and `--git-base={{GIT_BASE}}` with the resolved values; the removed `--base` parameter MUST NOT be used.
+- **CRITICAL**: NEVER write, modify, edit, or delete files outside of the active git worktree directory, except under `/tmp`, and except for worktree operations executed through `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-create <WORKTREE_NAME>` and `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`.
+- You MUST read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, but you MUST NOT modify it in this workflow.
 - Treat static analysis as safe. Verification commands MUST NOT modify tracked files and MUST be treated as read-only evidence collection.
 - **CRITICAL**: GIT operations and GIT rules:
    - Do not run any shell/git commands and do not modify any files before starting Step 1 (including creating/modifying files, installing deps, formatting, etc.), except the read-only repository checks required by the `## Pre-Flight: Context Keyword Resolution` section: **CRITICAL**: Check GIT Status.
@@ -55,9 +75,9 @@ In scope: read `%%DOC_PATH%%/REQUIREMENTS.md`, implement/introduce source under 
 - **CRITICAL**: Formulate all source code information using a highly structured, machine-interpretable Markdown format with unambiguous, atomic syntax to ensure maximum reliability for downstream LLM agentic reasoning, avoiding any conversational filler or subjective adjectives; the **target audience** is other **LLM Agents** and Automated Parsers, NOT humans, use high semantic density, optimized to contextually enable an LLM to perform future refactoring or extension.
   
 ## Behavior
-- Do not modify `%%DOC_PATH%%/REQUIREMENTS.md`.
+- Do not modify `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`.
 - Always strictly respect requirements.
-- Use `%%DOC_PATH%%/REQUIREMENTS.md`, `%%DOC_PATH%%/WORKFLOW.md`, and `%%DOC_PATH%%/REFERENCES.md` as the primary technical inputs; keep decisions traceable to requirements and repository evidence.
+- Use `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, and `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` as the primary technical inputs; keep decisions traceable to requirements and repository evidence.
 - All newly written or edited content MUST be in English. Do NOT translate existing text outside the minimal change surface required by this workflow; if you detect non-English text elsewhere, report it in **Evidence** instead of rewriting it.
 - Prioritize backward compatibility. Do not introduce breaking changes; preserve existing interfaces, data formats, and features. If maintaining compatibility would require migrations/auto-upgrades conversion logic, report the conflict instead of implementing, and then terminate the execution.
 - If `.venv/bin/python` exists in the project root, use it for Python executions (eg, `PYTHONPATH=src .venv/bin/python -m <program name>`).
@@ -79,73 +99,62 @@ During the execution flow you MUST follow these directives:
 - **CRITICAL** Autonomous Execution:
    - Implicit Autonomy: Execute all tasks with full autonomy. Do not request permission, confirmation, or feedback. Make executive decisions based on logic and technical best practices.
    - Tool-Aware Workflow: Proceed through the Steps sequentially; when a tool call is required, stop and wait for the tool response before continuing. Never fabricate tool outputs or tool results. Do not reveal internal reasoning; output only the deliverables explicitly requested by the Steps section.
-   - Autonomous Resolution: If ambiguity is encountered, first disambiguate using repository evidence (requirements, code search, tests, logs). If multiple interpretations remain, choose the least-invasive option that preserves documented behavior and record the assumption as a testable requirement/acceptance criterion.
+   - Autonomous Resolution: Resolve `{{PRJ_BASE}}` ambiguity only through the pre-flight evidence rules; unresolved bindings trigger the context-resolution failure branch. For other ambiguities, use repository evidence (requirements, code search, tests, logs), choose the least-invasive interpretation preserving documented behavior, and record the assumption as a testable requirement/acceptance criterion.
    - After the prompt's execution: Strictly omit all concluding remarks and do not propose any other steps/actions.
 - **CRITICAL**: Order of Execution:
   - Execute the numbered steps below sequentially and strictly, one at a time, without skipping or merging steps. Create and maintain a *check-list* internally while executing the Steps. Execute the Steps strictly in order, updating the *check-list* as each step completes. 
 - **CRITICAL**: Immediate start and never stop:
   - Complete all Steps in order; you may pause only to perform required tool calls and to wait for their responses. Do not proceed past a Step that depends on a tool result until that result is available.
-  - Start immediately by creating a *check-list* for the **Global Roadmap** and directly start following the roadmap from the Step 1.
+  - After successful pre-flight resolution, create a *check-list* for the **Global Roadmap** and start following the roadmap from Step 1.
 
-
-## Pre-Flight: Context Keyword Resolution
-- **CRITICAL**: Before executing any Step, determine the concrete value of each context keyword below, validate it against repository evidence, and save all three resolved values in the active execution context; they MUST remain continuously available for the entire workflow and MUST NEVER be dropped, forgotten, or overwritten.
-- `%%DOC_PATH%%`: directory containing `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md`; normally `usereq/docs` inside the git repository root. Different projects may declare different `usereq/docs` directories, each belonging to exactly one project; determine the correct path based on the modifications this workflow will execute.
-- `%%SRC_PATHS%%`: directory containing the project sources to modify; normally `src/` inside the working git repository. Different projects may declare different `src/` paths; determine the correct working path for the current task.
-- `%%TEST_PATH%%`: directory containing the project tests; normally `tests/` inside the working git repository. Different projects may declare different `tests/` paths; determine the correct working path for the current task.
-- Resolution rules, executed in order, using read-only commands only:
-  1. Start from the substituted values provided in this prompt.
-  2. For `%%DOC_PATH%%`, verify that `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md` exist under the resolved directory.
-  3. For `%%SRC_PATHS%%` and `%%TEST_PATH%%`, select the path pertinent to the modifications this workflow will execute when multiple candidate paths exist in the working git repository.
-- **CRITICAL**: If any of the three keyword values cannot be determined correctly and unambiguously, OUTPUT exactly "ERROR: Unable to resolve context keywords!", and then terminate the execution.
-- Mandatory context loading: after successful keyword resolution, load in full into the active execution context the canonical documents used by this workflow: `%%DOC_PATH%%/REQUIREMENTS.md`, `%%DOC_PATH%%/WORKFLOW.md`, `%%DOC_PATH%%/REFERENCES.md`; treat a document already injected as prompt context as loaded and do not re-read it; keep every loaded document available for the entire workflow.
 
 ## Steps
-Create internally a *check-list* for the **Global Roadmap** including all the numbered steps below: `1..10`, and start following the roadmap at the same time, executing the tool call of Step 1 (Check GIT Status). If a tool call is required in Step 1, invoke it immediately; otherwise proceed to Step 1 without additional commentary. Do not add extra intent-adjustment checks unless explicitly listed in the Steps section.
+After successful pre-flight resolution, create internally a *check-list* for the **Global Roadmap** including all the numbered steps below: `1..10`, and start following the roadmap at the same time, executing the tool call of Step 1 (Check GIT Status). If a tool call is required in Step 1, invoke it immediately; otherwise proceed to Step 1 without additional commentary. Do not add extra intent-adjustment checks unless explicitly listed in the Steps section.
 1. **CRITICAL**: Check GIT Status
-   - Check GIT status with `req --git-check`. If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Git status unclear!", and then terminate the execution.
+   - Check GIT status with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-check`. If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Git status unclear!", and then terminate the execution.
 2. **CRITICAL**: Worktree Generation & Isolation
-   - Derive <BASE_PATH> with `req --get-base-path`, derive <GIT_PATH> with `req --git-path`, and generate <WORKTREE_NAME> with `req --git-wt-name` using literal `req` commands executed sequentially without shell composition.
-   - Create the dedicated isolated worktree with `req --git-wt-create <WORKTREE_NAME>`, then execute `cd <GIT_PATH>/../<WORKTREE_NAME>` before proceeding to the next step.
+   - Derive <BASE_PATH> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --get-base-path`, derive <GIT_PATH> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-path`, and generate <WORKTREE_NAME> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name` using literal `req` commands executed sequentially without shell composition.
+   - Create the dedicated isolated worktree with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-create <WORKTREE_NAME>`, then execute `cd <GIT_PATH>/../<WORKTREE_NAME>` before proceeding to the next step.
    - If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Worktree generation failed!", and then terminate the execution.
+   - After successful worktree creation and directory change, apply the pre-flight context-transition rules before the next project operation. If rebinding fails, OUTPUT exactly "ERROR: Unable to resolve context keywords!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution. Apply this same failure cleanup to later context-resolution failures before merge-phase cleanup.
 
 3. Read requirements, generate **Design Delta** and implement the **Implementation Delta** to cover all requirements
-   - Read `%%DOC_PATH%%/REQUIREMENTS.md` and GENERATE a detailed **Implementation Delta** that covers all explicitly specified requirements, and explicitly list any requirement that cannot be implemented due to missing information or repository constraints. The **Implementation Delta** MUST be implementation-only: for each file, list exact developments (functions/classes created), and map each implementation to the requirement ID(s) it satisfies (no narrative summary).
+   - Read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` and GENERATE a detailed **Implementation Delta** that covers all explicitly specified requirements, and explicitly list any requirement that cannot be implemented due to missing information or repository constraints. The **Implementation Delta** MUST be implementation-only: for each file, list exact developments (functions/classes created), and map each implementation to the requirement ID(s) it satisfies (no narrative summary).
       - **ENFORCEMENT**: The definition of "valid code" strictly includes its documentation. You are mandatorily required to apply the Doxygen-LLM Standard defined in `.req/docs/Document_Source_Code_in_Doxygen_Style.md` to every single code component. Any code block generated without this specific documentation format is considered a compilation error and must be rejected/regenerated.
       - Read %%GUIDELINES_FILES%% files and apply those **guidelines**; ensure the proposed code changes conform to those **guidelines**, and adjust the **Implementation Delta** if needed. Do not apply unrelated **guidelines**.
-   - Locate existing unit tests in %%TEST_PATH%% that map to implemented requirement IDs; include in the **Implementation Delta** the language-specific priority order for verification runs, and record test execution as N/A when no relevant unit tests exist.
+   - Locate existing unit tests in {{PRJ_BASE}}/%%TEST_PATH%% that map to implemented requirement IDs; include in the **Implementation Delta** the language-specific priority order for verification runs, and record test execution as N/A when no relevant unit tests exist.
       - **CRITICAL**: All tests MUST implement these instructions: `.req/docs/HDT_Test_Authoring_Guide.md`.
       - Read %%GUIDELINES_FILES%% files and apply those **guidelines**; ensure the proposed code changes conform to those **guidelines**, and adjust the **Implementation Delta** if needed. Do not apply unrelated **guidelines**.
    - IMPLEMENT the **Implementation Delta** in the source code (creating new files/directories if necessary) from scratch.
 4. Generate **Verification Delta** by verifying static-analysis results and implementing needed bug fixes
-   - Read ALL requirements from `%%DOC_PATH%%/REQUIREMENTS.md`, analyze them one by one, and cross-reference them with the source code to check requirements. For each requirement, use tools (e.g., `git grep`, `find`, `ls`) to locate the relevant source code files used as evidence, read only the identified files to verify compliance, and do not assume compliance without locating the specific code implementation.
+   - Read ALL requirements from `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, analyze them one by one, and cross-reference them with the source code to check requirements. For each requirement, use tools (e.g., `git grep`, `find`, `ls`) to locate the relevant source code files used as evidence, read only the identified files to verify compliance, and do not assume compliance without locating the specific code implementation.
       - For each requirement, report `OK` if satisfied or `FAIL` if not.
       - Do not mark a requirement as `OK` without code evidence; for `OK` items provide only a compact pointer (file path + symbol + line range). For each requirement, provide a concise evidence pointer (file path + symbol + line range) excerpts only for `FAIL` requirements or when requirement is architectural, structural, or negative (e.g., "MUST NOT ..."). For such high-level requirements, cite the specific file paths or directory structures that prove compliance. Line ranges MUST be obtained from tooling output (e.g., `nl -ba` / `sed -n`) and MUST NOT be estimated. If evidence is missing, you MUST report `FAIL`. Do not assume implicit behavior.
       - For every `FAIL`, provide evidence with a short explanation. Provide file path(s) and line numbers where possible.
-   - Perform a static analysis check by executing `req --here --static-check`.
+   - Perform a static analysis check by executing `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check`.
       - Review the produced output and fix every reported issue in source code.
-      - Re-run `req --here --static-check` until it produces no issues. If output is exactly `Error: no source files found in configured directories.`, treat it as successful no-source completion and continue without retries.
+      - Re-run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check` until it produces no issues. If output is exactly `Error: no source files found in configured directories.`, treat it as successful no-source completion and continue without retries.
    - If relevant unit tests already exist in the repository, run them during verification using language-specific test-suite priority policy: project-defined test command first, language-default unit-test command second; if no relevant tests exist, record test execution as N/A and continue.
       - Verify that the implemented changes satisfy requirements evidence, static-analysis output, and unit-test outputs when tests are executed.
       - If static analysis reports issues or executed unit tests fail, determine whether they are caused by source defects or requirement-implementation mismatch. Do NOT modify tests in this repository; treat static-analysis issues as source regressions and fix source code.
-      - Fix the source code to resolve valid verification findings autonomously without asking for user intervention. Execute a strict fix loop: 1) analyze static-check output and unit-test failures (when tests ran), 2) determine root cause from evidence, 3) fix code, 4) re-run `req --here --static-check` and re-run the selected unit-test suites when applicable. Repeat up to 2 times. If static analysis still reports issues after the second attempt, report the failure, OUTPUT exactly "ERROR: Implement request failed due to inability to complete static analysis!", delete the isolated worktree and branch with `req --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
-      - Limitations: Do not introduce new features or change the architecture logic during this fix phase; if a fix requires substantial refactoring or requirements changes, report the failure, then OUTPUT exactly "ERROR: Implement request failed due to requirements incompatible with static-analysis constraints!", delete the isolated worktree and branch with `req --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
+      - Fix the source code to resolve valid verification findings autonomously without asking for user intervention. Execute a strict fix loop: 1) analyze static-check output and unit-test failures (when tests ran), 2) determine root cause from evidence, 3) fix code, 4) re-run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check` and re-run the selected unit-test suites when applicable. Repeat up to 2 times. If static analysis still reports issues after the second attempt, report the failure, OUTPUT exactly "ERROR: Implement request failed due to inability to complete static analysis!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
+      - Limitations: Do not introduce new features or change the architecture logic during this fix phase; if a fix requires substantial refactoring or requirements changes, report the failure, then OUTPUT exactly "ERROR: Implement request failed due to requirements incompatible with static-analysis constraints!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
       - Do NOT create or modify tests in this repository.
-5. Static analysis: build the runtime model from %%SRC_PATHS%%
-   - Analyze only files under %%SRC_PATHS%%; treat all files outside %%SRC_PATHS%% as out of scope and never document them.
+5. Static analysis: build the runtime model from {{PRJ_BASE}}/%%SRC_PATHS%%
+   - Analyze only files under {{PRJ_BASE}}/%%SRC_PATHS%%; treat all files outside {{PRJ_BASE}}/%%SRC_PATHS%% as out of scope and never document them.
    - Identify ALL execution units used at runtime:
       - OS processes (MUST include the main process).
       - OS threads (per process), including their entry functions/methods.
       - If no explicit thread creation is present, record "no explicit threads detected" for that process.
    - For EACH execution unit, derive entrypoint(s) and build a complete internal call-trace tree:
-      - Include ONLY internal functions as call-trace nodes (defined under %%SRC_PATHS%%).
+      - Include ONLY internal functions as call-trace nodes (defined under {{PRJ_BASE}}/%%SRC_PATHS%%).
       - Do NOT include external boundaries (system/library/framework calls) as nodes; annotate them only as external boundaries where relevant.
       - No maximum depth: expand until an internal leaf function or an external boundary is reached.
    - Identify ALL explicit communication edges between execution units and record for each edge:
       - Direction (source -> destination), mechanism (IPC/thread communication), endpoint/channel (queue/topic/path/socket/etc.), and payload/data-shape references.
-6. Generate and overwrite `%%DOC_PATH%%/WORKFLOW.md` document using declaration file paths only, excluding line numbers, line ranges, and internal file-reference pointers
-   - Read any existing `%%DOC_PATH%%/WORKFLOW.md` to preserve stable IDs and minimize unnecessary churn, then update it to strictly conform to the Output Contract above.
-   - Generate %%DOC_PATH%%/WORKFLOW.md in English only using deterministic, machine-interpretable Markdown with the required schema and stable field order.
+6. Generate and overwrite `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` document using declaration file paths only, excluding line numbers, line ranges, and internal file-reference pointers
+   - Read any existing `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` to preserve stable IDs and minimize unnecessary churn, then update it to strictly conform to the Output Contract above.
+   - Generate {{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md in English only using deterministic, machine-interpretable Markdown with the required schema and stable field order.
       - During generation/update, include declaration file paths only; MUST NOT include line numbers, line ranges, or internal file-reference pointers.
       - `## Execution Units Index` (stable IDs)
          - Use stable IDs: `PROC:main`, `PROC:<name>` for processes; `THR:<proc_id>#<name>` for threads.
@@ -162,24 +171,24 @@ Create internally a *check-list* for the **Global Roadmap** including all the nu
       - `symbol_name(...)`: `<single-line role>` [`<defining filepath>`]
          - `<optional: brief invariants/external boundaries>`
          - `<child internal calls as nested bullet list, in call order>`
-7. Update `%%DOC_PATH%%/REFERENCES.md` references file
-   -  Create/update the references file with `req --here --references >"%%DOC_PATH%%/REFERENCES.md"`
+7. Update `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` references file
+   -  Create/update the references file with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --references >"{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md"`
 8. **CRITICAL**: Stage & commit
    - Show a summary of changes with `git diff` and `git diff --stat`.
    - Stage changes explicitly (prefer targeted add; avoid `git add -A` if it may include unintended files): `git add <file...>` (ensure to include all modified source code & test and WORKFLOW.md only if it was modified/created).
-   - Ensure there is something to commit with: `git diff --cached --quiet && echo "Nothing to commit. Aborting."`. If command output contains "Aborting", OUTPUT exactly "No changes to commit.", and then delete the isolated worktree and branch with `req --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
+   - Ensure there is something to commit with: `git diff --cached --quiet && echo "Nothing to commit. Aborting."`. If command output contains "Aborting", OUTPUT exactly "No changes to commit.", and then delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
    - Commit a structured commit message with: `git commit -m "implement(<COMPONENT>)<BREAKING>: <DESCRIPTION> [useReq]"`
       - Set `<COMPONENT>` to the most specific component, module, or function affected. If multiple areas are touched, choose the primary one. If you cannot identify a unique component, use `core`.
       - Set `<DESCRIPTION>` to a short, clear summary in **English language** of what changed, including (when applicable) updates to: requirements/specs, source code, tests. Use present tense, avoid vague wording, and keep it under ~80 characters if possible.
       - Set `<BREAKING>` to `!` if a breaking change was implemented (a modification to an API, library, or system that breaks backward compatibility, causing dependent client applications or code to fail or behave incorrectly), set empty otherwise.
       - Include main features added, requirements changes, or a bug-fix description adding a multi-line comment (maximum 10 lines).
          - Do not include the 'Co-authored-by' trailer or any AI attribution. A GPG-signed commit is not required.
-   - Confirm the repo is clean with `req --git-check`. If the command returns an error code or prints any text containing "ERROR", override the final line with EXACTLY "WARNING: Implement request completed with unclean git repository!".
+   - Confirm the repo is clean with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-check`. If the command returns an error code or prints any text containing "ERROR", override the final line with EXACTLY "WARNING: Implement request completed with unclean git repository!".
 9. **CRITICAL**: Merge Conflict Management
    - Return to the original repository directory (the sibling directory of the worktree).
-   - Ensure you are on the original branch used before worktree creation by deriving `<BASE_PATH>` with `req --get-base-path` if needed and executing `cd <BASE_PATH>`.
+   - Ensure you are on the original branch used before worktree creation by deriving `<BASE_PATH>` with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --get-base-path` if needed and executing `cd <BASE_PATH>`.
    - Merge the isolated branch into the original branch: `git merge <WORKTREE_NAME>`
-   - If the merge completes successfully, delete the isolated worktree and branch with `req --git-wt-delete <WORKTREE_NAME>`; if the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Worktree cleanup verification failed!", and then terminate the execution.
+   - If the merge completes successfully, delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`; if the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Worktree cleanup verification failed!", and then terminate the execution.
    - If the merge fails or results in conflicts, do NOT remove the worktree directory and override the final line with EXACTLY "WARNING: Implement request completed with merge conflicting!".
 10. Present results
    - PRINT, in the response, the results for a human reader using clear, easily understandable sentences and readable Markdown formatting that highlight key findings, file paths, and concise evidence. Use the fixed report schema: ## **Outcome**, ## **Requirement Delta**, ## **Design Delta**, ## **Implementation Delta**, ## **Verification Delta**, ## **Evidence**, ## **Assumptions**, ## **Next Workflow**. Final line MUST be exactly: STATUS: OK or STATUS: ERROR.
