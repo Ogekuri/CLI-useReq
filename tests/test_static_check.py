@@ -27,6 +27,8 @@ import os
 import shutil
 import subprocess
 import sys
+import json
+import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
@@ -65,6 +67,28 @@ def _make_temp_file(directory: Path, name: str = "sample.py", content: str = "x 
 # ---------------------------------------------------------------------------
 # _resolve_files tests
 # ---------------------------------------------------------------------------
+
+class GlobalConfigIsolatedTestCase(unittest.TestCase):
+    """!
+    @brief Base class isolating the user HOME for global-config CLI tests.
+    @details Patches `usereq.cli.home_dir` to a disposable directory so
+    `~/.config/usereq/config.json` never touches the developer environment.
+    """
+
+    def setUp(self) -> None:
+        self.home = Path(tempfile.mkdtemp(prefix="usereq-sc-home-"))
+        patcher = patch("usereq.cli.home_dir", return_value=self.home)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
+        self.config_path = self.home / ".config" / "usereq" / "config.json"
+        super().setUp()
+
+    def write_global_config(self, payload: dict) -> None:
+        """Write the user-global configuration file with the given payload."""
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.config_path.write_text(json.dumps(payload), encoding="utf-8")
+
 
 class TestResolveFiles(unittest.TestCase):
     """Tests for the _resolve_files helper."""
@@ -1175,28 +1199,26 @@ class TestDispatchStaticCheckForFile(unittest.TestCase):
 # --files-static-check CLI dispatch tests (SRS-253, SRS-254, SRS-255, SRS-262)
 # ---------------------------------------------------------------------------
 
-class TestFilesStaticCheckCLI(unittest.TestCase):
+class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
     """!
     @brief Tests for --files-static-check CLI command (SRS-253, SRS-254, SRS-255, SRS-262).
-    @details Covers: files with known/unknown extensions, missing config.json,
+    @details Covers: files with known/unknown extensions, missing global config file,
       dispatch per extension language, exit code propagation.
     """
 
     def setUp(self) -> None:
+        super().setUp()
         self.tmp = TEMP_BASE / "files_sc_cli"
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
         self.tmp.mkdir(parents=True, exist_ok=True)
-        self.req_dir = self.tmp / ".req"
-        self.req_dir.mkdir()
 
     def tearDown(self) -> None:
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
 
     def _write_config(self, sc_config: dict) -> None:
-        """Write .req/config.json with base fields and given static-check section."""
-        import json
+        """Write the user-global config file with base fields and given static-check section."""
         payload = {
             "guidelines-dir": "guidelines",
             "docs-dir": "docs",
@@ -1204,7 +1226,7 @@ class TestFilesStaticCheckCLI(unittest.TestCase):
             "src-dir": ["src"],
             "static-check": sc_config,
         }
-        (self.req_dir / "config.json").write_text(json.dumps(payload), encoding="utf-8")
+        self.write_global_config(payload)
 
     def test_files_static_check_dummy_language(self) -> None:
         """--files-static-check dispatches Dummy for .py file when configured."""
@@ -1226,10 +1248,10 @@ class TestFilesStaticCheckCLI(unittest.TestCase):
         self.assertEqual(rc, 0)
 
     def test_files_static_check_no_config_warns_and_returns_zero(self) -> None:
-        """Without config.json, --files-static-check warns to stderr and returns 0."""
+        """Without the global config file, --files-static-check warns to stderr and returns 0."""
         from usereq import cli
-        import shutil as _shutil
-        _shutil.rmtree(str(self.req_dir))
+        if self.config_path.exists():
+            self.config_path.unlink()
         f = _make_temp_file(self.tmp, "main.py")
         # Do NOT mock builtins.print here: the warning is emitted via print(..., file=sys.stderr).
         # Patching builtins.print would swallow it before it reaches the patched sys.stderr.
@@ -1321,20 +1343,20 @@ class TestFilesStaticCheckCLI(unittest.TestCase):
 # --static-check project-scan dispatch tests (SRS-256, SRS-257, SRS-262)
 # ---------------------------------------------------------------------------
 
-class TestStaticCheckProjectScan(unittest.TestCase):
+class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
     """!
     @brief Tests for --static-check project-scan command (SRS-256, SRS-257, SRS-262).
     @details Covers: file collection from src-dir, language dispatch, skip when not configured,
-      exit code propagation, missing config behavior.
+      exit code propagation, missing global config behavior.
     """
 
     def setUp(self) -> None:
+        super().setUp()
         self.tmp = TEMP_BASE / "project_sc"
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
         self.tmp.mkdir(parents=True, exist_ok=True)
         subprocess.run(["git", "init"], cwd=self.tmp, check=True, capture_output=True)
-        (self.tmp / ".req").mkdir()
         (self.tmp / "src").mkdir()
 
     def tearDown(self) -> None:
@@ -1342,7 +1364,6 @@ class TestStaticCheckProjectScan(unittest.TestCase):
             shutil.rmtree(self.tmp)
 
     def _write_config(self, sc_config: dict) -> None:
-        import json
         payload = {
             "guidelines-dir": "guidelines",
             "docs-dir": "docs",
@@ -1351,7 +1372,7 @@ class TestStaticCheckProjectScan(unittest.TestCase):
         }
         if sc_config:
             payload["static-check"] = sc_config
-        (self.tmp / ".req" / "config.json").write_text(json.dumps(payload), encoding="utf-8")
+        self.write_global_config(payload)
 
     def test_static_check_dummy_on_project_files(self) -> None:
         """--static-check runs Dummy on .py files in src-dir with implicit --here."""
@@ -1595,14 +1616,15 @@ class TestStaticCheckProjectScan(unittest.TestCase):
 # --enable-static-check Command executable validation tests (SRS-250)
 # ---------------------------------------------------------------------------
 
-class TestEnableStaticCheckExecutableValidation(unittest.TestCase):
+class TestEnableStaticCheckExecutableValidation(GlobalConfigIsolatedTestCase):
     """!
     @brief Tests executable validation for Command entries from --enable-static-check.
     @details Verifies non-update install flow rejects non-executable Command `cmd`
-      before writing `.req/config.json`.
+      before writing the user-global configuration file.
     """
 
     def setUp(self) -> None:
+        super().setUp()
         self.tmp = TEMP_BASE / "enable_sc_exec_validation"
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
@@ -1641,29 +1663,30 @@ class TestEnableStaticCheckExecutableValidation(unittest.TestCase):
                 rc = cli.main(argv)
         self.assertEqual(rc, 1)
         self.assertIn("not an executable program", mock_err.getvalue())
-        self.assertFalse((self.tmp / ".req" / "config.json").exists())
+        self.assertFalse(self.config_path.exists())
 
 
 # ---------------------------------------------------------------------------
 # --enable-static-check config persistence tests (SRS-248, SRS-252, SRS-262)
 # ---------------------------------------------------------------------------
 
-class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
+class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
     """!
     @brief Tests for --enable-static-check config persistence (SRS-248, SRS-251, SRS-252, SRS-262, SRS-301).
-    @details Verifies that static-check config is correctly written to config.json via
-      `save_config()`, that identical entries are deduplicated within a single invocation (SRS-251),
-      and that update merges preserve pre-existing entries while discarding identical duplicates (SRS-301).
+    @details Verifies that static-check config is correctly written to the user-global
+      configuration file via `save_config()`, that identical entries are deduplicated within
+      a single invocation (SRS-251), and that update merges preserve pre-existing entries
+      while discarding identical duplicates (SRS-301).
       Uses direct API calls to `save_config` and `load_static_check_from_config` to avoid
       invoking the full installation flow (which requires provider flags and resource files).
     """
 
     def setUp(self) -> None:
+        super().setUp()
         self.tmp = TEMP_BASE / "enable_sc_config"
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
         self.tmp.mkdir(parents=True, exist_ok=True)
-        (self.tmp / ".req").mkdir()
 
     def tearDown(self) -> None:
         if self.tmp.exists():
@@ -1673,8 +1696,8 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         """save_config with static_check_config persists Pylance config for Python."""
         from usereq.cli import save_config, load_static_check_from_config
         sc = {"Python": [{"module": "Pylance"}]}
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"], static_check_config=sc)
-        result = load_static_check_from_config(self.tmp)
+        save_config("guidelines", "docs", "tests", ["src"], static_check_config=sc)
+        result = load_static_check_from_config()
         self.assertIn("Python", result)
         self.assertEqual(result["Python"][0]["module"], "Pylance")
 
@@ -1682,8 +1705,8 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         """save_config persists Command module with cmd and params for C."""
         from usereq.cli import save_config, load_static_check_from_config
         sc = {"C": [{"module": "Command", "cmd": "cppcheck", "params": ["--check-library"]}]}
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"], static_check_config=sc)
-        result = load_static_check_from_config(self.tmp)
+        save_config("guidelines", "docs", "tests", ["src"], static_check_config=sc)
+        result = load_static_check_from_config()
         self.assertIn("C", result)
         self.assertEqual(result["C"][0]["module"], "Command")
         self.assertEqual(result["C"][0]["cmd"], "cppcheck")
@@ -1696,8 +1719,8 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
             "Python": [{"module": "Pylance"}],
             "C": [{"module": "Dummy"}],
         }
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"], static_check_config=sc)
-        result = load_static_check_from_config(self.tmp)
+        save_config("guidelines", "docs", "tests", ["src"], static_check_config=sc)
+        result = load_static_check_from_config()
         self.assertIn("Python", result)
         self.assertIn("C", result)
 
@@ -1711,8 +1734,8 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         for spec in specs:
             lang, cfg = parse_enable_static_check(spec)
             merged.setdefault(lang, []).append(cfg)
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"], static_check_config=merged)
-        result = load_static_check_from_config(self.tmp)
+        save_config("guidelines", "docs", "tests", ["src"], static_check_config=merged)
+        result = load_static_check_from_config()
         self.assertEqual([entry["module"] for entry in result["Python"]], ["Dummy", "Ruff"])
 
     def test_enable_static_check_unknown_lang_raises_req_error(self) -> None:
@@ -1726,22 +1749,22 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         """save_config without static_check_config omits 'static-check' key from JSON."""
         import json
         from usereq.cli import save_config
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"])
-        payload = json.loads((self.tmp / ".req" / "config.json").read_text())
+        save_config("guidelines", "docs", "tests", ["src"])
+        payload = json.loads(self.config_path.read_text())
         self.assertNotIn("static-check", payload)
 
     def test_load_static_check_returns_empty_when_key_absent(self) -> None:
         """load_static_check_from_config returns {} when 'static-check' key is absent."""
         from usereq.cli import save_config, load_static_check_from_config
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"])
-        result = load_static_check_from_config(self.tmp)
+        save_config("guidelines", "docs", "tests", ["src"])
+        result = load_static_check_from_config()
         self.assertEqual(result, {})
 
     def test_load_static_check_returns_empty_when_no_config_file(self) -> None:
         """load_static_check_from_config returns {} when config.json is absent (SRS-254)."""
         from usereq.cli import load_static_check_from_config
         # No config.json written in setUp for this test
-        result = load_static_check_from_config(self.tmp)
+        result = load_static_check_from_config()
         self.assertEqual(result, {})
 
     def test_enable_static_check_deduplicates_identical_entries_same_invocation(self) -> None:
@@ -1786,9 +1809,9 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         """Merging new entry identical to existing config entry is discarded (SRS-301)."""
         from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
         existing_sc = {"Python": [{"module": "Pylance"}]}
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
+        save_config("guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
         # Simulate merge logic: load existing then add identical new entry.
-        loaded = load_static_check_from_config(self.tmp)
+        loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
         new_entry = {"module": "Pylance"}
         existing_identities = {
@@ -1803,8 +1826,8 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         """Existing static-check entries are not removed when a new non-duplicate entry is added (SRS-301)."""
         from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
         existing_sc = {"Python": [{"module": "Pylance"}]}
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
-        loaded = load_static_check_from_config(self.tmp)
+        save_config("guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
+        loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
         new_entry = {"module": "Ruff"}
         existing_identities = {
@@ -1821,8 +1844,8 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         """New Command entry with different params is appended even if same module exists (SRS-301)."""
         from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
         existing_sc = {"C": [{"module": "Command", "cmd": "cppcheck", "params": ["--check-library"]}]}
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
-        loaded = load_static_check_from_config(self.tmp)
+        save_config("guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
+        loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
         new_entry = {"module": "Command", "cmd": "cppcheck", "params": ["--enable=all"]}
         existing_identities = {
@@ -1839,8 +1862,8 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         """Existing entry with extra metadata still blocks identical identity tuple (SRS-301)."""
         from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
         existing_sc = {"Python": [{"module": "Pylance", "meta": "legacy-note"}]}
-        save_config(self.tmp, "guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
-        loaded = load_static_check_from_config(self.tmp)
+        save_config("guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
+        loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
         new_entry = {"module": "Pylance"}
         existing_identities = {
@@ -1875,9 +1898,7 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
         subprocess.run(
             ["git", "init"], cwd=self.tmp, check=True, stdout=subprocess.DEVNULL
         )
-        (self.tmp / ".req" / "config.json").write_text(
-            json.dumps(existing_payload, ensure_ascii=False), encoding="utf-8"
-        )
+        self.write_global_config(existing_payload)
 
         argv = [
             "--base",
@@ -1899,7 +1920,7 @@ class TestEnableStaticCheckConfigPersistence(unittest.TestCase):
             rc = cli.main(argv)
         self.assertEqual(rc, 0)
 
-        payload = json.loads((self.tmp / ".req" / "config.json").read_text(encoding="utf-8"))
+        payload = json.loads(self.config_path.read_text(encoding="utf-8"))
         entries = payload["static-check"]["JavaScript"]
         self.assertEqual(
             entries,

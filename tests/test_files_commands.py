@@ -29,6 +29,15 @@ from usereq.generate_markdown import detect_language
 from usereq.source_analyzer import ElementType, SourceAnalyzer
 
 
+@pytest.fixture(autouse=True)
+def _isolated_user_home(tmp_path, monkeypatch):
+    """Isolate the user-global configuration file under a disposable HOME."""
+    home = tmp_path / "usereq-isolated-home"
+    home.mkdir()
+    monkeypatch.setattr(cli_module, "home_dir", lambda: home)
+    yield home
+
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 FIXTURE_FILES = sorted(FIXTURES_DIR.glob("fixture_*.*"))
 DOXYGEN_TAG_LABELS_IN_ORDER = [
@@ -1066,8 +1075,8 @@ class TestReferencesCommand:
         src = repo_temp_dir / "cfg_lib"
         src.mkdir()
         (src / "main.py").write_text("def hello():\n    pass\n")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_lib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1089,8 +1098,8 @@ class TestReferencesCommand:
         excluded = src / "__pycache__"
         excluded.mkdir()
         (excluded / "cached.py").write_text("x = 1\n")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1108,28 +1117,13 @@ class TestReferencesCommand:
         src = repo_temp_dir / "lib"
         src.mkdir()
         (src / "code.py").write_text("x = 42\n")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "docs/",
                   "tests-dir": "tests/", "src-dir": ["lib"]}
         (req_dir / "config.json").write_text(json.dumps(config))
         monkeypatch.chdir(repo_temp_dir)
         rc = main(["--references"])
-        assert rc == 0
-
-    def test_references_from_legacy_config_keys(self, capsys, repo_temp_dir,
-                                                monkeypatch):
-        """CMD-014: Must load src-dir from config.json with legacy keys."""
-        src = repo_temp_dir / "lib"
-        src.mkdir()
-        (src / "code.py").write_text("x = 42\n")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
-        config = {"guidelines-dir": "docs/", "doc-dir": "docs/",
-                  "test-dir": "tests/", "src-dir": ["lib"]}
-        (req_dir / "config.json").write_text(json.dumps(config))
-        monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--references"])
         assert rc == 0
 
     @pytest.mark.parametrize(
@@ -1151,8 +1145,8 @@ class TestReferencesCommand:
         copied_fixture = src / fixture_file.name
         shutil.copy(fixture_file, copied_fixture)
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",
@@ -1199,8 +1193,8 @@ class TestReferencesCommand:
         copied_cli = src / "cli.py"
         shutil.copy(cli_source, copied_cli)
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",
@@ -1234,8 +1228,8 @@ class TestReferencesCommand:
         source_file = src / "cmd_major_sample.py"
         _write_cmd_major_sample(source_file)
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",
@@ -1273,8 +1267,8 @@ class TestCompressCommand:
         src = repo_temp_dir / "cfg_mylib"
         src.mkdir()
         (src / "main.py").write_text("# comment\nx = 1\n\ny = 2\n")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1292,8 +1286,8 @@ class TestCompressCommand:
         src = repo_temp_dir / "cfg_mylib"
         src.mkdir()
         (src / "main.py").write_text("x = 1\n")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1310,8 +1304,8 @@ class TestCompressCommand:
         src = repo_temp_dir / "cfg_mylib"
         src.mkdir()
         (src / "main.py").write_text("x = 1\n")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1339,8 +1333,8 @@ class TestTokensCommand:
         docs = repo_temp_dir / "cfg_docs"
         docs.mkdir()
         (docs / "REQUIREMENTS.md").write_text("# req\n", encoding="utf-8")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1361,8 +1355,8 @@ class TestTokensCommand:
         nested = docs / "nested"
         nested.mkdir()
         (nested / "skip.md").write_text("# ignored\n", encoding="utf-8")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1417,8 +1411,8 @@ class TestFindCommandVerbose:
         src_dir = repo_temp_dir / "cfg_src"
         src_dir.mkdir()
         (src_dir / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1433,8 +1427,8 @@ class TestFindCommandVerbose:
         src_dir = repo_temp_dir / "cfg_src"
         src_dir.mkdir()
         (src_dir / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
@@ -1594,8 +1588,8 @@ class TestFindCommandsDoxygen:
         copied_fixture = src / fixture_file.name
         shutil.copy(fixture_file, copied_fixture)
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",
@@ -1654,8 +1648,8 @@ class TestFindCommandsDoxygen:
             encoding="utf-8",
         )
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",
@@ -1699,8 +1693,8 @@ class TestFindCommandsDoxygen:
             encoding="utf-8",
         )
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",
@@ -1738,8 +1732,8 @@ class TestFindCommandsDoxygen:
         source_file = src / "cmd_major_sample.py"
         _write_cmd_major_sample(source_file)
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",
@@ -1895,8 +1889,8 @@ class TestProjectExamplesReferencesDoxygenParity:
         copied = src / filepath.name
         shutil.copy(filepath, copied)
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",
@@ -2012,8 +2006,8 @@ class TestProjectExamplesFindDoxygenParity:
         copied = src / filepath.name
         shutil.copy(filepath, copied)
 
-        req_dir = repo_temp_dir / ".req"
-        req_dir.mkdir()
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
         config = {
             "guidelines-dir": "docs/",
             "docs-dir": "docs/",

@@ -21,7 +21,7 @@ This allows them to be run both as a Python package (installed as <b>req</b>, <b
   <a href="#default-workflow">Default Workflow</a> |
   <a href="#supported-clis-agents-and-extensions">Supported CLIs, Agents, and Extensions</a> |
   <a href="#known-issues">Known Issues</a> |
-  <a href="#legacy-mode">Legacy Mode</a>
+  <a href="#note-on-git-usage">Note on Git usage</a>
 </p>
 <p align="center">
 <br>
@@ -94,12 +94,10 @@ Click to zoom flowchart image.
 
 ### Project's Tree
 
-Here the typical project's tree, except for `.req` directory you can configurare the other directories according your project layout:
+Here the typical project's tree; you can configure the directories according your project layout:
 
 ```text
 .
-├── .req/
-│   └── useReq/req files
 ├── docs/
 │   ├── FLOWCHART.md
 │   ├── REQUIREMENTS.md
@@ -147,9 +145,7 @@ req \
 --provider pi:prompts \
 --provider claude:prompts \
 --provider codex:skills \
---provider gemini:prompts \
---provider github:skills \
---provider kiro:agents \
+--provider antigravity:prompts \
 --provider opencode:prompts \
 --enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \
 --enable-static-check C=Command,clang-format,--dry-run,--Werror \
@@ -164,48 +160,41 @@ req \
 5. Start to use `/req-change`, `/req-new`, and `/req-fix`.
 
 ### Usage
-- Run `req` to create or recreate useReq resources in your project repository (depending on enabled providers and artifact types). This can include: `.codex`, `.claude`, `.github`, `.gemini`, `.kiro`, `.opencode`, `.pi`, `.req`, and `.vscode`.
+- Run `req` to create or recreate useReq resources. Prompts, agents, and skills are installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`); nothing is written into the project repository.
   - You can run `req` from any directory:
     - Use `--base <project-folder>` to target a specific project directory (recommended for first installation).
     - Use `--here` to target the current working directory.
     - For initialization, you cannot omit both `--base` and `--here`.
-    - `--here` and `--update` load directory settings from `.req/config.json`, so first installation requires `--base`.
+    - `--here` and `--update` load directory settings from the global configuration file `~/.config/usereq/config.json`, so first installation requires `--base`.
   - Directory flags for initialization:
     - `--docs-dir`, `--guidelines-dir`, `--tests-dir`, and `--src-dir` must resolve under the project base.
     - On fresh installation (`--base` without `--update`), omitted values default to `req/docs`, `req/guidelines/`, `tests/`, and `src/`.
     - On fresh installation, missing configured directories are created automatically.
     - `--src-dir` is repeatable and can be provided multiple times to include multiple source directories.
-  - If `REQUIREMENTS.md` is missing in the configured docs directory, it is generated from the packaged template.
   - Use one or more `--provider SPEC` parameters (at least one is required) to configure provider activation, artifact types, and options:
     - `SPEC` format: `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`
-    - `PROVIDER`: `pi`, `codex`, `claude`, `gemini`, `github`, `kiro`, or `opencode`.
-    - `ARTIFACT_ITEM`: `ARTIFACT` or `ARTIFACT+ARTIFACT_OPTIONS`.
-    - `ARTIFACT`: one of `{prompts, agents, skills}`.
-    - `ARTIFACT_OPTIONS`: `enable-models` and/or `enable-tools`, joined with `+`, and scoped only to that artifact item.
-    - `PROVIDER_OPTIONS`: (optional) comma-separated list from `{prompts-use-agents, legacy}`.
-    - Example: `--provider pi:prompts+enable-tools,skills+enable-models`
-    - Migration note: `enable-models` and `enable-tools` are no longer valid in the trailing `:PROVIDER_OPTIONS` segment; attach them directly to each artifact item with `+`.
+    - `PROVIDER`: `antigravity`, `claude`, `codex`, `opencode`, or `pi`.
+    - `ARTIFACT_ITEM`: one of `{prompts, agents, skills}`.
+    - `PROVIDER_OPTIONS`: (optional) comma-separated list from `{prompts-use-agents}`.
+    - Example: `--provider pi:prompts,skills`
   - Artifact types (specified within the `--provider` spec):
     - `skills` artifact generates skill resources for the provider.
     - `prompts` artifact generates prompts/commands resources for the provider.
     - `agents` artifact generates agent resources for the provider.
-    - Provider `pi` currently generates `.pi/prompts/req-<name>.prompt.md` and `.pi/skills/req-<name>/SKILL.md`.
   - `--enable-static-check SPEC` Enable static check configuration for a language (repeatable). SPEC format: `LANG=MODULE[,CMD[,PARAM...]]`.
       - Supported `MODULE` values: `Dummy`, `Pylance`, `Ruff`, `Command` (case-insensitive).
-      - Entries are merged into `.req/config.json` without replacing existing ones: existing entries are preserved, identity-duplicates are ignored, and only new non-duplicate entries are appended per language.
+      - Entries are merged into `~/.config/usereq/config.json` without replacing existing ones: existing entries are preserved, identity-duplicates are ignored, and only new non-duplicate entries are appended per language.
+- Configuration is stored in a single user-global file: `~/.config/usereq/config.json`. No configuration files are written to the project home or git repository path.
 - You need to run `req` again if you add or remove requirement-related files in the documentation directory or any files in the `guidelines/` directory.
-- Provider-scoped option `prompts-use-agents` (in the optional `:PROVIDER_OPTIONS` segment) generates prompt files as **agent-only references** (adds an `agent:` front matter field) where supported (GitHub prompts, Claude commands, and OpenCode commands).
+- Provider-scoped option `prompts-use-agents` (in the optional `:PROVIDER_OPTIONS` segment) generates prompt files as **agent-only references** (adds an `agent:` front matter field) where supported (Claude commands, OpenCode commands, and pi prompts).
 - Add `--verbose` and `--debug` to get detailed and diagnostic output.
-- Add `--update` to update an existing installation (requires an existing `.req/config.json` under the project base).
-  - Add `--preserve-models` to use and preserve `.req/models.json` during installation.
+- Add `--update` to update an existing installation (requires an existing `~/.config/usereq/config.json`).
   - With `--update`, passing one or more `--provider` specs replaces persisted provider specs; without `--provider`, persisted specs are reused.
-- Provider-scoped option `legacy` (in the optional `:PROVIDER_OPTIONS` segment) enables the *legacy mode* support (see below).
-- Artifact-local options `enable-models` and `enable-tools` (set on each `ARTIFACT_ITEM` with `+`) include `model:` and `tools:` fields for that artifact when available from centralized models configuration.
 - Add `--add-guidelines` to copy packaged guideline templates into `--guidelines-dir` without overwriting existing files.
 - Add `--upgrade-guidelines` to copy packaged guideline templates into `--guidelines-dir` and overwrite existing files.
 - Add `-h` / `--help` to print command help and exit.
 - Add `--ver` / `--version` to print the installed package version and exit.
-- Add `--remove` to remove resources generated by useReq from the target project (requires `--base` or `--here` and an existing `.req/config.json`; removes `.req/` and generated provider artifacts).
+- Add `--remove` to remove `req-*` artifacts generated by useReq from the user-level provider directories configured in the global configuration file.
 - Add `--upgrade` to self-upgrade useReq via `uv`.
 - Add `--uninstall` to uninstall useReq via `uv`.
 
@@ -223,7 +212,7 @@ req \
 - Find and extract specific constructs from the given files (standalone, no --base/--here required).
   `--files-find TAG PATTERN FILE [FILE ...]`
 
-- Run static analysis on the given files using tools configured in `.req/config.json` (standalone, no --base/--here required).
+- Run static analysis on the given files using tools configured in `~/.config/usereq/config.json` (standalone, no --base/--here required).
   `--files-static-check FILE [FILE ...]`
 
 - Count tokens and chars for canonical docs files in configured `docs-dir` (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`; here-only project scan: `--here` is implied when omitted, `--base` is not allowed, and explicit `--docs-dir` is ignored).
@@ -238,7 +227,7 @@ req \
 - Find and extract specific constructs from source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
   `--find TAG PATTERN`
 
-- Run static analysis on source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (plus configured `tests-dir`, excluding `fixtures/`) using tools configured in `.req/config.json` (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Run static analysis on source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (plus configured `tests-dir`, excluding `fixtures/`) using tools configured in `~/.config/usereq/config.json` (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
   `--static-check`
 
 - Check repository integrity for the configured git path: clean working tree and valid HEAD (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
@@ -247,16 +236,16 @@ req \
 - Check canonical docs presence in configured `docs-dir`: `REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md` (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
   `--docs-check`
 
-- Create an isolated git worktree and branch with the provided name; also copies `.req/`, active provider directories, and `.venv` (when present) into the new worktree context (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Create an isolated git worktree and branch with the provided name; also copies `.venv` (when present) into the new worktree context (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
   `--git-wt-create WT_NAME`
 
 - Remove the git worktree and branch identified by name (force-removes the target worktree and deletes the branch; here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
   `--git-wt-delete WT_NAME`
 
-- Print the configured `git-path` value from `.req/config.json`; if `.req/config.json` is missing, the command fails with `Error: .req/config.json not found in the project root` (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Print the git repository root resolved at runtime from the current working directory; the command fails when the current directory is not inside a git repository (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
   `--git-path`
 
-- Print the configured `base-path` value from `.req/config.json`; if `.req/config.json` is missing, the command fails with `Error: .req/config.json not found in the project root` (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Print the absolute current working directory path (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
   `--get-base-path`
 
 
@@ -292,201 +281,59 @@ req \
 
 ### High-Level Assessment
 
-- 🌟 **pi.dev CLI** 🌟 - Supports project-local prompt templates and Agent Skills from `.pi/prompts/` and `.pi/skills/`.
-- 🌟 **GitHub Copilot** 🌟 - Many models available.
-- 👍 **OpenCode** 👍 - Many models available. Does not support `tools:` on agents/prompts.
-- ⚖️ **Claude Code** ⚖️ - Only supports Claude/Anthropic models.
-- 🆗 **OpenAI Codex** 🆗 - Only supports OpenAI models. Does not support agents, `model:`, or `tools:` on prompts.
-- 👎 **Kiro CLI** 👎 - Only supports Claude/Anthropic models. Does not support `$ARGUMENTS` on prompts.
-- ☢️ **Gemini Code Assist** ☢️ - Only supports Google models. VS Code extension does not support agents or prompts.
+
+- 🌟 **pi.dev CLI** 🌟 - Supports user-level prompt templates and Agent Skills from `~/.pi/agent/prompts/` and `~/.pi/agent/skills/`.
+- 🌟 **Antigravity CLI** 🌟 - Evolution of Gemini CLI; supports user-level TOML commands and skills.
+- 👍 **OpenCode** 👍 - Many models available; supports user-level commands, agents, and skills from `~/.config/opencode/`.
+- ⚖️ **Claude Code** ⚖️ - Only supports Claude/Anthropic models; supports user-level commands, agents, and skills from `~/.claude/`.
+- 🆗 **OpenAI Codex** 🆗 - Only supports OpenAI models; supports user-level prompts and skills from `~/.codex/`.
 
 
 ### useReq/req Support
 - ✅ pi.dev CLI
-- ✅ OpenAI Codex
-  - set environment variable **CODEX_HOME** to project's home before running the codex CLI
+- ✅ Antigravity CLI
 - ✅ Claude Code
-- ✅ GitHub Copilot
+- ✅ OpenAI Codex
 - ✅ OpenCode
-- ✔️ Gemini Code Assist
-- ✔️ Kiro CLI
 
-| ✅ supported | ✔️ partially supported | ❌ issues | ⛔ not supported |
+| ✅ supported | ❌ not supported |
+
+GitHub Copilot and Kiro CLI are not supported: their prompt/agent/skill configuration is repository-scoped only and cannot be managed at user level.
 
 #### Skills Details
 - ✅ pi.dev CLI: [`/skill:req-create`]
-  - useReq generates `.pi/skills/req-create/SKILL.md`.
-  - pi discovers project skills from `.pi/skills/` and registers them as `/skill:name` commands.
+  - useReq generates `~/.pi/agent/skills/req-create/SKILL.md`.
+  - pi discovers user skills from `~/.pi/agent/skills/` and registers them as `/skill:name` commands.
   - Arguments after the command are appended to the skill content as `User: <args>`.
+- ✅ Antigravity CLI: [`$req-create`]
 - ✅ OpenAI Codex: [`$req-create`]
 - ✅ Claude Code: [`/req-create`]
-- ✅ GitHub Copilot: [`/req-create`]
 - ✅ OpenCode: [`/req-create`]
-- ✅ Gemini: [`$req-create`]
-- ❌ Kiro: Does not work as expected
 
 #### CLI Prompt Details
 - ✅ pi.dev CLI: [`/req-create.prompt`]
-  - useReq generates `.pi/prompts/req-create.prompt.md`.
+  - useReq generates `~/.pi/agent/prompts/req-create.prompt.md`.
   - pi prompt templates use the filename without `.md` as the command name, so the generated `.prompt` suffix remains part of the slash command.
   - Prompt arguments are supported by pi prompt templates (`$1`, `$2`, `$@`, `$ARGUMENTS`).
+- ✅ Antigravity CLI: [`/req:create`]
 - ✅ OpenAI Codex: [`/prompts:/req-create`]
 - ✅ Claude Code: [`/req:create`]
-- ✅ GitHub Copilot: [`/agent ➡️ req-create ↩️`]
-  - Use provider-scoped `legacy` to not add `model:` on agents.
-  - Slash command not supported.
-  - Defect #980 [Model from agent.md isn't recognized #980](https://github.com/github/copilot-cli/issues/980)
-  - Feature #618 → [Feature Request: Support custom slash commands from .github/prompts directory #618](https://github.com/github/copilot-cli/issues/618)
 - ✅ OpenCode: [`/req-create`]
-- ✅ Gemini: [`/req:create`]
-- ❌ Kiro: [`'@/req-create'`]
-  - Does not work as expected
-  - Prompt parameters (`$ARGUMENTS`) are not evaluated by the Kiro CLI.
-  - *no arguments supported for file-based prompts* → [Manage prompts](https://kiro.dev/docs/cli/chat/manage-prompts/)
-  - Defect #4141 → [Saved prompt with arguments only works when entire message is quoted in CLI (Spec Kit + Kiro CLI 1.21.0) #4141](https://github.com/kirodotdev/Kiro/issues/4141)
 
 #### CLI Agents Details
 - ❌ pi.dev CLI
-  - useReq does not generate `.pi/agents`; provider `pi` currently emits `.pi/prompts` and `.pi/skills` only.
+  - useReq does not generate agents for provider `pi`; it emits prompts and skills only.
+- ❌ Antigravity CLI
 - ❌ OpenAI Codex
 - ✅ Claude Code: [`@agent-req-create`]
-- ❌ GitHub Copilot
 - ✔️ OpenCode: [`<TAB> ➡️ Req.Create ↩️`]
   - **Starts a new session** (`/new`) for every prompt.
-- ✔️ Kiro: [`/agent swap; select agent ➡️ /req-create; ↩️`]
-  - Does not work as expected
-  - **Clears the context** (`/clear`) for every prompt.
-
-#### Visual Studio Code Extension Details
-- ❌ pi.dev CLI
-  - useReq integrates pi through `.pi/` project resources; it does not generate a separate Visual Studio Code extension surface for provider `pi`.
-- ✅ OpenAI Codex Extension for Visual Studio Code
-  - Skills: [`/ ➡️ Req.Create ↩️`]
-  - Prompts: [`/prompts:/req-create`]
-  - set environment variable **CODEX_HOME** to project's home before running VS Code
-- ✅ Claude Extension for Visual Studio Code
-  - Skills: [`/req-create`]
-  - Prompts: [`@agent-req-create`] (does not **highlight** agent like the CLI)
-- ✔️ GitHub Copilot Agent Chat in Visual Studio Code
-  - Agents: [`gui; select agent ➡️ /req-create; ↩️`]
-  - **Starts a new chat** for every prompt.
-- ✔️ OpenCode in Visual Studio Code
-  - Supported with a windowed CLI
-- ✔️ Gemini Code Assist Extension for Visual Studio Code
-  - Skills: [`$req-create`] (does not **highlight** skills like the CLI)
-  - Prompts/Agents not supported by the VS Code extension
-- ❌ Kiro in VS Code is not supported
 
 
 ## Known Issues
 
 - **Grok Code Fast 1** does not respect the TODO list and does not wait for user approval.
   * Defect #3180 → [Bug: Grok Code Fast 1 not update to do list correctly #3180](https://github.com/Kilo-Org/kilocode/issues/3180)
-
-
-## Enable model and tools on prompts/agents
-
-`enable-tools` and `enable-models` are artifact-local `--provider` options. Attach them directly to each artifact item with `+`, for example `claude:prompts+enable-models+enable-tools` or `github:prompts+enable-models,skills+enable-tools`.
-
-The `enable-tools` option adds a `tools:` specification when the selected artifact/provider combination has a matching `usage_modes` entry in `src/usereq/resources/common/models.json`.
-
-The `enable-models` option adds a `model:` specification using the mappings from `src/usereq/resources/common/models.json`.
-
-The prompt-name mappings below are also reused for generated skill artifacts when the provider supports `skills`.
-
-### pi.dev CLI
-
-#### Tool Sets
-
-- `read_only`: `read`, `bash`, `grep`, `find`, `ls`
-- `read_write`: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`
-
-#### Configured Models
-
-| Prompts | Model | Mode |
-| --- | --- | --- |
-| `analyze`, `check` | `Gemini 3.1 Pro (Preview) (copilot)` | `read_only` |
-| `create`, `readme`, `recreate`, `write` | `Gemini 3.1 Pro (Preview) (copilot)` | `read_write` |
-| `change`, `cover`, `fix`, `flowchart`, `implement`, `new`, `refactor`, `renumber`, `workflow` | `GPT-5.3-Codex (copilot)` | `read_write` |
-
-### GitHub Copilot
-
-#### Tool Sets
-
-- `read_only`: `vscode`, `execute`, `read`, `search`, `ms-python.python/getPythonEnvironmentInfo`, `ms-python.python/getPythonExecutableCommand`, `ms-python.python/installPythonPackage`, `ms-python.python/configurePythonEnvironment`, `todo`
-- `read_write`: `vscode`, `execute`, `read`, `edit`, `search`, `ms-python.python/getPythonEnvironmentInfo`, `ms-python.python/getPythonExecutableCommand`, `ms-python.python/installPythonPackage`, `ms-python.python/configurePythonEnvironment`, `todo`
-
-#### Configured Models
-
-| Prompts | Model | Mode |
-| --- | --- | --- |
-| `analyze`, `check` | `Gemini 3.1 Pro (Preview) (copilot)` | `read_only` |
-| `create`, `readme`, `recreate`, `write` | `Gemini 3.1 Pro (Preview) (copilot)` | `read_write` |
-| `change`, `cover`, `fix`, `flowchart`, `implement`, `new`, `refactor`, `renumber`, `workflow` | `GPT-5.3-Codex (copilot)` | `read_write` |
-
-### Claude Code
-
-#### Tool Sets
-
-- `read_only`: `Read`, `Grep`, `Glob`, `ReadFile`, `Pytest`
-- `read_write`: `Read`, `Grep`, `Glob`, `ReadFile`, `Edit`, `WriteFile`, `DeleteFile`, `Pytest`
-
-#### Configured Models
-
-| Prompts | Model | Mode |
-| --- | --- | --- |
-| `analyze`, `check` | `haiku` | `read_only` |
-| `create`, `flowchart`, `readme`, `recreate`, `workflow`, `write` | `haiku` | `read_write` |
-| `change`, `new` | `sonnet` | `read_write` |
-| `cover`, `fix`, `implement`, `refactor`, `renumber` | `opus` | `read_write` |
-
-### Kiro CLI
-
-#### Tool Sets
-
-- `read_only`: `read`, `glob`, `grep`, `shell`, `todo`, `todo_list`, `thinking`
-- `read_write`: `read`, `glob`, `grep`, `write`, `shell`, `todo`, `todo_list`, `thinking`
-
-#### Configured Models
-
-| Prompts | Model | Mode |
-| --- | --- | --- |
-| `analyze`, `check` | `claude-haiku-4.5` | `read_only` |
-| `create`, `flowchart`, `readme`, `recreate`, `workflow`, `write` | `claude-haiku-4.5` | `read_write` |
-| `change`, `cover`, `fix`, `implement`, `new`, `refactor`, `renumber` | `claude-sonnet-4.5` | `read_write` |
-
-### OpenCode CLI
-
-Models depend on the user's provider; the bundled configuration uses GitHub-hosted model identifiers.
-
-`src/usereq/resources/common/models.json` defines prompt models for OpenCode, but it does not define `usage_modes` for the `opencode` provider, so artifact items using `+enable-tools` currently have no centralized `tools:` value to inject.
-
-#### Configured Models
-
-| Prompts | Model | Mode |
-| --- | --- | --- |
-| `analyze`, `check` | `github-copilot/gemini-3.1-pro-preview` | `read_only` |
-| `create`, `readme`, `recreate`, `write` | `github-copilot/gemini-3.1-pro-preview` | `read_write` |
-| `change`, `cover`, `fix`, `flowchart`, `implement`, `new`, `refactor`, `renumber`, `workflow` | `github-copilot/claude-opus-4.6` | `read_write` |
-
-### OpenAI Codex CLI
-
-#### Tool Sets
-
-- `read_only`: `read`, `glob`, `grep`, `shell`, `todo`, `todo_list`, `thinking`
-- `read_write`: `read`, `glob`, `grep`, `write`, `shell`, `todo`, `todo_list`, `thinking`
-
-#### Configured Models
-
-| Prompts | Model | Mode |
-| --- | --- | --- |
-| `analyze`, `check` | `gpt-5.3-codex` | `read_only` |
-| `create`, `readme`, `recreate`, `write` | `gpt-5.2` | `read_write` |
-| `change`, `cover`, `fix`, `flowchart`, `implement`, `new`, `refactor`, `renumber`, `workflow` | `gpt-5.3-codex` | `read_write` |
-
-### Gemini CLI
-
-`src/usereq/resources/common/models.json` currently defines no centralized prompt-model map or tool sets for the `gemini` provider, so artifact items using `+enable-models` or `+enable-tools` have no bundled values to inject for Gemini artifacts.
 
 
 ## Note on Git usage
@@ -497,7 +344,7 @@ This section describes the Git behavior when executing the commands provided by 
   - Execute commands from a working branch (not in detached HEAD).
   - Preferably, the working tree should be clean: avoid unintended changes in the repository before starting the scripts.
   - Save all files and verify that you are in the correct project directory.
-  - **IMPORTANT:** `useReq/req` uses the `.req/` directory (including `.req/config.json`). Keep `.req/` tracked in the Git repository (do not ignore it), so `git worktree` checkouts include the same configuration; otherwise commands that depend on project configuration can fail.
+  - **IMPORTANT:** `useReq/req` stores its configuration in the user-global file `~/.config/usereq/config.json`; no configuration is written to the project repository, so git worktree checkouts need no configuration tracking.
 
 - What the scripts do to the repository:
   - The scripts may modify, create, or remove files in the working tree (files on disk).
@@ -514,20 +361,3 @@ This section describes the Git behavior when executing the commands provided by 
 - Practical warnings:
   - Do not use destructive commands (e.g., `git reset --hard`, `git clean -fd`) to "clean" the repository without verifying the impact.
   - If you prefer to isolate changes, execute commands in a branch or a copy of the repository.
-
-## Legacy Mode
-
-The *Legacy Mode* is enabled per provider via `--provider SPEC` options.
-
-Use `legacy` in the optional `:PROVIDER_OPTIONS` segment of `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`, for example:
-
-```bash
-req --provider github:agents:legacy
-```
-
-Standalone `--legacy` is not a supported CLI flag.
-
-### GitHub Copilot
-
-In *Legacy Mode* the unsupported `model:` is not added to agents.
-See: Defect #980 [Model from agent.md isn't recognized #980](https://github.com/github/copilot-cli/issues/980)

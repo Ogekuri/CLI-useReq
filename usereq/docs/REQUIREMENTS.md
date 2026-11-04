@@ -2,7 +2,7 @@
 title: "useReq Requirements"
 description: "Software Requirements Specification"
 date: "2026-04-12"
-version: 1.11
+version: 1.12
 author: "Ogekuri"
 scope:
   paths:
@@ -28,7 +28,7 @@ useReq is a text-based CLI that initializes and updates repository resources for
 
 ### 1.2 Project Scope
 - Primary interface: CLI (`req`, `use-req`, `usereq`).
-- Functional domains: project resource generation, configuration persistence, source analysis, token counting, compression, construct extraction, Doxygen field extraction, and git worktree management.
+- Functional domains: user-level CLI resource generation, global configuration persistence, source analysis, token counting, compression, construct extraction, Doxygen field extraction, and git worktree management.
 - Out-of-scope for this SRS rewrite: source-code modification.
 
 ### 1.3 Components and Dependencies
@@ -58,11 +58,9 @@ useReq is a text-based CLI that initializes and updates repository resources for
 │   ├── doxygen_parser.py
 │   ├── token_counter.py
 │   └── resources/
-│       ├── common/
 │       ├── docs/
 │       ├── guidelines/
-│       ├── prompts/
-│       └── vscode/
+│       └── prompts/
 └── tests/
     ├── fixtures/
     └── test_*.py
@@ -71,7 +69,7 @@ useReq is a text-based CLI that initializes and updates repository resources for
 ### 1.5 User Interface and Behavioral Overview
 - Implemented UI is CLI-only; no GUI behavior is implemented.
 - Output channels: stdout for normal payloads and stderr for warnings/errors/verbose status.
-- Configuration persistence: `.req/config.json` and `.req/models.json`.
+- Configuration persistence: single user-global file `~/.config/usereq/config.json`.
 
 ### 1.6 Performance Evidence
 No explicit performance optimizations identified.
@@ -87,7 +85,7 @@ No explicit performance optimizations identified.
 ### 3.1 Design and Implementation Constraints
 
 ### 3.2 CLI Interface and Lifecycle
-- **SRS-034**: MUST implement the following behavior: The CLI MUST accept `--upgrade`, `--uninstall`, the boolean flag `--preserve-models`, and repeatable `--provider SPEC`; provider configuration MUST remain exclusive to `--provider SPEC`; listed legacy global flags MUST NOT be parsed; with `--update` + `--preserve-models`, `.req/models.json` MUST be preserved.
+- **SRS-034**: MUST implement the following behavior: The CLI MUST accept `--upgrade`, `--uninstall`, and repeatable `--provider SPEC`; provider configuration MUST remain exclusive to `--provider SPEC`; legacy global flags and `--preserve-models` MUST NOT be parsed.
 - **SRS-035**: MUST implement the following behavior: During installation without `--update`, the CLI MUST require at least one `--provider` spec; otherwise it MUST print an English error and exit code 4. Each `--provider` spec implicitly enables the named provider and the listed artifact types.
 - **SRS-036**: MUST implement the following behavior: The installation summary table MUST include rows only for providers whose prompts were installed during the current invocation.
 - **SRS-049**: MUST implement the following behavior: Immediately after the file list, CLI MUST print a Unicode box-drawing installation summary table with bright-red border lines.
@@ -99,16 +97,14 @@ No explicit performance optimizations identified.
 - **SRS-342**: MUST implement the following behavior: `README.md` MUST include a `Requirements` section stating that Astral `uv` tool is required for `scripts/req.sh` and recommended project CLI execution workflows.
 - **SRS-352**: MUST implement the following behavior: `README.md` MUST describe only currently supported CLI flags and provider-option syntax, and MUST NOT describe removed standalone flags superseded by `--provider SPEC` options.
 - **SRS-264**: MUST implement the following behavior: Runtime dependency declarations in `pyproject.toml` `[project].dependencies` MUST be present in the locked package set defined by `uv.lock`; `[project].dependencies` MUST include `ruff` and `pyright`; `[build-system].requires` MAY be outside `uv.lock`.
-- **SRS-064**: MUST implement the following behavior: With `--update`, the CLI MUST load paths, `--preserve-models` flag, and persisted `providers` array from `.req/config.json`, then apply only CLI-provided `--preserve-models` flag and `--provider` specs as overrides; if no provider spec is active after merging, it MUST raise a config-invalid error.
-- **SRS-066**: MUST implement the following behavior: The command MUST copy the `.req/models.json` configuration file, replacing the pre-existing file if present, unless `--preserve-models` is active. When `--preserve-models` is NOT active: if the `legacy` option is NOT active for the provider being processed, it MUST copy `models.json` from package resources (`src/usereq/resources/common/models.json`); if `legacy` is active (via `--provider PROVIDER:...:legacy`) and `models-legacy.json` file is successfully loaded (i.e. when it exists), it MUST copy `models-legacy.json` from package resources (`src/usereq/resources/common/models-legacy.json`). This copy MUST take place after creating the `.req` directory and after saving `config.json`.
-- **SRS-085**: MUST implement the following behavior: The CLI MUST load prompt-generation configurations; with `--preserve-models` + `--update` and existing `.req/models.json`, it MUST load from `.req/models.json` and the per-provider `legacy` option MUST have no effect; otherwise it MUST load `src/usereq/resources/common/models.json` for `<cli>` `prompts` and `usage_modes`, and if the `legacy` option is active for a provider (via `--provider PROVIDER:...:legacy`) it MUST prefer `src/usereq/resources/common/models-legacy.json` when present (file-level fallback), else use `models.json`; `src/usereq/resources/<cli>/config.json` MUST NOT be used and MAY be removed; if `write.model` is defined, `readme` MUST use the same `model` and `mode` as `write`.
+- **SRS-064**: MUST implement the following behavior: With `--update`, the CLI MUST load paths and persisted `providers` from `~/.config/usereq/config.json`, then apply CLI `--provider` specs as overrides; if no provider spec remains active, it MUST raise a config-invalid error.
 - **SRS-275**: MUST implement the following behavior: The CLI MUST accept a repeatable `--provider SPEC` argument as the sole mechanism for provider enablement, artifact selection, and option configuration, where `SPEC` syntax is `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`.
-- **SRS-364**: MUST implement the following behavior: `PROVIDER` MUST be one of `codex`, `claude`, `gemini`, `github`, `kiro`, `opencode`, `pi`; each `ARTIFACT_ITEM` MUST be `ARTIFACT` or `ARTIFACT+ARTIFACT_OPTIONS`, where `ARTIFACT` is one of `{prompts, agents, skills}` and `ARTIFACT_OPTIONS` is a `+`-separated list from `{enable-models, enable-tools}`.
-- **SRS-365**: MUST implement the following behavior: `PROVIDER_OPTIONS`, when present, MUST be a comma-separated list from `{prompts-use-agents, legacy}`; `enable-models` and `enable-tools` in `PROVIDER_OPTIONS` MUST be rejected as invalid option placement.
-- **SRS-276**: MUST implement the following behavior: When one or more `--provider` specs are given, each spec MUST enable the named provider and listed artifacts; artifact-local `enable-models` and `enable-tools` MUST affect only their declaring artifact item, while `prompts-use-agents` and `legacy` MUST remain provider-scoped.
+- **SRS-364**: MUST implement the following behavior: `PROVIDER` MUST be one of `antigravity`, `claude`, `codex`, `opencode`, `pi`; each `ARTIFACT_ITEM` MUST be exactly one `ARTIFACT` from `{prompts, agents, skills}`.
+- **SRS-365**: MUST implement the following behavior: `PROVIDER_OPTIONS`, when present, MUST be a comma-separated list containing only `prompts-use-agents`; any other token MUST be rejected as an invalid option.
+- **SRS-276**: MUST implement the following behavior: When one or more `--provider` specs are given, each spec MUST enable the named provider and listed artifacts; `prompts-use-agents` MUST remain provider-scoped and apply only to `prompts` artifacts.
 - **SRS-278**: MUST implement the following behavior: If a `--provider` SPEC contains an unknown provider token, unknown artifact token, unknown option token, or invalid option placement, the CLI MUST print an English error message identifying the invalid token and exit with code 1.
-- **SRS-279**: MUST implement the following behavior: The CLI MUST persist all `--provider` specs as a JSON array under the `"providers"` key in `.req/config.json`; each element MUST be the raw SPEC string as provided on the command line.
-- **SRS-280**: MUST implement the following behavior: When `--update` loads `.req/config.json`, the CLI MUST restore persisted `"providers"` array entries; CLI-supplied `--provider` specs MUST replace (not merge with) persisted entries when at least one `--provider` flag is present on the command line.
+- **SRS-279**: MUST implement the following behavior: The CLI MUST persist all `--provider` specs as a JSON array under the `"providers"` key in `~/.config/usereq/config.json`; each element MUST be the raw SPEC string as provided on the command line.
+- **SRS-280**: MUST implement the following behavior: When `--update` loads the global configuration, the CLI MUST restore persisted `"providers"` array entries; CLI-supplied `--provider` specs MUST replace persisted entries when at least one `--provider` flag is present on the command line.
 - **SRS-281**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-282**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git` only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
@@ -124,34 +120,33 @@ No explicit performance optimizations identified.
 - **SRS-361**: MUST use default `tests/` for `--tests-dir` during installation when `--tests-dir` is omitted.
 - **SRS-362**: MUST use default `src/` as the only `src-dir` entry during installation when `--src-dir` is omitted.
 - **SRS-363**: MUST create missing parent directories when creating paths from `--docs-dir`, `--guidelines-dir`, `--tests-dir`, and each configured `--src-dir` entry during installation.
+- **SRS-387**: MUST persist all configuration state in the single user-global file `~/.config/usereq/config.json` and MUST create missing parent directories on first write.
+- **SRS-388**: MUST NOT create, read, or require the `.req` project directory or any per-project configuration file under the project base or git repository path.
 
 ### 3.3 Provider Resource Generation
+- **SRS-381**: MUST install provider prompts, agents, and skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
+- **SRS-382**: MUST install provider `claude` prompts to `~/.claude/commands/req`, agents to `~/.claude/agents`, and skills to `~/.claude/skills`.
+- **SRS-383**: MUST install provider `codex` prompts to `~/.codex/prompts` and skills to `~/.codex/skills`.
+- **SRS-384**: MUST install provider `antigravity` TOML prompt commands to `~/.antigravity/commands/req` and skills to `~/.antigravity/skills`.
+- **SRS-385**: MUST install provider `opencode` prompts to `~/.config/opencode/command`, agents to `~/.config/opencode/agent`, and skills to `~/.config/opencode/skill`.
+- **SRS-386**: MUST install provider `pi` prompts to `~/.pi/agent/prompts` and skills to `~/.pi/agent/skills`.
 - **SRS-095**: MUST generate `SKILL.md` for each skill subdirectory of every enabled provider using prompt body substituted with only `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, and `%%ARGS%%` tokens, and provider-resolved YAML front matter.
 - **SRS-368**: MUST set `SKILL.md` YAML `name` to `req-<prompt_name>` and `description` to the YAML-escaped output of `extract_skill_description(prompt_frontmatter)`.
-- **SRS-369**: MUST emit `SKILL.md` YAML `model` and tool-restriction fields according to `legacy`, `enable-models`, `enable-tools`, and provider-specific serialization rules.
-- **SRS-370**: MUST emit provider `pi` `SKILL.md` tool restrictions as `allowed-tools: <space-delimited tools>` and MUST NOT emit a `tools` key.
+- **SRS-389**: MUST NOT emit `model`, `tools`, or `allowed-tools` fields in generated prompt, agent, command, or skill artifacts.
 - **SRS-371**: MUST implement the following behavior: When `src/usereq/resources/prompts/flowchart.md` exists, provider resource generation MUST emit `req-flowchart` artifacts for every enabled provider/artifact combination supported by packaged prompt templates.
-- **SRS-372**: MUST implement the following behavior: In `src/usereq/resources/common/models.json` and `src/usereq/resources/common/models-legacy.json`, every provider prompt map that defines `workflow` MUST also define `flowchart` with identical prompt configuration.
 
-- **SRS-353**: MUST implement the following behavior: Provider `pi` prompt installation MUST use the same generation and naming procedure as provider `github`, and MUST write prompt files under `.pi/prompts`.
+- **SRS-353**: MUST implement the following behavior: Provider `pi` prompt installation MUST write `req-<prompt_name>.prompt.md` files with `description` and optional `argument-hint` front matter under `~/.pi/agent/prompts`.
 
-- **SRS-354**: MUST implement the following behavior: Provider `pi` skill installation MUST use the same generation and naming procedure as provider `github`, and MUST write skill files under `.pi/skills`.
+- **SRS-354**: MUST implement the following behavior: Provider `pi` skill installation MUST write `req-<prompt_name>/SKILL.md` files under `~/.pi/agent/skills`.
 
-- **SRS-366**: MUST implement the following behavior: `scripts/test-install.sh` MUST pass `--provider pi:prompts+enable-models+enable-tools,skills+enable-models+enable-tools` to `scripts/req.sh` during its installation run.
+- **SRS-366**: MUST implement the following behavior: `scripts/test-install.sh` MUST pass `--provider pi:prompts,skills` to `scripts/req.sh` during its installation run.
 
-- **SRS-367**: MUST implement the following behavior: `scripts/test-install.sh` MUST delete `.pi/prompts` and `.pi/skills` from the target directory before its clean-install execution path.
-
-- **SRS-355**: MUST implement the following behavior: `src/usereq/resources/common/models.json` and `src/usereq/resources/common/models-legacy.json` MUST include a top-level `pi` configuration consumable by prompt and skill generation.
-
-- **SRS-357**: MUST implement the following behavior: In `src/usereq/resources/common/models.json` and `src/usereq/resources/common/models-legacy.json`, provider `pi` prompt `model` values MUST match provider `copilot` for identical prompt keys.
-
-- **SRS-358**: MUST implement the following behavior: In both common models files, provider `pi` `usage_modes.read_write.tools` MUST equal `["read", "bash", "edit", "write", "grep", "find", "ls"]` and `usage_modes.read_only.tools` MUST equal `["read", "bash", "grep", "find", "ls"]`.
-
-- **SRS-356**: MUST implement the following behavior: Configuration persistence and update round-trips MUST preserve raw `--provider` SPEC entries that start with `pi:` under `.req/config.json` key `"providers"`.
+- **SRS-367**: MUST implement the following behavior: `scripts/test-install.sh` MUST isolate `HOME` to a disposable directory and delete `~/.pi/agent/prompts` and `~/.pi/agent/skills` inside it before its clean-install execution path.
 
 - **SRS-263**: MUST implement the following behavior: The CLI MUST treat files under `src/usereq/resources/prompts` as read-only package inputs and MUST NOT create, modify, overwrite, rename, or delete files in that directory.
 
 ### 3.4 Removal and Cleanup
+- **SRS-390**: MUST implement the following behavior: The `--remove` command MUST load `providers` from the global configuration file and delete `req-*` artifacts from user-level provider directories only.
 
 ### 3.5 CI/CD Release Workflow
 - **SRS-128**: MUST implement the following behavior: The workflow MUST build Python package (sdist and wheel) in `dist/`.
@@ -160,7 +155,7 @@ No explicit performance optimizations identified.
 - **SRS-268**: MUST implement the following behavior: The `.github/workflows/release-uvx.yml` workflow MUST define `workflow_dispatch` under `on` in addition to tag-push triggers so releases MAY be launched manually without altering automatic tag-trigger behavior.
 
 ### 3.5.1 Package Distribution and Resource Inclusion
-- **SRS-272**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST enumerate glob patterns for required operational resource subdirectories only: `resources/common/*.json`, `resources/prompts/*.md`, `resources/guidelines/*.md`, `resources/docs/*.md`, `resources/vscode/settings.json`.
+- **SRS-272**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST enumerate only `resources/prompts/*.md`, `resources/docs/*.md`, and `resources/prompts-version.txt`.
 - **SRS-273**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST NOT list glob patterns that reference non-existent directories under `src/usereq/resources/`.
 - **SRS-274**: MUST implement the following behavior: The built distribution (sdist and wheel) MUST include all files under `src/usereq/resources/` that are required for program operation, ensuring congruent behavior between local development execution, `uv`-installed package execution, and `uvx` live execution.
 
@@ -176,8 +171,8 @@ No explicit performance optimizations identified.
 ### 3.9 Source Compression
 
 ### 3.10 Construct Extraction and Command Operations
-- **SRS-177**: MUST implement the following behavior: The `--references` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `.req/config.json`, then keep only supported extensions from SRS-131.
-- **SRS-179**: MUST implement the following behavior: The `--compress` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `.req/config.json`, then keep only supported extensions from SRS-131.
+- **SRS-177**: MUST implement the following behavior: The `--references` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
+- **SRS-179**: MUST implement the following behavior: The `--compress` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
 - **SRS-180**: MUST implement the following behavior: For `--references`, `--compress`, `--find`, and `--static-check`, `EXCLUDED_DIRS` MUST contain only directory names that are not already excluded by `.gitignore`.
 - **SRS-181**: MUST implement the following behavior: Source-file selection for `--references` and `--compress` MUST be derived from `git ls-files` relative paths and MUST NOT rely on recursive filesystem walking.
 
@@ -201,16 +196,15 @@ No explicit performance optimizations identified.
 - **SRS-235**: MUST verify in `tests/test_files_commands.py` that `--references` outputs Doxygen field bullets with original tags from SRS-213 (`@brief` ... `@post`) and never emits converted labels like `Brief:`.
 - **SRS-236**: MUST verify command-level `--files-find` outputs Doxygen field bullets using original tags from SRS-213 (`@brief` ... `@post`) with SRS-220 placement and SRS-221 order, never converted labels.
 - **SRS-237**: MUST verify command-level `--find` outputs Doxygen field bullets using original tags from SRS-213 (`@brief` ... `@post`) with SRS-220 placement, SRS-221 order, and no converted labels.
-- **SRS-284**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--provider PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]` parsing accepts valid specs, rejects unknown providers/artifacts/options, and rejects provider-scoped placement of `enable-models` or `enable-tools` with exit code 1.
+- **SRS-284**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--provider PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]` parsing accepts valid specs and rejects unknown providers, artifacts, or options with exit code 1.
 - **SRS-285**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that multiple `--provider` specs correctly enable distinct per-provider artifact types and per-provider options independently.
-- **SRS-286**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--provider` specs are persisted to and restored from `.req/config.json` under the `"providers"` key during `--update` round-trips.
-- **SRS-287**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that artifact-local `enable-models`/`enable-tools` and provider-scoped `prompts-use-agents`/`legacy` from `--provider` specs are applied independently to each targeted provider/artifact combination.
-- **SRS-288**: MUST implement the following behavior: The `.req/config.json` file MUST persist only the `"providers"` JSON array (raw SPEC strings) and the `"preserve-models"` boolean for update round-trips; the 13 legacy boolean keys (`enable-models`, `enable-tools`, `enable-claude`, `enable-codex`, `enable-gemini`, `enable-github`, `enable-kiro`, `enable-opencode`, `install-prompts`, `install-agents`, `install-skills`, `prompts-use-agents`, `legacy`) MUST NOT be written to or required from `config.json`.
+- **SRS-286**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--provider` specs are persisted to and restored from `~/.config/usereq/config.json` under the `"providers"` key during `--update` round-trips.
+- **SRS-287**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that provider-scoped `prompts-use-agents` from `--provider` specs is applied independently to each targeted provider.
+- **SRS-288**: MUST implement the following behavior: The global configuration file MUST persist only the keys `guidelines-dir`, `docs-dir`, `tests-dir`, `src-dir`, `providers`, and `static-check`; boolean flag keys MUST NOT be written to or required from the configuration file.
 - **SRS-293**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `Prompts Installed` content wraps with a maximum display width of 50 characters.
 - **SRS-294**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `Modules Installed` renders one module-entry line per active `--provider` artifact item using `artifact` without options or `artifact:options` when applicable options exist.
 - **SRS-297**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that each `Modules Installed` line preserves parsed artifact-local option order and appended applicable provider-option order, and emits only `artifact` when no options apply.
 - **SRS-298**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `Modules Installed` does not wrap module-entry lines and widths include the longest rendered module-entry line.
-- **SRS-373**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that bundled common model files keep `flowchart` prompt configuration aligned with `workflow`.
 - **SRS-374**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that a CLI installation generates representative `req-flowchart` prompt, agent, command, and skill artifacts from the packaged `flowchart.md` template.
 
 ## 5. Static Code Analysis Requirements
@@ -227,20 +221,20 @@ No explicit performance optimizations identified.
 - **SRS-247**: MUST implement the following behavior: The project MUST include `tests/test_static_check.py` with unit tests for: `StaticCheckBase` (Dummy) output format with one trailing blank separator line per file block; `StaticCheckPylance` and `StaticCheckRuff` OK/FAIL branches with mocked subprocess; pyright command composition including `--pythonpath sys.executable` and excluding `--extra-path`; absence of `.venv` interpreter probing; `StaticCheckCommand` availability check and OK/FAIL branches with mocked subprocess; glob pattern resolution including `**` recursive expansion; direct-children-only directory resolution; empty-file-list warning behavior; `fail_only` mode suppressing all output on pass for each checker class.
 
 ### 5.3 Static Analysis Configuration Requirements
-- **SRS-248**: MUST implement the following behavior: The CLI MUST support repeatable `--enable-static-check SPEC` (`LANG=MODULE[,CMD[,PARAM...]]`), and each SPEC occurrence MUST append one static-check entry under the canonical language key in `.req/config.json` key `"static-check"`.
+- **SRS-248**: MUST implement the following behavior: The CLI MUST support repeatable `--enable-static-check SPEC` (`LANG=MODULE[,CMD[,PARAM...]]`), and each SPEC occurrence MUST append one static-check entry under the canonical language key in `~/.config/usereq/config.json` key `"static-check"`.
 - **SRS-249**: MUST implement the following behavior: `--enable-static-check` MUST accept language names case-insensitively; the 20 valid canonical language names are: Python, C, C++, C#, Rust, JavaScript, TypeScript, Java, Go, Ruby, PHP, Swift, Kotlin, Scala, Lua, Shell, Perl, Haskell, Zig, Elixir; any unknown language name MUST produce a `ReqError` with exit code 1.
 - **SRS-250**: MUST implement the following behavior: `--enable-static-check` MUST accept a module name (case-insensitive) as the first comma-separated token after `=`: Dummy, Pylance, Ruff, or Command; for Command the second comma-separated token is the mandatory `cmd` binary; during non-`--update` initialization that does not load config values, Command `cmd` MUST resolve to an executable program (`shutil.which`) or the command MUST fail with `ReqError` exit code 1 before any configuration is persisted; all subsequent comma-separated tokens are `params` stored as a JSON array, commas inside single-quoted or double-quoted tokens MUST NOT split parameters, and surrounding single or double quotes on each token MUST be stripped before persistence; unknown module names MUST produce a `ReqError` with exit code 1.
 - **SRS-251**: MUST implement the following behavior: When `--enable-static-check` is specified multiple times, entries MUST be preserved in insertion order per canonical language; an entry structurally identical (`module`, `cmd`, and `params` fields all equal) to an already-accumulated entry for the same canonical language MUST be silently discarded.
-- **SRS-301**: MUST implement the following behavior: When `--enable-static-check` is invoked against an existing `.req/config.json` (via `--update` or `--here`), the command MUST load and preserve all pre-existing `"static-check"` entries without removal; for each new CLI-specified entry, presence MUST be decided by exact tuple match `(canonical language, module, cmd, params)` in the loaded config; if present discard, otherwise append.
-- **SRS-252**: MUST implement the following behavior: When `--enable-static-check` is used during installation or update, `.req/config.json` key `"static-check"` MUST be a JSON object keyed by canonical language name, and each language value MUST be a non-empty JSON array of entry objects with required `"module"` and optional `"cmd"`/`"params"` fields.
+- **SRS-301**: MUST implement the following behavior: When `--enable-static-check` is invoked against an existing global configuration file (via `--update` or `--here`), the command MUST load and preserve all pre-existing `"static-check"` entries without removal; for each new CLI-specified entry, presence MUST be decided by exact tuple match `(canonical language, module, cmd, params)` in the loaded config; if present discard, otherwise append.
+- **SRS-252**: MUST implement the following behavior: When `--enable-static-check` is used during installation or update, the global configuration file key `"static-check"` MUST be a JSON object keyed by canonical language name, and each language value MUST be a non-empty JSON array of entry objects with required `"module"` and optional `"cmd"`/`"params"` fields.
 
 ### 5.4 Static Analysis Execution Commands
 - **SRS-253**: MUST implement the following behavior: The CLI MUST support `--files-static-check FILE [FILE ...]` as a standalone command (no `--base`/`--here` required); for each FILE it MUST resolve absolute path, detect language, load the language array from `"static-check"`, and execute all configured entries sequentially with `fail_only` mode active and dispatch context containing resolved project base; for `Command` entries it MUST invoke tools as `<cmd> [params...] <filename>`; files with no language or no configured entries MUST be skipped; passing checks MUST produce no stdout output.
-- **SRS-254**: MUST implement the following behavior: When `--files-static-check` cannot locate `.req/config.json` (no `--here`, no `--base`, and no `.req/config.json` exists in CWD), the command MUST print a warning to stderr and exit with code 0 without checking any files.
+- **SRS-254**: MUST implement the following behavior: When `--files-static-check` cannot locate `~/.config/usereq/config.json`, the command MUST print a warning to stderr and exit with code 0 without checking any files.
 - **SRS-255**: MUST implement the following behavior: The `--files-static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis.
 - **SRS-256**: MUST implement the following behavior: The CLI MUST support `--static-check` as a `--here`-only project-scan command with implicit `--here`, `--base` rejection, and file selection from `git ls-files` under configured `src-dir` values and the `tests-dir` value plus SRS-131/SRS-180 filtering; all checks MUST execute with `fail_only` mode active and dispatch context containing resolved project base; for `Command` entries it MUST invoke tools as `<cmd> [params...] <filename>`; passing checks MUST produce no stdout output.
 - **SRS-257**: MUST implement the following behavior: The `--static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis; it MUST remain dispatched via `_is_project_scan_command`.
-- **SRS-336**: MUST implement the following behavior: The `--static-check` command MUST load the `tests-dir` value from `.req/config.json` and append it to the `src-dir` list for file selection; if `tests-dir` is missing or invalid the command MUST skip test directory inclusion without error.
+- **SRS-336**: MUST implement the following behavior: The `--static-check` command MUST load the `tests-dir` value from `~/.config/usereq/config.json` and append it to the `src-dir` list for file selection; if `tests-dir` is missing or invalid the command MUST skip test directory inclusion without error.
 ### 5.5 Static Analysis Dispatch Implementation Requirements
 - **SRS-258**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_LANG_CANONICAL` dict in `src/usereq/static_check.py` mapping lowercase language identifiers (including common aliases: `cpp` for C++, `csharp` for C#, `js` for JavaScript, `ts` for TypeScript, `sh` for Shell) to canonical language names from SRS-249.
 - **SRS-259**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_EXT_TO_LANG` dict in `src/usereq/static_check.py` mapping file extensions to canonical language names, using the same 20-language extension set as SRS-131.
@@ -257,51 +251,43 @@ No explicit performance optimizations identified.
 
 ## 6. Git Integration and Worktree Management Requirements
 
-### 6.1 Configuration Path Persistence
-- **SRS-302**: MUST implement the following behavior: During installation (`--base` without `--update`), the CLI MUST resolve the `--base` path to an absolute filesystem path and persist it as `"base-path"` in `.req/config.json`.
-- **SRS-303**: MUST implement the following behavior: During `--update`, if the current absolute project path differs from the `"base-path"` value in `.req/config.json`, the CLI MUST update `"base-path"` to the current absolute path.
-- **SRS-305**: MUST implement the following behavior: During installation (`--base`), the CLI MUST verify that the resolved `--base` path is inside a git repository by executing `git rev-parse --is-inside-work-tree` in the resolved path; if not inside a git repository, the CLI MUST terminate with a non-zero exit code and an English error message.
-- **SRS-306**: MUST implement the following behavior: During installation, after verifying git repository membership, the CLI MUST determine the git repository root via `git rev-parse --show-toplevel` and persist it as `"git-path"` in `.req/config.json`.
-- **SRS-307**: MUST implement the following behavior: During `--update`, if the current git repository root differs from the `"git-path"` value in `.req/config.json`, the CLI MUST update `"git-path"` to the current value.
-- **SRS-309**: MUST implement the following behavior: The variable `"base-dir"` MUST be derived dynamically at runtime as the relative path from `"git-path"` to `"base-path"` and MUST NOT be persisted in `.req/config.json`.
-- **SRS-310**: MUST implement the following behavior: When `.req/config.json` is loaded for `--here` or `--base` on an existing project, ALL key-value parameters in the configuration file MUST be loaded and available to CLI command functions.
+### 6.1 Runtime Path Resolution
+- **SRS-391**: MUST implement the following behavior: Git-integration commands MUST resolve the git repository root at runtime by executing `git rev-parse --show-toplevel` from the current working directory.
+- **SRS-310**: MUST implement the following behavior: When the global configuration file is loaded, ALL key-value parameters MUST be loaded and available to CLI command functions.
 
 ### 6.2 Git Check Command
 - **SRS-311**: MUST implement the following behavior: The CLI MUST support `--git-check` as a `--here`-only command that MUST reject `--base`; `--here` MUST be implied if not explicitly provided.
-- **SRS-312**: MUST implement the following behavior: The `--git-check` command MUST execute `git rev-parse --is-inside-work-tree && ! git status --porcelain | grep -q . && { git symbolic-ref -q HEAD || git rev-parse --verify HEAD ; }` in the `"git-path"` directory, MUST print no output on success, and on non-zero exit MUST print `ERROR: Git status unclear!\n` to stdout and exit with non-zero code.
+- **SRS-312**: MUST implement the following behavior: The `--git-check` command MUST execute `git rev-parse --is-inside-work-tree && ! git status --porcelain | grep -q . && { git symbolic-ref -q HEAD || git rev-parse --verify HEAD ; }` in the runtime-resolved git repository root, MUST print no output on success, and on non-zero exit MUST print `ERROR: Git status unclear!\n` to stdout and exit with non-zero code.
 
 ### 6.3 Docs Check Command
 - **SRS-313**: MUST implement the following behavior: The CLI MUST support `--docs-check` as a `--here`-only command that MUST reject `--base`; `--here` MUST be implied if not explicitly provided.
-- **SRS-314**: MUST implement the following behavior: The `--docs-check` command MUST construct `DOC_PATH` as `"base-path"/"docs-dir"` using values from `.req/config.json` and verify existence of `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md` in sequential order.
+- **SRS-314**: MUST implement the following behavior: The `--docs-check` command MUST construct `DOC_PATH` as the current working directory joined with the `docs-dir` value from `~/.config/usereq/config.json` and verify existence of `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md` in sequential order.
 - **SRS-315**: MUST implement the following behavior: If `DOC_PATH/REQUIREMENTS.md` does not exist, `--docs-check` MUST print `ERROR: File <DOC_PATH>/REQUIREMENTS.md does not exist, generate it with the /req-write prompt!\n` to stdout and exit with non-zero code.
 - **SRS-316**: MUST implement the following behavior: If `DOC_PATH/WORKFLOW.md` does not exist, `--docs-check` MUST print `ERROR: File <DOC_PATH>/WORKFLOW.md does not exist, generate it with the /req-workflow prompt!\n` to stdout and exit with non-zero code.
 - **SRS-317**: MUST implement the following behavior: If `DOC_PATH/REFERENCES.md` does not exist, `--docs-check` MUST print `ERROR: File <DOC_PATH>/REFERENCES.md does not exist, generate it with the /req-references prompt!\n` to stdout and exit with non-zero code.
 
 ### 6.4 Git Worktree Name Command
 - **SRS-318**: MUST implement the following behavior: The CLI MUST support `--git-wt-name` as a `--here`-only command that MUST reject `--base`; `--here` MUST be implied if not explicitly provided.
-- **SRS-319**: MUST implement the following behavior: The `--git-wt-name` command MUST print exactly `useReq-<PROJECT_NAME>-<ORIGINAL_BRANCH>-<EXECUTION_ID>` where `<PROJECT_NAME>` is the basename of `"git-path"`, `<ORIGINAL_BRANCH>` is the current git branch name with characters incompatible with Linux or Windows paths replaced by `-`, and `<EXECUTION_ID>` is the current timestamp formatted as `YYYYMMDDHHmmss`.
+- **SRS-319**: MUST implement the following behavior: The `--git-wt-name` command MUST print exactly `useReq-<PROJECT_NAME>-<ORIGINAL_BRANCH>-<EXECUTION_ID>` where `<PROJECT_NAME>` is the basename of the runtime-resolved git repository root, `<ORIGINAL_BRANCH>` is the current git branch name with characters incompatible with Linux or Windows paths replaced by `-`, and `<EXECUTION_ID>` is the current timestamp formatted as `YYYYMMDDHHmmss`.
 
 ### 6.5 Git Worktree Create Command
 - **SRS-320**: MUST implement the following behavior: The CLI MUST support `--git-wt-create WT_NAME` as a `--here`-only command that MUST reject `--base`; `--here` MUST be implied if not explicitly provided; `WT_NAME` is mandatory.
 - **SRS-321**: MUST implement the following behavior: The `--git-wt-create` command MUST validate that `WT_NAME` contains only characters compatible with both Linux and Windows directory names; if invalid, it MUST print `ERROR: Invalid worktree/branch name: <WT_NAME>.\n` and exit with non-zero code.
-- **SRS-322**: MUST implement the following behavior: The `--git-wt-create` command MUST execute `git worktree add "<parent-path>/<WT_NAME>" -b <WT_NAME>` from within the `"git-path"` directory.
-- **SRS-323**: MUST implement the following behavior: After worktree creation, `--git-wt-create` MUST copy `"base-path"/.req` with all subdirectories to `"<parent-path>/<WT_NAME>/<base-dir>"` if `.req` is not already present in the destination.
-- **SRS-324**: MUST implement the following behavior: After worktree creation, `--git-wt-create` MUST copy active provider directories from `"base-path"` to `"<parent-path>/<WT_NAME>/<base-dir>"`, only for providers configured in `"providers"` whose source directories exist on the filesystem.
-- **SRS-325**: MUST implement the following behavior: The provider-to-directory mapping for `--git-wt-create` MUST be: claude -> `.claude/commands`, `.claude/agents`, `.claude/skills`; gemini -> `.gemini/commands`, `.gemini/skills`; github -> `.github/prompts`, `.github/agents`, `.github/skills`; codex -> `.codex/prompts`, `.codex/skills`; kiro -> `.kiro/prompts`, `.kiro/agents`, `.kiro/skills`; opencode -> `.opencode/agent`, `.opencode/command`, `.opencode/skill`; pi -> `.pi/prompts`, `.pi/skills`.
+- **SRS-322**: MUST implement the following behavior: The `--git-wt-create` command MUST execute `git worktree add "<parent-path>/<WT_NAME>" -b <WT_NAME>` from within the runtime-resolved git repository root.
 - **SRS-331**: MUST implement the following behavior: The `--git-wt-create` command MUST NOT change the current directory on success or failure; if post-create operations fail, it MUST rollback created worktree and branch and exit with non-zero code.
-- **SRS-335**: MUST implement the following behavior: After worktree creation, `--git-wt-create` MUST check for a `.venv` directory in `"base-path"` first, then `"git-path"`; when found and destination is absent, it MUST copy `.venv` preserving its relative path from `"git-path"`.
+- **SRS-335**: MUST implement the following behavior: After worktree creation, `--git-wt-create` MUST check for a `.venv` directory in the current working directory first, then the runtime-resolved git repository root; when found and destination is absent, it MUST copy `.venv` preserving its relative path from the git repository root.
 
 ### 6.6 Git Worktree Delete Command
 - **SRS-326**: MUST implement the following behavior: The CLI MUST support `--git-wt-delete WT_NAME` as a `--here`-only command that MUST reject `--base`; `--here` MUST be implied if not explicitly provided; `WT_NAME` is mandatory.
 - **SRS-327**: MUST implement the following behavior: The `--git-wt-delete` command MUST validate only exact targets for `WT_NAME`: branch ref `refs/heads/<WT_NAME>` and worktree path `"<parent-path>/<WT_NAME>"`; substring or partial-name matches MUST NOT be accepted.
-- **SRS-328**: MUST implement the following behavior: The `--git-wt-delete` command MUST change current directory to `"base-path"` before deletion, then force-remove only exact target worktree and exact target branch using git commands, remaining robust when target worktree contains pending/uncommitted changes.
+- **SRS-328**: MUST implement the following behavior: The `--git-wt-delete` command MUST force-remove only the exact target worktree and exact target branch using git commands, remaining robust when the target worktree contains pending/uncommitted changes.
 - **SRS-332**: MUST implement the following behavior: The `--git-wt-delete` command MUST NOT execute explicit file-system deletions of worktree content paths (for example `.req`, `.claude`, `.codex`), and MUST rely only on `git worktree remove` and `git branch -D`.
 
 ### 6.7 Git Repository Path Commands
 - **SRS-333**: MUST implement the following behavior: The CLI MUST support `--git-path` and `--get-base-path` as `--here`-only commands that MUST reject `--base`; `--here` MUST be implied if not explicitly provided.
-- **SRS-334**: MUST implement the following behavior: The `--git-path` command MUST print the `"git-path"` value loaded from `.req/config.json` and MUST fail only when `.req/config.json` is not present.
-- **SRS-347**: MUST implement the following behavior: The `--get-base-path` command MUST print the `"base-path"` value loaded from `.req/config.json` and MUST fail only when `.req/config.json` is not present.
+- **SRS-334**: MUST implement the following behavior: The `--git-path` command MUST print the git repository root resolved at runtime from the current working directory and MUST fail when the current directory is not inside a git repository.
+- **SRS-347**: MUST implement the following behavior: The `--get-base-path` command MUST print the absolute current working directory path.
 
 ### 6.8 Git Integration Test Requirements
-- **SRS-329**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `"base-path"` and `"git-path"` are persisted to `.req/config.json` during installation and updated during `--update` when paths change.
+- **SRS-329**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that git-integration commands resolve the git repository root at runtime from the current working directory.
 - **SRS-330**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying the `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create` (including `.venv` copy behavior), `--git-wt-delete`, `--git-path`, and `--get-base-path` commands behave per their respective requirements.

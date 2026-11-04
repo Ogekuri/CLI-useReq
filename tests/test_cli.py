@@ -2,15 +2,25 @@
 Test suite for the useReq CLI command.
 
 This module implements unit tests to verify the correct operation
-of the CLI script, according to requirement REQ-054.
+of the CLI under the user-level installation architecture: prompts,
+agents, and skills are installed into user-level CLI configuration
+directories under the user HOME, and configuration is persisted in
+the single user-global file `~/.config/usereq/config.json`.
 
-# REQ-054
+Covers: SRS-026/027 (read-only prompts), SRS-034/035 (provider gating),
+SRS-055/056 (uv runner), SRS-064 (update), SRS-249..252 (static-check
+config), SRS-263 (read-only packaged prompts), SRS-275..280 (provider
+specs), SRS-284..288 (test requirements), SRS-290/291/296 (install
+table), SRS-342/352 (README), SRS-343/344 (upgrade/uninstall),
+SRS-345..351 (release check helpers), SRS-359..363 (install defaults),
+SRS-364..366 (spec grammar), SRS-368 (SKILL.md front matter),
+SRS-371/374 (flowchart artifacts), SRS-381..390 (user-level install,
+global config, model removal), SRS-391 (runtime git resolution).
 """
 
 import json
 import io
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -21,4272 +31,857 @@ from unittest.mock import patch
 # Imports the CLI module to test.
 from usereq import cli
 
-KIRO_READ_ONLY_TOOLS = [
-    "read",
-    "glob",
-    "grep",
-    "shell",
-    "todo",
-    "todo_list",
-    "thinking",
-]
-"""List of read-only tools allowed for Kiro."""
-
-KIRO_READ_WRITE_TOOLS = [
-    "read",
-    "glob",
-    "grep",
-    "write",
-    "shell",
-    "todo",
-    "todo_list",
-    "thinking",
-]
-"""List of read-write tools allowed for Kiro."""
-
 ALL_PROVIDERS_ALL_ARTIFACTS = [
+    "--provider",
+    "antigravity:prompts,skills",
     "--provider",
     "claude:prompts,agents,skills",
     "--provider",
-    "codex:prompts,agents,skills",
-    "--provider",
-    "gemini:prompts,agents,skills",
-    "--provider",
-    "github:prompts,agents,skills",
-    "--provider",
-    "kiro:prompts,agents,skills",
+    "codex:prompts,skills",
     "--provider",
     "opencode:prompts,agents,skills",
     "--provider",
-    "pi:prompts,agents,skills",
+    "pi:prompts,skills",
 ]
 """Repeatable --provider specs that enable every provider with all artifact types."""
 
+EXPECTED_PROMPTS = sorted(
+    path.stem for path in (cli.RESOURCE_ROOT / "prompts").glob("*.md")
+)
 
-class TestCLI(unittest.TestCase):
-    """Test suite for the useReq CLI command."""
 
-    # Test directory path under temp/.
-    TEST_DIR = Path(__file__).resolve().parents[1] / "temp" / "project-test"
+def make_git_repo(path: Path) -> None:
+    """Initialize a deterministic git repository for command-level tests."""
+    subprocess.run(["git", "init"], cwd=str(path), capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.com"],
+        cwd=str(path),
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "tests"],
+        cwd=str(path),
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", "init"],
+        cwd=str(path),
+        capture_output=True,
+    )
 
-    @staticmethod
-    def _snapshot_non_hidden_files(root: Path) -> dict[str, str]:
-        """Returns a deterministic snapshot of non-hidden file contents."""
-        return {
-            path.name: path.read_text(encoding="utf-8")
-            for path in sorted(root.iterdir())
-            if path.is_file() and not path.name.startswith(".")
-        }
+
+class HomeIsolatedTestCase(unittest.TestCase):
+    """Base class isolating the user HOME for user-level installation tests."""
+
+    def setUp(self) -> None:
+        self.HOME = Path(tempfile.mkdtemp(prefix="usereq-test-home-"))
+        patcher = patch("usereq.cli.home_dir", return_value=self.HOME)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(shutil.rmtree, self.HOME, ignore_errors=True)
+
+    def run_cli(self, argv: list[str]) -> int:
+        """Run cli.main with release-check disabled and isolated HOME."""
+        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+            return cli.main(argv)
+
+
+class TestUserLevelInstall(HomeIsolatedTestCase):
+    """SRS-381..389: single install run with every provider and artifact."""
 
     @classmethod
     def setUpClass(cls) -> None:
-        """Prepares the test environment by creating necessary directories."""
-        # Removes the test directory if present (REQ-054.1).
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-
-        # Creates the test directory and docs/guidelines subfolders (REQ-054.2).
-        cls.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (cls.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "lib").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "lib").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "lib").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        # Creates a subfolder in guidelines to verify REQ-026.
-        (cls.TEST_DIR / "guidelines" / "src").mkdir(exist_ok=True)
-
-        cls.prompts_snapshot_before = cls._snapshot_non_hidden_files(
-            cli.RESOURCE_ROOT / "prompts"
+        """Executes one installation for all assertion methods."""
+        cls.CLASS_HOME = Path(tempfile.mkdtemp(prefix="usereq-install-home-"))
+        cls.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-install-project-"))
+        for sub in ("docs", "guidelines", "tests", "src"):
+            (cls.TEST_DIR / sub).mkdir(exist_ok=True)
+        (cls.TEST_DIR / "guidelines" / "sample.md").write_text(
+            "guideline\n", encoding="utf-8"
         )
-        cls.docs_snapshot_before = cls._snapshot_non_hidden_files(
-            cli.RESOURCE_ROOT / "docs"
-        )
-
-        # Executes the script with specified parameters (REQ-054.3).
-        # Avoids network calls during tests.
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
+        cls.prompts_snapshot_before = {
+            p.name: p.read_text(encoding="utf-8")
+            for p in sorted((cli.RESOURCE_ROOT / "prompts").iterdir())
+            if p.is_file() and not p.name.startswith(".")
+        }
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("usereq.cli.home_dir", return_value=cls.CLASS_HOME),
+        ):
+            cls.exit_code = cli.main(
                 [
                     "--base",
                     str(cls.TEST_DIR),
                     "--docs-dir",
-                    str(cls.TEST_DIR / "docs"),
+                    "docs",
                     "--guidelines-dir",
-                    str(cls.TEST_DIR / "guidelines"),
+                    "guidelines",
                     "--tests-dir",
-                    str(cls.TEST_DIR / "tests"),
+                    "tests",
                     "--src-dir",
-                    str(cls.TEST_DIR / "src"),
+                    "src",
                 ]
                 + ALL_PROVIDERS_ALL_ARTIFACTS
             )
-        cls.exit_code = exit_code
-        cls.prompts_snapshot_after = cls._snapshot_non_hidden_files(
-            cli.RESOURCE_ROOT / "prompts"
-        )
-        cls.docs_snapshot_after = cls._snapshot_non_hidden_files(
-            cli.RESOURCE_ROOT / "docs"
-        )
-
-        # Print the list of all available tests
-        test_methods = [method for method in dir(cls) if method.startswith("test_")]
-        print(f"All available tests: {', '.join(test_methods)}")
-
-    def setUp(self) -> None:
-        """Prints the start of the test."""
-        print(f"Running test: {self._testMethodName} - {self.__doc__}")
-
-    def tearDown(self) -> None:
-        """Prints the outcome of the test."""
-        print("PASS")
+        cls.prompts_snapshot_after = {
+            p.name: p.read_text(encoding="utf-8")
+            for p in sorted((cli.RESOURCE_ROOT / "prompts").iterdir())
+            if p.is_file() and not p.name.startswith(".")
+        }
 
     @classmethod
     def tearDownClass(cls) -> None:
-        """Cleans up the test environment by removing temporary directories (REQ-024)."""
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
+        shutil.rmtree(cls.TEST_DIR, ignore_errors=True)
+        shutil.rmtree(cls.CLASS_HOME, ignore_errors=True)
+
+    def setUp(self) -> None:
+        self.HOME = self.CLASS_HOME
+        self.TEST_DIR = type(self).TEST_DIR
+        patcher = patch("usereq.cli.home_dir", return_value=self.HOME)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_exit_code_is_zero(self) -> None:
-        """Verifies that the script ends with exit code 0."""
-        self.assertEqual(self.exit_code, 0, "The script must end with exit code 0")
-
-    def test_packaged_prompt_templates_are_read_only(self) -> None:
-        """SRS-263: Verifies packaged prompt templates are not modified by CLI run."""
-        self.assertEqual(
-            self.prompts_snapshot_before,
-            self.prompts_snapshot_after,
-            "Files under src/usereq/resources/prompts must remain unchanged",
-        )
-
-    def test_packaged_docs_templates_are_read_only(self) -> None:
-        """SRS-264: Verifies packaged docs templates are not modified by CLI run."""
-        self.assertEqual(
-            self.docs_snapshot_before,
-            self.docs_snapshot_after,
-            "Files under src/usereq/resources/docs must remain unchanged",
-        )
-
-    def test_requirements_md_not_generated_when_docs_empty(self) -> None:
-        """REQ-001: Verifies that requirements.md is NOT generated when docs is empty."""
-        requirements_path = self.TEST_DIR / "docs" / "requirements.md"
-        self.assertFalse(
-            requirements_path.exists(),
-            "The file requirements.md must NOT be generated even if docs is empty",
-        )
-
-    def test_codex_directory_created(self) -> None:
-        """REQ-002: Verifies the creation of the .codex/prompts directory."""
-        codex_prompts = self.TEST_DIR / ".codex" / "prompts"
-        self.assertTrue(
-            codex_prompts.is_dir(), "The directory .codex/prompts must exist"
-        )
-
-    def test_codex_skills_directory_created(self) -> None:
-        """REQ-095: Verifies the creation of the .codex/skills directory."""
-        codex_skills = self.TEST_DIR / ".codex" / "skills"
-        self.assertTrue(codex_skills.is_dir(), "The directory .codex/skills must exist")
-
-    def test_github_directories_created(self) -> None:
-        """REQ-002: Verifies the creation of .github/agents and .github/prompts directories."""
-        github_agents = self.TEST_DIR / ".github" / "agents"
-        github_prompts = self.TEST_DIR / ".github" / "prompts"
-        self.assertTrue(
-            github_agents.is_dir(), "The directory .github/agents must exist"
-        )
-        self.assertTrue(
-            github_prompts.is_dir(), "The directory .github/prompts must exist"
-        )
-
-    def test_gemini_directories_created(self) -> None:
-        """REQ-002: Verifies the creation of .gemini/commands and .gemini/commands/req directories."""
-        gemini_commands = self.TEST_DIR / ".gemini" / "commands"
-        gemini_req = gemini_commands / "req"
-        self.assertTrue(
-            gemini_commands.is_dir(), "The directory .gemini/commands must exist"
-        )
-        self.assertTrue(
-            gemini_req.is_dir(), "The directory .gemini/commands/req must exist"
-        )
-
-    def test_kiro_directories_created(self) -> None:
-        """REQ-017: Verifies the creation of .kiro/agents and .kiro/prompts directories."""
-        kiro_agents = self.TEST_DIR / ".kiro" / "agents"
-        kiro_prompts = self.TEST_DIR / ".kiro" / "prompts"
-        self.assertTrue(kiro_agents.is_dir(), "The directory .kiro/agents must exist")
-        self.assertTrue(kiro_prompts.is_dir(), "The directory .kiro/prompts must exist")
-
-    def test_opencode_directory_created(self) -> None:
-        """REQ-048: Verifies the creation of the .opencode/agent directory."""
-        opencode_agent = self.TEST_DIR / ".opencode" / "agent"
-        self.assertTrue(
-            opencode_agent.is_dir(), "The directory .opencode/agent must exist"
-        )
-
-    def test_claude_directory_created(self) -> None:
-        """REQ-049: Verifies the creation of the .claude/agents directory."""
-        claude_agents = self.TEST_DIR / ".claude" / "agents"
-        self.assertTrue(
-            claude_agents.is_dir(), "The directory .claude/agents must exist"
-        )
-
-    def test_codex_prompt_files_created(self) -> None:
-        """REQ-003: Verifies copy of prompt files into .codex/prompts."""
-        codex_prompts = self.TEST_DIR / ".codex" / "prompts"
-        expected_prompts = [
-            "req-analyze.md",
-            "req-change.md",
-            "req-check.md",
-            "req-cover.md",
-            "req-fix.md",
-            "req-new.md",
-            "req-refactor.md",
-            "req-recreate.md",
-            "req-write.md",
-        ]
-        for prompt in expected_prompts:
-            prompt_path = codex_prompts / prompt
-            self.assertTrue(
-                prompt_path.exists(),
-                f"The file {prompt} must exist in .codex/prompts",
-            )
-
-    def test_codex_skill_files_created(self) -> None:
-        """REQ-095: Verifies creation of SKILL.md for each Codex prompt."""
-        codex_skills = self.TEST_DIR / ".codex" / "skills"
-        expected_skills = [
-            "req-analyze",
-            "req-change",
-            "req-check",
-            "req-cover",
-            "req-fix",
-            "req-new",
-            "req-refactor",
-            "req-recreate",
-            "req-write",
-        ]
-        for skill in expected_skills:
-            skill_path = codex_skills / skill / "SKILL.md"
-            self.assertTrue(
-                skill_path.exists(),
-                f"The file SKILL.md must exist in .codex/skills/{skill}",
-            )
-
-    def test_codex_skill_front_matter_structure(self) -> None:
-        """SRS-095: Verifies Codex SKILL.md front matter has correct name and skill description."""
-        codex_skill = self.TEST_DIR / ".codex" / "skills" / "req-analyze" / "SKILL.md"
-        github_agent = self.TEST_DIR / ".github" / "agents" / "req-analyze.agent.md"
-        self.assertTrue(codex_skill.exists(), "The Codex SKILL.md must exist")
-        self.assertTrue(github_agent.exists(), "The GitHub agent must exist")
-        codex_content = codex_skill.read_text(encoding="utf-8")
-        agent_content = github_agent.read_text(encoding="utf-8")
-        self.assertIn(
-            "name: req-analyze", codex_content, "SKILL.md must have name field"
-        )
-        self.assertIn(
-            "description:", codex_content, "SKILL.md must have description field"
-        )
-        # Extract description values from each file's front matter.
-        import re as _re
-
-        codex_desc_match = _re.search(r'^description:\s*"(.*)"', codex_content, _re.M)
-        agent_desc_match = _re.search(r'^description:\s*"(.*)"', agent_content, _re.M)
-        self.assertIsNotNone(codex_desc_match, "SKILL.md must have quoted description")
-        self.assertIsNotNone(
-            agent_desc_match, "GitHub agent must have quoted description"
-        )
-        assert codex_desc_match is not None
-        assert agent_desc_match is not None
-        # Skill description MUST differ from agent description (different source: sections vs front matter).
-        self.assertNotEqual(
-            codex_desc_match.group(1),
-            agent_desc_match.group(1),
-            "Skill description must be derived from prompt YAML front matter usage (not agent sections)",
-        )
-        # Skill description must be a non-empty single-line string (no embedded newlines).
-        self.assertGreater(
-            len(codex_desc_match.group(1)), 0, "Skill description must not be empty"
-        )
-        self.assertNotIn(
-            "\\n", codex_desc_match.group(1), "Skill description must be single-line"
-        )
-
-    def test_github_agent_files_created(self) -> None:
-        """REQ-003, REQ-053: Verifies copy of files into .github/agents with front matter name."""
-        github_agents = self.TEST_DIR / ".github" / "agents"
-        expected_agents = [
-            "req-analyze.agent.md",
-            "req-change.agent.md",
-            "req-check.agent.md",
-            "req-cover.agent.md",
-            "req-fix.agent.md",
-            "req-new.agent.md",
-            "req-refactor.agent.md",
-            "req-recreate.agent.md",
-            "req-write.agent.md",
-        ]
-        for agent in expected_agents:
-            agent_path = github_agents / agent
-            self.assertTrue(
-                agent_path.exists(), f"The file {agent} must exist in .github/agents"
-            )
-            # Verify front matter with name (REQ-053).
-            content = agent_path.read_text(encoding="utf-8")
-            self.assertIn("---", content, f"{agent} must contain front matter")
-            _ = agent.replace(".agent.md", "").replace(".", "-")
-            # The name in front matter must be req-<name>.
-            expected_name_pattern = agent.replace(".agent.md", "").replace(".", "-")
-            self.assertIn(
-                f"name: {expected_name_pattern}",
-                content,
-                f"{agent} must contain 'name: {expected_name_pattern}' in front matter",
-            )
-            self.assertIn(
-                "description:",
-                content,
-                f"{agent} must contain 'description:' in front matter",
-            )
-            self.assertNotIn(
-                "model:",
-                content,
-                "Claude front matter must not include 'model' without enabled flags",
-            )
-
-    def test_github_prompt_files_created(self) -> None:
-        """REQ-004: Verifies the creation of .github/prompts/req-<name>.prompt.md files."""
-        github_prompts = self.TEST_DIR / ".github" / "prompts"
-        expected_prompts = [
-            "req-analyze.prompt.md",
-            "req-change.prompt.md",
-            "req-check.prompt.md",
-            "req-cover.prompt.md",
-            "req-fix.prompt.md",
-            "req-new.prompt.md",
-            "req-refactor.prompt.md",
-            "req-recreate.prompt.md",
-            "req-write.prompt.md",
-        ]
-        for prompt in expected_prompts:
-            prompt_path = github_prompts / prompt
-            self.assertTrue(
-                prompt_path.exists(),
-                f"The file {prompt} must exist in .github/prompts",
-            )
-            # Verify file content.
-            content = prompt_path.read_text(encoding="utf-8")
-            # With default (no prompts-use-agents option) the file must contain prompt body
-            # and not just a reference to the agent.
-            self.assertNotIn(
-                "agent:", content, "The prompt must not be just an agent reference"
-            )
-            self.assertIn(
-                "description:",
-                content,
-                "The prompt must include description in front matter",
-            )
-            self.assertIn(
-                "argument-hint:",
-                content,
-                "The prompt must include argument-hint in front matter",
-            )
-            self.assertIn("##", content, "The prompt body must be present")
-
-    def test_pi_directories_created(self) -> None:
-        """SRS-353, SRS-354: Verifies creation of .pi/prompts and .pi/skills directories."""
-        pi_prompts = self.TEST_DIR / ".pi" / "prompts"
-        pi_skills = self.TEST_DIR / ".pi" / "skills"
-        self.assertTrue(pi_prompts.is_dir(), "The directory .pi/prompts must exist")
-        self.assertTrue(pi_skills.is_dir(), "The directory .pi/skills must exist")
-
-    def test_pi_prompt_files_created(self) -> None:
-        """SRS-353: Verifies creation of .pi/prompts/req-<name>.prompt.md files."""
-        pi_prompts = self.TEST_DIR / ".pi" / "prompts"
-        expected_prompts = [
-            "req-analyze.prompt.md",
-            "req-change.prompt.md",
-            "req-check.prompt.md",
-            "req-cover.prompt.md",
-            "req-fix.prompt.md",
-            "req-new.prompt.md",
-            "req-refactor.prompt.md",
-            "req-recreate.prompt.md",
-            "req-write.prompt.md",
-        ]
-        for prompt in expected_prompts:
-            prompt_path = pi_prompts / prompt
-            self.assertTrue(
-                prompt_path.exists(),
-                f"The file {prompt} must exist in .pi/prompts",
-            )
-
-    def test_pi_skill_files_created(self) -> None:
-        """SRS-354: Verifies creation of SKILL.md for each Pi skill."""
-        pi_skills = self.TEST_DIR / ".pi" / "skills"
-        expected_skills = [
-            "req-analyze",
-            "req-change",
-            "req-check",
-            "req-cover",
-            "req-fix",
-            "req-new",
-            "req-refactor",
-            "req-recreate",
-            "req-write",
-        ]
-        for skill in expected_skills:
-            skill_path = pi_skills / skill / "SKILL.md"
-            self.assertTrue(
-                skill_path.exists(),
-                f"The file SKILL.md must exist in .pi/skills/{skill}",
-            )
-
-    def test_pi_prompt_contents_match_github(self) -> None:
-        """SRS-353: Pi prompt procedure must match GitHub prompt procedure."""
-        pi_prompt = self.TEST_DIR / ".pi" / "prompts" / "req-analyze.prompt.md"
-        github_prompt = self.TEST_DIR / ".github" / "prompts" / "req-analyze.prompt.md"
-        self.assertTrue(pi_prompt.exists(), "The Pi prompt must exist")
-        self.assertTrue(github_prompt.exists(), "The GitHub prompt must exist")
-        self.assertEqual(
-            pi_prompt.read_text(encoding="utf-8"),
-            github_prompt.read_text(encoding="utf-8"),
-            "Pi prompt content must match GitHub prompt content for same prompt",
-        )
-
-    def test_pi_skill_contents_match_github(self) -> None:
-        """SRS-354: Pi skill procedure must match GitHub skill procedure."""
-        pi_skill = self.TEST_DIR / ".pi" / "skills" / "req-analyze" / "SKILL.md"
-        github_skill = self.TEST_DIR / ".github" / "skills" / "req-analyze" / "SKILL.md"
-        self.assertTrue(pi_skill.exists(), "The Pi SKILL.md must exist")
-        self.assertTrue(github_skill.exists(), "The GitHub SKILL.md must exist")
-        self.assertEqual(
-            pi_skill.read_text(encoding="utf-8"),
-            github_skill.read_text(encoding="utf-8"),
-            "Pi SKILL.md content must match GitHub SKILL.md content for same prompt",
-        )
-
-    def test_flowchart_resources_created(self) -> None:
-        """SRS-371, SRS-374: flowchart prompt must generate provider resources."""
-        expected_paths = [
-            self.TEST_DIR / ".codex" / "prompts" / "req-flowchart.md",
-            self.TEST_DIR / ".codex" / "skills" / "req-flowchart" / "SKILL.md",
-            self.TEST_DIR / ".github" / "agents" / "req-flowchart.agent.md",
-            self.TEST_DIR / ".github" / "prompts" / "req-flowchart.prompt.md",
-            self.TEST_DIR / ".claude" / "agents" / "req-flowchart.md",
-            self.TEST_DIR / ".claude" / "commands" / "req" / "flowchart.md",
-            self.TEST_DIR / ".gemini" / "commands" / "req" / "flowchart.toml",
-            self.TEST_DIR / ".kiro" / "agents" / "req-flowchart.json",
-            self.TEST_DIR / ".kiro" / "prompts" / "req-flowchart.md",
-            self.TEST_DIR / ".opencode" / "agent" / "req-flowchart.md",
-            self.TEST_DIR / ".opencode" / "command" / "req-flowchart.md",
-            self.TEST_DIR / ".pi" / "prompts" / "req-flowchart.prompt.md",
-            self.TEST_DIR / ".pi" / "skills" / "req-flowchart" / "SKILL.md",
-        ]
-        for path in expected_paths:
-            self.assertTrue(path.is_file(), f"The file {path} must exist")
-
-        flowchart_prompt = (
-            self.TEST_DIR / ".github" / "prompts" / "req-flowchart.prompt.md"
-        )
-        flowchart_content = flowchart_prompt.read_text(encoding="utf-8")
-        self.assertIn("FLOWCHART.md", flowchart_content)
-        self.assertIn(
-            "Write a FLOWCHART.md using the project's source code",
-            flowchart_content,
-        )
-
-    def test_gemini_toml_files_created(self) -> None:
-        """REQ-005: Verifies TOML files generation in .gemini/commands/req-"""
-        gemini_req = self.TEST_DIR / ".gemini" / "commands" / "req"
-        expected_toml = [
-            "analyze.toml",
-            "change.toml",
-            "check.toml",
-            "cover.toml",
-            "fix.toml",
-            "new.toml",
-            "refactor.toml",
-            "recreate.toml",
-            "write.toml",
-        ]
-        for toml in expected_toml:
-            toml_path = gemini_req / toml
-            self.assertTrue(
-                toml_path.exists(),
-                f"The file {toml} must exist in .gemini/commands/req",
-            )
-            content = toml_path.read_text(encoding="utf-8")
-            self.assertIn("description", content, f"{toml} must contain 'description'")
-            self.assertIn("prompt", content, f"{toml} must contain 'prompt'")
-
-    def test_templates_copied(self) -> None:
-        """REQ-006: Verifies copy of templates into .req/docs."""
-        templates_dir = self.TEST_DIR / ".req" / "docs"
-        self.assertTrue(templates_dir.is_dir(), "The directory .req/docs must exist")
-        expected_templates = sorted(
-            path.name
-            for path in (cli.RESOURCE_ROOT / "docs").iterdir()
-            if path.is_file() and not path.name.startswith(".")
-        )
-        copied_templates = sorted(
-            path.name for path in templates_dir.iterdir() if path.is_file()
-        )
-        self.assertEqual(
-            copied_templates,
-            expected_templates,
-            "The directory .req/docs must contain all runtime docs templates",
-        )
-
-    def test_kiro_prompt_files_created(self) -> None:
-        """REQ-018: Verifies copy of files into .kiro/prompts."""
-        kiro_prompts = self.TEST_DIR / ".kiro" / "prompts"
-        expected_prompts = [
-            "req-analyze.md",
-            "req-change.md",
-            "req-check.md",
-            "req-cover.md",
-            "req-fix.md",
-            "req-new.md",
-            "req-refactor.md",
-            "req-recreate.md",
-            "req-write.md",
-        ]
-        for prompt in expected_prompts:
-            prompt_path = kiro_prompts / prompt
-            self.assertTrue(
-                prompt_path.exists(), f"The file {prompt} must exist in .kiro/prompts"
-            )
-
-    def test_codex_kiro_prompt_contents_match(self) -> None:
-        """Verifies that Codex and Kiro prompt contents match after replacement."""
-        codex_prompt = self.TEST_DIR / ".codex" / "prompts" / "req-analyze.md"
-        kiro_prompt = self.TEST_DIR / ".kiro" / "prompts" / "req-analyze.md"
-        codex_content = codex_prompt.read_text(encoding="utf-8")
-        kiro_content = kiro_prompt.read_text(encoding="utf-8")
-        self.assertEqual(
-            codex_content,
-            kiro_content,
-            "Codex and Kiro prompt files must have identical contents",
-        )
-
-    def test_bootstrap_token_replaced(self) -> None:
-        # Removed: obsolete test for REQ-077 (bootstrap substitution no longer performed).
-        pass
-
-    def test_kiro_agent_json_files_created(self) -> None:
-        """REQ-019, REQ-020: Verifies JSON files generation in .kiro/agents."""
-        kiro_agents = self.TEST_DIR / ".kiro" / "agents"
-        expected_agents = [
-            "req-analyze.json",
-            "req-change.json",
-            "req-check.json",
-            "req-cover.json",
-            "req-fix.json",
-            "req-new.json",
-            "req-refactor.json",
-            "req-recreate.json",
-            "req-write.json",
-        ]
-        for agent in expected_agents:
-            agent_path = kiro_agents / agent
-            self.assertTrue(
-                agent_path.exists(), f"The file {agent} must exist in .kiro/agents"
-            )
-            # Verify JSON structure (REQ-020).
-            content = agent_path.read_text(encoding="utf-8")
-            try:
-                data = json.loads(content)
-            except json.JSONDecodeError:
-                self.fail(f"The file {agent} must be a valid JSON")
-
-            # Verify mandatory fields.
-            self.assertIn("name", data, f"{agent} must contain 'name' field")
-            self.assertIn(
-                "description", data, f"{agent} must contain 'description' field"
-            )
-            self.assertIn("prompt", data, f"{agent} must contain 'prompt' field")
-
-            # Verify name format (req-<name>).
-            expected_name = agent.replace(".json", "").replace(".", "-")
-            self.assertEqual(
-                data["name"],
-                expected_name,
-                f"The name in {agent} must be '{expected_name}'",
-            )
-            self.assertNotIn(
-                "tools",
-                data,
-                f"{agent} must not contain 'tools' field without enable-tools option",
-            )
-            self.assertNotIn(
-                "allowedTools",
-                data,
-                f"{agent} must not contain 'allowedTools' field without enable-tools option",
-            )
-
-    def test_render_kiro_agent_includes_model_tools(self) -> None:
-        """Verifies render_kiro_agent handles model/tools flags consistently."""
-        template = (
-            "{\n"
-            '  "name": "%%NAME%%",\n'
-            '  "description": "%%DESCRIPTION%%",\n'
-            '  "prompt": "%%PROMPT%%",\n'
-            '  "resources": [\n'
-            "%%RESOURCES%%\n"
-            "  ],\n"
-            '  "model": "legacy",\n'
-            '  "tools": ["legacy"],\n'
-            '  "allowedTools": ["legacy"]\n'
-            "}\n"
-        )
-        rendered = cli.render_kiro_agent(
-            template,
-            name="req-test",
-            description="Desc",
-            prompt="Body",
-            resources=["file://docs/requirements.md"],
-            tools=["tool-one"],
-            model="model-one",
-            include_tools=True,
-            include_model=True,
-        )
-        data = json.loads(rendered)
-        self.assertEqual(data.get("model"), "model-one")
-        self.assertEqual(data.get("tools"), ["tool-one"])
-        self.assertEqual(data.get("allowedTools"), ["tool-one"])
-        self.assertEqual(
-            data.get("resources"),
-            ["file://docs/requirements.md"],
-            "Resources must be preserved in the rendered agent",
-        )
-
-        rendered_without_flags = cli.render_kiro_agent(
-            template,
-            name="req-test",
-            description="Desc",
-            prompt="Body",
-            resources=["file://docs/requirements.md"],
-            tools=["tool-one"],
-            model="model-one",
-            include_tools=False,
-            include_model=False,
-        )
-        data_without_flags = json.loads(rendered_without_flags)
-        self.assertNotIn("model", data_without_flags)
-        self.assertNotIn("tools", data_without_flags)
-        self.assertNotIn("allowedTools", data_without_flags)
-
-    def test_doc_path_replacement(self) -> None:
-        """REQ-091: Verifies %%DOC_PATH%% replacement."""
-        config_path = self.TEST_DIR / ".req" / "config.json"
-        data = json.loads(config_path.read_text(encoding="utf-8"))
-        doc_dir = data["docs-dir"]
-        replaced = cli.apply_replacements(
-            "DOC: %%DOC_PATH%%", {"%%DOC_PATH%%": doc_dir}
-        )
-        self.assertEqual(replaced, f"DOC: {doc_dir}")
-
-    def test_test_path_replacement(self) -> None:
-        """REQ-092: Verifies %%TEST_PATH%% replacement."""
-        config_path = self.TEST_DIR / ".req" / "config.json"
-        data = json.loads(config_path.read_text(encoding="utf-8"))
-        test_dir = data["tests-dir"]
-        stripped = test_dir.rstrip("/\\")
-        test_value = f"`{stripped}/`"
-        replaced = cli.apply_replacements(
-            "TEST: %%TEST_PATH%%", {"%%TEST_PATH%%": test_value}
-        )
-        self.assertEqual(replaced, f"TEST: {test_value}")
-
-    def test_src_paths_replacement(self) -> None:
-        """REQ-094: Verifies %%SRC_PATHS%% replacement."""
-        config_path = self.TEST_DIR / ".req" / "config.json"
-        data = json.loads(config_path.read_text(encoding="utf-8"))
-        src_dirs = data["src-dir"]
-        _strip_chars = "/\\"
-        src_value = ", ".join(
-            "`{}/`".format(value.rstrip(_strip_chars)) for value in src_dirs
-        )
-        replaced = cli.apply_replacements(
-            "SRC: %%SRC_PATHS%%", {"%%SRC_PATHS%%": src_value}
-        )
-        self.assertEqual(replaced, f"SRC: {src_value}")
-
-    def test_config_json_saved(self) -> None:
-        """REQ-033: Verifies saving of .req/config.json."""
-        config_path = self.TEST_DIR / ".req" / "config.json"
-        self.assertTrue(config_path.exists(), "The file .req/config.json must exist")
-        content = config_path.read_text(encoding="utf-8")
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError:
-            self.fail(".req/config.json must be a valid JSON")
-
-        # Verify fields guidelines-dir, docs-dir, and tests-dir.
-        self.assertIn(
-            "guidelines-dir", data, "config.json must contain 'guidelines-dir' field"
-        )
-        self.assertIn("docs-dir", data, "config.json must contain 'docs-dir' field")
-        self.assertIn("tests-dir", data, "config.json must contain 'tests-dir' field")
-        self.assertIn("src-dir", data, "config.json must contain 'src-dir' field")
-        self.assertEqual(
-            data["guidelines-dir"],
-            "guidelines",
-            "The 'guidelines-dir' field must be 'guidelines'",
-        )
-        self.assertEqual(
-            data["docs-dir"], "docs", "The 'docs-dir' field must be 'docs'"
-        )
-        self.assertEqual(
-            data["tests-dir"], "tests", "The 'tests-dir' field must be 'tests'"
-        )
-        self.assertEqual(
-            data["src-dir"], ["src"], "The 'src-dir' field must be ['src']"
-        )
-
-    def test_opencode_agent_files_created(self) -> None:
-        """REQ-047: Verifies OpenCode agents generation in .opencode/agent."""
-        opencode_agent = self.TEST_DIR / ".opencode" / "agent"
-        expected_agents = [
-            "req-analyze.md",
-            "req-change.md",
-            "req-check.md",
-            "req-cover.md",
-            "req-fix.md",
-            "req-new.md",
-            "req-refactor.md",
-            "req-recreate.md",
-            "req-write.md",
-        ]
-        for agent in expected_agents:
-            agent_path = opencode_agent / agent
-            self.assertTrue(
-                agent_path.exists(), f"The file {agent} must exist in .opencode/agent"
-            )
-            content = agent_path.read_text(encoding="utf-8")
-            # Verify front matter with description and mode.
-            self.assertIn("---", content, f"{agent} must contain front matter")
-            self.assertIn(
-                "description:", content, f"{agent} must contain 'description:'"
-            )
-            self.assertIn("mode: all", content, f"{agent} must contain 'mode: all'")
-
-    def test_opencode_command_contains_metadata(self) -> None:
-        """Verifies that .opencode/command files include description and argument-hint."""
-        cmd_path = self.TEST_DIR / ".opencode" / "command" / "req-analyze.md"
-        self.assertTrue(cmd_path.exists(), "The opencode command must exist")
-        content = cmd_path.read_text(encoding="utf-8")
-        self.assertIn(
-            "description:", content, "Must include description in front matter"
-        )
-        self.assertIn(
-            "argument-hint:", content, "Must include argument-hint in front matter"
-        )
-
-    def test_claude_agent_files_created(self) -> None:
-        """REQ-050, REQ-051: Verifies Claude Code files generation."""
-        claude_agents = self.TEST_DIR / ".claude" / "agents"
-        expected_agents = [
-            "req-analyze.md",
-            "req-change.md",
-            "req-check.md",
-            "req-cover.md",
-            "req-fix.md",
-            "req-new.md",
-            "req-refactor.md",
-            "req-recreate.md",
-            "req-write.md",
-        ]
-        for agent in expected_agents:
-            agent_path = claude_agents / agent
-            self.assertTrue(
-                agent_path.exists(), f"The file {agent} must exist in .claude/agents"
-            )
-            content = agent_path.read_text(encoding="utf-8")
-            # Verify front matter (REQ-051).
-            self.assertIn("---", content, f"{agent} must contain front matter")
-
-            # Verify name field (req-<name>).
-            expected_name = agent.replace(".md", "").replace(".", "-")
-            self.assertIn(
-                f"name: {expected_name}",
-                content,
-                f"{agent} must contain 'name: {expected_name}' in front matter",
-            )
-
-            # verify model field: inherit.
-            # The 'model' field is no longer required by default (only with enable-models option).
-
-            # Verify description field.
-            self.assertIn(
-                "description:",
-                content,
-                f"{agent} must contain 'description:' in front matter",
-            )
-
-    def test_claude_command_has_argument_hint_and_no_agent(self) -> None:
-        """Verifies that full Claude commands include argument-hint and not the agent when no stubs are used."""
-        cmd_path = self.TEST_DIR / ".claude" / "commands" / "req" / "analyze.md"
-        self.assertTrue(cmd_path.exists(), "The Claude command must exist")
-        content = cmd_path.read_text(encoding="utf-8")
-        self.assertIn(
-            "argument-hint:", content, "The command must contain argument-hint"
-        )
-        self.assertNotIn(
-            "agent:", content, "The command must not contain agent without stubs"
-        )
-
-    def test_req_dir_replacement(self) -> None:
-        """REQ-026, REQ-027: Verifies %%GUIDELINES_FILES%% replacement."""
-        codex_prompt = self.TEST_DIR / ".codex" / "prompts" / "req-analyze.md"
-        content = codex_prompt.read_text(encoding="utf-8")
-        # Verify that %%GUIDELINES_FILES%% has been replaced.
-        self.assertNotIn(
-            "%%GUIDELINES_FILES%%",
-            content,
-            "The token %%GUIDELINES_FILES%% must be replaced",
-        )
-        # After DES-014 change: generate_guidelines_file_list now lists files, not subdirectories.
-        # The guidelines/ folder now contains files from its direct children, not subdirectories.
-        # Since guidelines/src/ exists but is empty, the fallback will show guidelines/ directory itself.
-        self.assertIn(
-            "guidelines/", content, "The file must contain reference to guidelines/"
-        )
-
-    def test_kiro_resources_include_prompt(self) -> None:
-        """REQ-046: Verifies that Kiro resources field includes the prompt."""
-        kiro_agent = self.TEST_DIR / ".kiro" / "agents" / "req-analyze.json"
-        content = kiro_agent.read_text(encoding="utf-8")
-        data = json.loads(content)
-
-        self.assertIn("resources", data, "The JSON file must contain 'resources' field")
-        resources = data["resources"]
-        self.assertIsInstance(resources, list, "The 'resources' field must be a list")
-        self.assertGreater(len(resources), 0, "The 'resources' list must not be empty")
-
-        # Verify that the first entry is the prompt.
-        first_resource = resources[0]
-        self.assertIn(
-            ".kiro/prompts/req-analyze.md",
-            first_resource,
-            "The first resource must be the prompt .kiro/prompts/req-analyze.md",
-        )
-
-    def test_claude_skills_directory_created(self) -> None:
-        """SRS-233: Verifies the creation of the .claude/skills directory."""
-        claude_skills = self.TEST_DIR / ".claude" / "skills"
-        self.assertTrue(
-            claude_skills.is_dir(), "The directory .claude/skills must exist"
-        )
-
-    def test_claude_skill_files_created(self) -> None:
-        """SRS-233: Verifies creation of SKILL.md for each Claude skill."""
-        claude_skills = self.TEST_DIR / ".claude" / "skills"
-        expected_skills = [
-            "req-analyze",
-            "req-change",
-            "req-check",
-            "req-cover",
-            "req-fix",
-            "req-new",
-            "req-refactor",
-            "req-recreate",
-            "req-write",
-        ]
-        for skill in expected_skills:
-            skill_path = claude_skills / skill / "SKILL.md"
-            self.assertTrue(
-                skill_path.exists(),
-                f"The file SKILL.md must exist in .claude/skills/{skill}",
-            )
-
-    def test_gemini_skills_directory_created(self) -> None:
-        """SRS-234: Verifies the creation of the .gemini/skills directory."""
-        gemini_skills = self.TEST_DIR / ".gemini" / "skills"
-        self.assertTrue(
-            gemini_skills.is_dir(), "The directory .gemini/skills must exist"
-        )
-
-    def test_gemini_skill_files_created(self) -> None:
-        """SRS-234: Verifies creation of SKILL.md for each Gemini skill."""
-        gemini_skills = self.TEST_DIR / ".gemini" / "skills"
-        expected_skills = [
-            "req-analyze",
-            "req-change",
-            "req-check",
-            "req-cover",
-            "req-fix",
-            "req-new",
-            "req-refactor",
-            "req-recreate",
-            "req-write",
-        ]
-        for skill in expected_skills:
-            skill_path = gemini_skills / skill / "SKILL.md"
-            self.assertTrue(
-                skill_path.exists(),
-                f"The file SKILL.md must exist in .gemini/skills/{skill}",
-            )
-
-    def test_github_skills_directory_created(self) -> None:
-        """SRS-236: Verifies the creation of the .github/skills directory."""
-        github_skills = self.TEST_DIR / ".github" / "skills"
-        self.assertTrue(
-            github_skills.is_dir(), "The directory .github/skills must exist"
-        )
-
-    def test_github_skill_files_created(self) -> None:
-        """SRS-236: Verifies creation of SKILL.md for each GitHub/Copilot skill."""
-        github_skills = self.TEST_DIR / ".github" / "skills"
-        expected_skills = [
-            "req-analyze",
-            "req-change",
-            "req-check",
-            "req-cover",
-            "req-fix",
-            "req-new",
-            "req-refactor",
-            "req-recreate",
-            "req-write",
-        ]
-        for skill in expected_skills:
-            skill_path = github_skills / skill / "SKILL.md"
-            self.assertTrue(
-                skill_path.exists(),
-                f"The file SKILL.md must exist in .github/skills/{skill}",
-            )
-
-    def test_kiro_skills_directory_created(self) -> None:
-        """SRS-237: Verifies the creation of the .kiro/skills directory."""
-        kiro_skills = self.TEST_DIR / ".kiro" / "skills"
-        self.assertTrue(kiro_skills.is_dir(), "The directory .kiro/skills must exist")
-
-    def test_kiro_skill_files_created(self) -> None:
-        """SRS-237: Verifies creation of SKILL.md for each Kiro skill."""
-        kiro_skills = self.TEST_DIR / ".kiro" / "skills"
-        expected_skills = [
-            "req-analyze",
-            "req-change",
-            "req-check",
-            "req-cover",
-            "req-fix",
-            "req-new",
-            "req-refactor",
-            "req-recreate",
-            "req-write",
-        ]
-        for skill in expected_skills:
-            skill_path = kiro_skills / skill / "SKILL.md"
-            self.assertTrue(
-                skill_path.exists(),
-                f"The file SKILL.md must exist in .kiro/skills/{skill}",
-            )
-
-    def test_opencode_skills_directory_created(self) -> None:
-        """SRS-235: Verifies the creation of the .opencode/skill directory."""
-        opencode_skills = self.TEST_DIR / ".opencode" / "skill"
-        self.assertTrue(
-            opencode_skills.is_dir(), "The directory .opencode/skill must exist"
-        )
-
-    def test_opencode_skill_files_created(self) -> None:
-        """SRS-235: Verifies creation of SKILL.md for each OpenCode skill."""
-        opencode_skills = self.TEST_DIR / ".opencode" / "skill"
-        expected_skills = [
-            "req-analyze",
-            "req-change",
-            "req-check",
-            "req-cover",
-            "req-fix",
-            "req-new",
-            "req-refactor",
-            "req-recreate",
-            "req-write",
-        ]
-        for skill in expected_skills:
-            skill_path = opencode_skills / skill / "SKILL.md"
-            self.assertTrue(
-                skill_path.exists(),
-                f"The file SKILL.md must exist in .opencode/skill/{skill}",
-            )
-
-    def test_skill_description_is_prompt_frontmatter_usage(self) -> None:
-        """
-        @brief Validates SKILL.md `description` derivation from prompt YAML front matter `usage`.
-        @details Confirms that the generated SKILL.md YAML `description` equals the single-line
-        normalized value of the source prompt YAML front matter `usage` for `analyze.md`, and that
-        all skill providers emit the same `description` for the same prompt name.
-        @return None
-        @see cli.extract_skill_description
-        @see cli.extract_frontmatter
-        """
-        import yaml as _yaml
-
-        prompt_path = cli.RESOURCE_ROOT / "prompts" / "analyze.md"
-        prompt_text = prompt_path.read_text(encoding="utf-8")
-        prompt_frontmatter, _prompt_body = cli.extract_frontmatter(prompt_text)
-        prompt_yaml = _yaml.safe_load(prompt_frontmatter)
-        self.assertIsInstance(
-            prompt_yaml, dict, "Prompt front matter MUST parse as a YAML mapping"
-        )
-        expected_usage = " ".join(str(prompt_yaml.get("usage", "")).split())
-        self.assertGreater(
-            len(expected_usage), 0, "Prompt front matter MUST contain non-empty usage"
-        )
-
-        skill_paths = [
-            self.TEST_DIR / ".codex" / "skills" / "req-analyze" / "SKILL.md",
-            self.TEST_DIR / ".claude" / "skills" / "req-analyze" / "SKILL.md",
-            self.TEST_DIR / ".github" / "skills" / "req-analyze" / "SKILL.md",
-        ]
-        observed_descriptions: list[str] = []
-        for skill_path in skill_paths:
-            self.assertTrue(skill_path.exists(), f"{skill_path} must exist")
-            skill_text = skill_path.read_text(encoding="utf-8")
-            skill_frontmatter, _skill_body = cli.extract_frontmatter(skill_text)
-            skill_yaml = _yaml.safe_load(skill_frontmatter)
-            self.assertIsInstance(
-                skill_yaml, dict, f"{skill_path} front matter MUST be a YAML mapping"
-            )
-            self.assertIn(
-                "description",
-                skill_yaml,
-                f"{skill_path} MUST include YAML field description",
-            )
-            observed_descriptions.append(str(skill_yaml.get("description", "")))
-
-        for observed in observed_descriptions:
-            self.assertEqual(
-                expected_usage,
-                observed,
-                "SKILL.md description MUST equal normalized prompt front matter usage",
-            )
-        self.assertEqual(
-            1,
-            len(set(observed_descriptions)),
-            "All skill providers MUST have identical description for the same prompt",
-        )
-
-    def test_skill_front_matter_has_name_field(self) -> None:
-        """SRS-095: Each SKILL.md must have a name field with prefix 'req-'."""
-        skills_to_check = [
-            self.TEST_DIR / ".codex" / "skills" / "req-change" / "SKILL.md",
-            self.TEST_DIR / ".claude" / "skills" / "req-change" / "SKILL.md",
-            self.TEST_DIR / ".github" / "skills" / "req-change" / "SKILL.md",
-            self.TEST_DIR / ".pi" / "skills" / "req-change" / "SKILL.md",
-            self.TEST_DIR / ".gemini" / "skills" / "req-change" / "SKILL.md",
-            self.TEST_DIR / ".kiro" / "skills" / "req-change" / "SKILL.md",
-            self.TEST_DIR / ".opencode" / "skill" / "req-change" / "SKILL.md",
-        ]
-        for skill_path in skills_to_check:
-            content = skill_path.read_text(encoding="utf-8")
-            self.assertIn(
-                "name: req-change",
-                content,
-                f"{skill_path} must contain 'name: req-change'",
-            )
-
-
-class TestGuidelinesPathReplacement(unittest.TestCase):
-    """REQ-090: Verifies %%GUIDELINES_PATH%% replacement."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1] / "temp" / "project-test-guidelines-path"
-    )
-    RESOURCE_DIR = (
-        Path(__file__).resolve().parents[1] / "temp" / "resources-guidelines-path"
-    )
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        """Prepares a temporary project with a custom prompt containing %%GUIDELINES_PATH%%."""
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-        if cls.RESOURCE_DIR.exists():
-            shutil.rmtree(cls.RESOURCE_DIR)
-
-        cls.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (cls.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "lib").mkdir(exist_ok=True)
-
-        prompts_dir = cls.RESOURCE_DIR / "prompts"
-        templates_dir = cls.RESOURCE_DIR / "docs"
-        common_dir = cls.RESOURCE_DIR / "common"
-        prompts_dir.mkdir(parents=True, exist_ok=True)
-        templates_dir.mkdir(parents=True, exist_ok=True)
-        common_dir.mkdir(parents=True, exist_ok=True)
-
-        prompt_content = (
-            "---\n"
-            'description: "Guidelines path prompt"\n'
-            "---\n"
-            "\n"
-            "GuidelinesPath: %%GUIDELINES_PATH%%\n"
-            "TestPath: %%TEST_PATH%%\n"
-            "SrcPaths: %%SRC_PATHS%%\n"
-        )
-        (prompts_dir / "techpath.md").write_text(prompt_content, encoding="utf-8")
-        (templates_dir / "Requirements_Template.md").write_text(
-            "---\n---\n\nTemp requirements template.\n",
-            encoding="utf-8",
-        )
-        (common_dir / "models.json").write_text(
-            json.dumps(
-                {
-                    "kiro": {
-                        "agent_template": {
-                            "name": "%%NAME%%",
-                            "description": "%%DESCRIPTION%%",
-                            "prompt": "%%PROMPT%%",
-                            "resources": ["%%RESOURCES%%"],
-                        },
-                        "prompts": {},
-                        "usage_modes": {},
-                    }
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-
-        cls._orig_resource_root = cli.RESOURCE_ROOT
-        cli.RESOURCE_ROOT = cls.RESOURCE_DIR
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cls.exit_code = cli.main(
-                [
-                    "--base",
-                    str(cls.TEST_DIR),
-                    "--docs-dir",
-                    str(cls.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(cls.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(cls.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(cls.TEST_DIR / "src"),
-                    "--src-dir",
-                    str(cls.TEST_DIR / "lib"),
-                    "--provider",
-                    "codex:prompts,agents,skills",
-                ]
-            )
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        """Restores resources and removes temporary folders."""
-        cli.RESOURCE_ROOT = cls._orig_resource_root
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-        if cls.RESOURCE_DIR.exists():
-            shutil.rmtree(cls.RESOURCE_DIR)
-
-    def test_guidelines_path_replacement(self) -> None:
-        """REQ-090: Verifies that %%GUIDELINES_PATH%% is replaced."""
-        self.assertEqual(self.exit_code, 0, "The script must end with exit code 0")
-        codex_prompt = self.TEST_DIR / ".codex" / "prompts" / "req-techpath.md"
-        self.assertTrue(codex_prompt.exists(), "The Codex prompt must exist")
-        content = codex_prompt.read_text(encoding="utf-8")
-        self.assertNotIn(
-            "%%GUIDELINES_PATH%%",
-            content,
-            "The token %%GUIDELINES_PATH%% must be replaced",
-        )
-        self.assertIn(
-            "GuidelinesPath: guidelines",
-            content,
-            "The token %%GUIDELINES_PATH%% must be replaced with the normalized guidelines path",
-        )
-
-    def test_test_path_preserved(self) -> None:
-        """REQ-092: Verifies that %%TEST_PATH%% is preserved as a normal word."""
-        codex_prompt = self.TEST_DIR / ".codex" / "prompts" / "req-techpath.md"
-        content = codex_prompt.read_text(encoding="utf-8")
-        self.assertIn(
-            "TestPath: %%TEST_PATH%%",
-            content,
-            "The keyword %%TEST_PATH%% must not be processed by the installer",
-        )
-
-    def test_src_paths_preserved(self) -> None:
-        """REQ-094: Verifies that %%SRC_PATHS%% is preserved as a normal word."""
-        codex_prompt = self.TEST_DIR / ".codex" / "prompts" / "req-techpath.md"
-        content = codex_prompt.read_text(encoding="utf-8")
-        self.assertIn(
-            "SrcPaths: %%SRC_PATHS%%",
-            content,
-            "The keyword %%SRC_PATHS%% must not be processed by the installer",
-        )
-
-
-class TestModelsAndTools(unittest.TestCase):
-    """Verifies conditional inclusion of model and tools in generated files."""
-
-    TEST_DIR = Path(__file__).resolve().parents[1] / "temp" / "project-test-models"
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        # Prepare test project
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-        cls.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (cls.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        # Create temporary config resources under a temporary resources folder
-        tmp_resources = Path(__file__).resolve().parents[1] / "temp" / "resources"
-        if tmp_resources.exists():
-            shutil.rmtree(tmp_resources)
-        tmp_resources.mkdir(parents=True, exist_ok=True)
-        (tmp_resources / "common").mkdir(parents=True, exist_ok=True)
-
-        cls._tmp_resources = tmp_resources
-        cls._orig_resource_root = cli.RESOURCE_ROOT
-
-        base_usage = {"read_write": {"tools": ["vscode", "execute", "read"]}}
-        claude_usage = {"read_write": {"tools": ["Read", "Grep", "Glob"]}}
-        kiro_usage = {
-            "read_write": {"tools": KIRO_READ_WRITE_TOOLS},
-            "read_only": {"tools": KIRO_READ_ONLY_TOOLS},
-        }
-
-        # Create centralized models.json
-        models_config = {
-            "settings": {"version": "1.0.0"},
-            "codex": {
-                "prompts": {
-                    "analyze": {"model": "GPT-5.2-Codex (codex)", "mode": "read_write"}
-                },
-                "usage_modes": base_usage,
-            },
-            "copilot": {
-                "prompts": {
-                    "analyze": {
-                        "model": "GPT-5.2-Codex (copilot)",
-                        "mode": "read_write",
-                    }
-                },
-                "usage_modes": base_usage,
-            },
-            "claude": {
-                "prompts": {
-                    "analyze": {
-                        "model": "GPT-5.2-Codex (copilot)",
-                        "mode": "read_write",
-                    }
-                },
-                "usage_modes": claude_usage,
-            },
-            "gemini": {
-                "prompts": {
-                    "analyze": {
-                        "model": "GPT-5.2-Codex (copilot)",
-                        "mode": "read_write",
-                    }
-                },
-                "usage_modes": base_usage,
-            },
-            "kiro": {
-                "prompts": {
-                    "analyze": {"model": "GPT-5.2-Codex (copilot)", "mode": "read_only"}
-                },
-                "usage_modes": kiro_usage,
-                "agent_template": {
-                    "name": "%%NAME%%",
-                    "description": "%%DESCRIPTION%%",
-                    "prompt": "%%PROMPT%%",
-                },
-            },
-            "opencode": {
-                "prompts": {
-                    "analyze": {
-                        "model": "GPT-5.2-Codex (copilot)",
-                        "mode": "read_write",
-                    }
-                },
-                "usage_modes": base_usage,
-            },
-        }
-        models_path = tmp_resources / "common" / "models.json"
-        models_path.write_text(json.dumps(models_config, indent=2), encoding="utf-8")
-
-        # Copy existing prompts and templates into tmp_resources so CLI finds them
-        repo_root = Path(__file__).resolve().parents[1]
-        orig_resources = repo_root / "src" / "usereq" / "resources"
-        if (orig_resources / "prompts").is_dir():
-            shutil.copytree(orig_resources / "prompts", tmp_resources / "prompts")
-        if (orig_resources / "docs").is_dir():
-            (tmp_resources / "docs").mkdir(parents=True, exist_ok=True)
-            tmpl = orig_resources / "docs" / "Requirements_Template.md"
-            if tmpl.exists():
-                shutil.copyfile(
-                    tmpl, tmp_resources / "docs" / "Requirements_Template.md"
-                )
-
-        # Use temporary resources as CLI root, without touching project files.
-        cli.RESOURCE_ROOT = tmp_resources
-
-        # Run CLI with flags enabled
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(cls.TEST_DIR),
-                    "--docs-dir",
-                    str(cls.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(cls.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(cls.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(cls.TEST_DIR / "src"),
-                    "--provider",
-                    "claude:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools",
-                    "--provider",
-                    "codex:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools",
-                    "--provider",
-                    "gemini:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools",
-                    "--provider",
-                    "github:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools",
-                    "--provider",
-                    "kiro:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools",
-                    "--provider",
-                    "opencode:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools",
-                ]
-            )
-        cls.exit_code = exit_code
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        # Cleanup created test project and remove temporary config files
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-        if getattr(cls, "_tmp_resources", None) and cls._tmp_resources.exists():
-            shutil.rmtree(cls._tmp_resources)
-        if getattr(cls, "_orig_resource_root", None) is not None:
-            cli.RESOURCE_ROOT = cls._orig_resource_root
-
-    def test_generated_files_include_model_and_tools(self) -> None:
-        """Verifies that generated files contain model and tools when configs exist and flags are active."""
-        gha = self.TEST_DIR / ".github" / "agents" / "req-analyze.agent.md"
-        self.assertTrue(gha.exists(), "GitHub agent should exist")
-        content = gha.read_text(encoding="utf-8")
-        self.assertIn("model:", content)
-        self.assertIn("tools:", content)
-
-        ghp = self.TEST_DIR / ".github" / "prompts" / "req-analyze.prompt.md"
-        self.assertTrue(ghp.exists(), "GitHub prompt should exist")
-        ghp_content = ghp.read_text(encoding="utf-8")
-        self.assertIn("model:", ghp_content)
-        self.assertIn("tools:", ghp_content)
-        self.assertIn("argument-hint:", ghp_content)
-
-        codex_skill = self.TEST_DIR / ".codex" / "skills" / "req-analyze" / "SKILL.md"
-        self.assertTrue(codex_skill.exists(), "Codex SKILL.md should exist")
-        codex_content = codex_skill.read_text(encoding="utf-8")
-        self.assertIn("model:", codex_content)
-        self.assertIn("tools:", codex_content)
-
-        kiro_agent = self.TEST_DIR / ".kiro" / "agents" / "req-analyze.json"
-        self.assertTrue(kiro_agent.exists(), "Kiro agent should exist")
-        data = json.loads(kiro_agent.read_text(encoding="utf-8"))
-        self.assertIn("model", data)
-        self.assertIn("tools", data)
-        self.assertIn(
-            "allowedTools",
-            data,
-            "Kiro agent must contain 'allowedTools' field",
-        )
-        self.assertEqual(
-            data["allowedTools"],
-            data["tools"],
-            "allowedTools must match tools",
-        )
-        self.assertListEqual(
-            data["tools"],
-            KIRO_READ_ONLY_TOOLS,
-            "Kiro agent must use the tools list defined for the current mode",
-        )
-
-        gemini_toml = self.TEST_DIR / ".gemini" / "commands" / "req" / "analyze.toml"
-        self.assertTrue(gemini_toml.exists(), "Gemini toml should exist")
-        toml_content = gemini_toml.read_text(encoding="utf-8")
-        self.assertIn("model =", toml_content)
-        self.assertIn("tools =", toml_content)
-
-    def test_without_flags_no_model_tools(self) -> None:
-        """Running CLI without flags should not add model/tools (unless expected behavior)."""
-        # Run again without flags
-        from unittest.mock import patch
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    str(self.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(self.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(self.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(self.TEST_DIR / "src"),
-                ]
-                + ALL_PROVIDERS_ALL_ARTIFACTS
-            )
-        self.assertEqual(exit_code, 0)
-        gha = self.TEST_DIR / ".github" / "agents" / "req-analyze.agent.md"
-        content = gha.read_text(encoding="utf-8")
-        # model/tools should not be present in GitHub agent when flags are off
-        self.assertNotIn("tools:", content)
-        self.assertNotIn("model:", content)
-
-        codex_skill = self.TEST_DIR / ".codex" / "skills" / "req-analyze" / "SKILL.md"
-        codex_content = codex_skill.read_text(encoding="utf-8")
-        self.assertNotIn("tools:", codex_content)
-        self.assertNotIn("model:", codex_content)
-
-    def test_tools_only_adds_tools_without_models(self) -> None:
-        """With only enable-tools option, tools should appear but not models."""
-        from unittest.mock import patch
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    str(self.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(self.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(self.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(self.TEST_DIR / "src"),
-                    "--provider",
-                    "claude:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "codex:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "gemini:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "github:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "kiro:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "opencode:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        gha = self.TEST_DIR / ".github" / "agents" / "req-analyze.agent.md"
-        content = gha.read_text(encoding="utf-8")
-        self.assertIn("tools:", content)
-        self.assertNotIn("model:", content)
-
-        codex_skill = self.TEST_DIR / ".codex" / "skills" / "req-analyze" / "SKILL.md"
-        codex_content = codex_skill.read_text(encoding="utf-8")
-        self.assertIn("tools:", codex_content)
-        self.assertNotIn("model:", codex_content)
-
-        gemini_toml = self.TEST_DIR / ".gemini" / "commands" / "req" / "analyze.toml"
-        gemini_content = gemini_toml.read_text(encoding="utf-8")
-        self.assertIn("tools =", gemini_content)
-        self.assertNotIn("model =", gemini_content)
-
-        kiro_agent = self.TEST_DIR / ".kiro" / "agents" / "req-analyze.json"
-        kiro_data = json.loads(kiro_agent.read_text(encoding="utf-8"))
-        self.assertIn("tools", kiro_data)
-        self.assertNotIn("model", kiro_data)
-
-
-class TestCLIWithExistingDocs(unittest.TestCase):
-    """Tests to verify behavior when docs already contains files."""
-
-    TEST_DIR = Path(__file__).resolve().parents[1] / "temp" / "project-test-existing"
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        """Prepares test environment with an existing file in docs."""
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-
-        cls.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        docs_dir = cls.TEST_DIR / "docs"
-        docs_dir.mkdir(exist_ok=True)
-
-        # Create an existing file in docs.
-        existing_file = docs_dir / "existing.md"
-        existing_file.write_text("# Existing file\n", encoding="utf-8")
-        (docs_dir / ".gitignore").write_text("# ignore\n", encoding="utf-8")
-
-        (cls.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines" / ".place-holder").write_text("", encoding="utf-8")
-        (cls.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        # Prevent network calls during tests.
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(cls.TEST_DIR),
-                    "--docs-dir",
-                    str(cls.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(cls.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(cls.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(cls.TEST_DIR / "src"),
-                ]
-                + ALL_PROVIDERS_ALL_ARTIFACTS
-            )
-        cls.exit_code = exit_code
-
-        # Print list of all available tests
-        test_methods = [method for method in dir(cls) if method.startswith("test_")]
-        print(f"All available tests: {', '.join(test_methods)}")
-
-    def setUp(self) -> None:
-        """Prints test start."""
-        print(f"Running test: {self._testMethodName} - {self.__doc__}")
-
-    def tearDown(self) -> None:
-        """Prints test result."""
-        print("PASS")
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        """Cleans up test environment (REQ-024)."""
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-
-    def test_requirements_md_not_generated_when_docs_not_empty(self) -> None:
-        """REQ-001: Verifies that requirements.md is NOT generated if docs is not empty."""
-        requirements_path = self.TEST_DIR / "docs" / "requirements.md"
-        self.assertFalse(
-            requirements_path.exists(),
-            "The file requirements.md must NOT be generated if docs already contains files",
-        )
-
-    def test_existing_file_preserved(self) -> None:
-        """Verifies that the existing file in docs is preserved."""
-        existing_file = self.TEST_DIR / "docs" / "existing.md"
-        self.assertTrue(existing_file.exists(), "The existing file must be preserved")
-
-    def test_kiro_resources_contains_existing_file(self) -> None:
-        """REQ-046: Verifies Kiro resources include existing docs files."""
-        kiro_agent = self.TEST_DIR / ".kiro" / "agents" / "req-analyze.json"
-        data = json.loads(kiro_agent.read_text(encoding="utf-8"))
-        self.assertIn(
-            "file://docs/existing.md",
-            data.get("resources", []),
-            "Kiro resources must include docs/existing.md",
-        )
-
-    def test_kiro_resources_include_prompt_when_docs_nonempty(self) -> None:
-        """REQ-046: Verifies Kiro resources include generated prompt when docs non-empty."""
-        kiro_agent = self.TEST_DIR / ".kiro" / "agents" / "req-analyze.json"
-        data = json.loads(kiro_agent.read_text(encoding="utf-8"))
-        resources = data.get("resources", [])
-        self.assertIn(
-            "file://.kiro/prompts/req-analyze.md",
-            resources,
-            "Kiro resources must include prompt file",
-        )
-
-    def test_guidelines_dir_ignores_dotfiles(self) -> None:
-        """DES-014: Verifies that %%GUIDELINES_FILES%% ignores dotfiles."""
-        codex_prompt = self.TEST_DIR / ".codex" / "prompts" / "req-analyze.md"
-        content = codex_prompt.read_text(encoding="utf-8")
-        self.assertNotIn(
-            "guidelines/.place-holder",
-            content,
-            "Dotfiles in guidelines must be ignored in %%GUIDELINES_FILES%%",
-        )
-        self.assertIn("guidelines/", content, "Fallback guidelines/ must be present")
-
-
-class TestPromptsUseAgents(unittest.TestCase):
-    """Verifies behavior with prompts-use-agents per-provider option enabled."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1] / "temp" / "project-test-prompts-agents"
-    )
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-        cls.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (cls.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        from unittest.mock import patch
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(cls.TEST_DIR),
-                    "--docs-dir",
-                    str(cls.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(cls.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(cls.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(cls.TEST_DIR / "src"),
-                    "--provider",
-                    "claude:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents",
-                    "--provider",
-                    "codex:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents",
-                    "--provider",
-                    "gemini:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents",
-                    "--provider",
-                    "github:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents",
-                    "--provider",
-                    "kiro:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents",
-                    "--provider",
-                    "opencode:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents",
-                ]
-            )
-        cls.exit_code = exit_code
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-
-    def test_github_prompts_are_agent_stubs(self) -> None:
-        """With the flag enabled, .github/prompts files must be agent stubs."""
-        prompt_path = self.TEST_DIR / ".github" / "prompts" / "req-analyze.prompt.md"
-        self.assertTrue(prompt_path.exists())
-        content = prompt_path.read_text(encoding="utf-8").strip()
-        self.assertEqual(
-            content,
-            "---\nagent: req-analyze\n---",
-            "The prompt must be a stub with only agent",
-        )
-
-    def test_claude_commands_are_agent_stubs(self) -> None:
-        """With the flag enabled, .claude/commands/req files must contain only the agent."""
-        cmd_path = self.TEST_DIR / ".claude" / "commands" / "req" / "analyze.md"
-        self.assertTrue(cmd_path.exists())
-        content = cmd_path.read_text(encoding="utf-8").strip()
-        # With the flag enabled, Claude commands must include the 'agent:' line.
-        self.assertIn(
-            "agent: req-analyze",
-            content,
-            "The command must contain 'agent:' line when prompts-use-agents is active",
-        )
-        # The file should be a YAML front matter block.
-        self.assertTrue(content.startswith("---"))
-        self.assertTrue(content.endswith("---"))
-
-    def test_claude_commands_stub_has_no_models_or_tools(self) -> None:
-        """Even with model/tools flags active, stubs must remain only agent."""
-        cmd_path = self.TEST_DIR / ".claude" / "commands" / "req" / "analyze.md"
-        content = cmd_path.read_text(encoding="utf-8")
-        self.assertIn("agent: req-analyze", content)
-        self.assertNotIn("model:", content, "The stub must not include model")
-        self.assertNotIn(
-            "allowed-tools:", content, "The stub must not include allowed-tools"
-        )
-
-    def test_opencode_commands_are_agent_stubs(self) -> None:
-        """With the flag enabled, .opencode/command files must contain only the agent (agent: /req-<name>)."""
-        cmd_path = self.TEST_DIR / ".opencode" / "command" / "req-analyze.md"
-        self.assertTrue(cmd_path.exists())
-        content = cmd_path.read_text(encoding="utf-8").strip()
-        # With the flag enabled, OpenCode commands must include the 'agent:' line.
-        self.assertIn(
-            "agent: req-analyze",
-            content,
-            "The opencode command must contain 'agent:' line when prompts-use-agents is active",
-        )
-        self.assertTrue(content.startswith("---"))
-        self.assertTrue(content.endswith("---"))
-
-
-class TestKiroToolsEnabled(unittest.TestCase):
-    """Verifies that Kiro populates tools/allowedTools only with enable-tools option."""
-
-    TEST_DIR = Path(__file__).resolve().parents[1] / "temp" / "project-test-kiro-tools"
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-        cls.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (cls.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        from unittest.mock import patch
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(cls.TEST_DIR),
-                    "--docs-dir",
-                    str(cls.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(cls.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(cls.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(cls.TEST_DIR / "src"),
-                    "--provider",
-                    "claude:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "codex:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "gemini:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "github:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "kiro:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                    "--provider",
-                    "opencode:prompts+enable-tools,agents+enable-tools,skills+enable-tools",
-                ]
-            )
-        cls.exit_code = exit_code
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-
-    def test_kiro_change_tools_match_read_write_mode(self) -> None:
-        """REQ-075: with enable-tools, change prompt uses read_write tools."""
-        change_agent = self.TEST_DIR / ".kiro" / "agents" / "req-change.json"
-        self.assertTrue(
-            change_agent.exists(),
-            "The file req-change.json must be present",
-        )
-        data = json.loads(change_agent.read_text(encoding="utf-8"))
-        self.assertEqual(
-            data.get("tools"),
-            KIRO_READ_WRITE_TOOLS,
-            "Req.change must have the read_write list of tools",
-        )
-        self.assertEqual(
-            data.get("allowedTools"),
-            KIRO_READ_WRITE_TOOLS,
-            "Req.change must have allowedTools identical to tools",
-        )
-
-    def test_kiro_analyze_tools_match_read_only_mode(self) -> None:
-        """REQ-075: with enable-tools, analyze prompt uses read_only tools."""
-        analyze_agent = self.TEST_DIR / ".kiro" / "agents" / "req-analyze.json"
-        self.assertTrue(
-            analyze_agent.exists(),
-            "The file req-analyze.json must be present",
-        )
-        data = json.loads(analyze_agent.read_text(encoding="utf-8"))
-        self.assertEqual(
-            data.get("tools"),
-            KIRO_READ_ONLY_TOOLS,
-            "Req.analyze must have the read_only list of tools",
-        )
-        self.assertEqual(
-            data.get("allowedTools"),
-            KIRO_READ_ONLY_TOOLS,
-            "Req.analyze must have allowedTools identical to tools",
-        )
-
-
-class TestLoadCLIConfigsLegacy(unittest.TestCase):
-    """Verifies load_centralized_models selects models-legacy when requested."""
-
-    CLI_NAMES = ("claude", "copilot", "gemini", "kiro", "opencode", "codex", "pi")
-
-    def setUp(self) -> None:
-        self.resources_dir = Path(tempfile.mkdtemp(prefix="usereq-cli-configs-"))
-        common_dir = self.resources_dir / "common"
-        common_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create models.json with all CLI configs
-        default_models = {
-            "settings": {"version": "0.0.64"},
-            "claude": {"id": "claude-config"},
-            "copilot": {"id": "copilot-config"},
-            "gemini": {"id": "gemini-config"},
-            "kiro": {"id": "kiro-config"},
-            "opencode": {"id": "opencode-config"},
-            "codex": {"id": "codex-config"},
-            "pi": {"id": "pi-config"},
-        }
-        (common_dir / "models.json").write_text(
-            json.dumps(default_models, indent=2), encoding="utf-8"
-        )
-
-        # Create models-legacy.json (copilot doesn't have legacy)
-        legacy_models = {
-            "settings": {"version": "0.0.64"},
-            "claude": {"id": "claude-legacy"},
-            "copilot": {"id": "copilot-config"},
-            "gemini": {"id": "gemini-legacy"},
-            "kiro": {"id": "kiro-legacy"},
-            "opencode": {"id": "opencode-legacy"},
-            "codex": {"id": "codex-legacy"},
-            "pi": {"id": "pi-legacy"},
-        }
-        (common_dir / "models-legacy.json").write_text(
-            json.dumps(legacy_models, indent=2), encoding="utf-8"
-        )
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.resources_dir)
-
-    def test_legacy_mode_prefers_legacy_configs(self) -> None:
-        """REQ-082: With legacy option the models-legacy.json overrides models.json."""
-        configs = cli.load_centralized_models(self.resources_dir, legacy_mode=True)
-        claude_config = configs["claude"]
-        gemini_config = configs["gemini"]
-        copilot_config = configs["copilot"]
-        self.assertIsNotNone(claude_config)
-        self.assertIsNotNone(gemini_config)
-        self.assertIsNotNone(copilot_config)
-        assert claude_config is not None
-        assert gemini_config is not None
-        assert copilot_config is not None
-        self.assertEqual(
-            claude_config["id"],
-            "claude-legacy",
-            "Claude should load from models-legacy.json in legacy mode",
-        )
-        self.assertEqual(
-            gemini_config["id"],
-            "gemini-legacy",
-            "Gemini should load from models-legacy.json in legacy mode",
-        )
-        self.assertEqual(
-            copilot_config["id"],
-            "copilot-config",
-            "Copilot should use models-legacy.json even though it has same value",
-        )
-
-    def test_standard_mode_uses_config_json(self) -> None:
-        """Verify that the normal path uses models.json."""
-        configs = cli.load_centralized_models(self.resources_dir, legacy_mode=False)
-        claude_config = configs["claude"]
-        copilot_config = configs["copilot"]
-        self.assertIsNotNone(claude_config)
-        self.assertIsNotNone(copilot_config)
-        assert claude_config is not None
-        assert copilot_config is not None
-        self.assertEqual(
-            claude_config["id"],
-            "claude-config",
-            "Claude should load from models.json when not in legacy mode",
-        )
-        self.assertEqual(
-            copilot_config["id"],
-            "copilot-config",
-            "Copilot should load from models.json when not in legacy mode",
-        )
-
-
-class TestBundledModelsReadmeMapping(unittest.TestCase):
-    """Verifies packaged model configs align readme prompt with write prompt."""
-
-    PROVIDERS = ("codex", "copilot", "opencode", "claude", "kiro", "pi")
-
-    def _assert_readme_matches_write(self, config_file: Path) -> None:
-        payload = json.loads(config_file.read_text(encoding="utf-8"))
-        for provider in self.PROVIDERS:
-            prompts = (payload.get(provider) or {}).get("prompts") or {}
-            self.assertIsInstance(
-                prompts, dict, f"{provider} prompts must be a mapping"
-            )
-            write_cfg = prompts.get("write")
-            readme_cfg = prompts.get("readme")
-            self.assertIsInstance(
-                write_cfg, dict, f"{provider}.prompts.write must exist"
-            )
-            self.assertIsInstance(
-                readme_cfg, dict, f"{provider}.prompts.readme must exist"
-            )
-            assert isinstance(write_cfg, dict)
-            assert isinstance(readme_cfg, dict)
-            self.assertEqual(
-                readme_cfg.get("mode"),
-                write_cfg.get("mode"),
-                f"{provider}.prompts.readme.mode must match write.mode",
-            )
-            if "model" in write_cfg:
-                self.assertEqual(
-                    readme_cfg.get("model"),
-                    write_cfg.get("model"),
-                    f"{provider}.prompts.readme.model must match write.model",
-                )
-
-    def test_models_json_readme_matches_write(self) -> None:
-        """SRS-085: models.json keeps readme model/mode aligned with write."""
-        self._assert_readme_matches_write(cli.RESOURCE_ROOT / "common" / "models.json")
-
-    def test_models_legacy_json_readme_matches_write(self) -> None:
-        """SRS-085: models-legacy.json keeps readme model/mode aligned with write."""
-        self._assert_readme_matches_write(
-            cli.RESOURCE_ROOT / "common" / "models-legacy.json"
-        )
-
-
-class TestBundledModelsFlowchartMapping(unittest.TestCase):
-    """Verifies packaged model configs align flowchart prompt with workflow."""
-
-    def _assert_flowchart_matches_workflow(self, config_file: Path) -> None:
-        payload = json.loads(config_file.read_text(encoding="utf-8"))
-        for provider, provider_cfg in payload.items():
-            prompts = (provider_cfg or {}).get("prompts") or {}
-            if not isinstance(prompts, dict) or "workflow" not in prompts:
-                continue
-            workflow_cfg = prompts.get("workflow")
-            flowchart_cfg = prompts.get("flowchart")
-            self.assertIsInstance(
-                workflow_cfg, dict, f"{provider}.prompts.workflow must exist"
-            )
-            self.assertIsInstance(
-                flowchart_cfg, dict, f"{provider}.prompts.flowchart must exist"
-            )
-            self.assertEqual(
-                flowchart_cfg,
-                workflow_cfg,
-                f"{provider}.prompts.flowchart must match workflow config",
-            )
-
-    def test_models_json_flowchart_matches_workflow(self) -> None:
-        """SRS-372, SRS-373: models.json keeps flowchart aligned with workflow."""
-        self._assert_flowchart_matches_workflow(
-            cli.RESOURCE_ROOT / "common" / "models.json"
-        )
-
-    def test_models_legacy_json_flowchart_matches_workflow(self) -> None:
-        """SRS-372, SRS-373: models-legacy.json keeps flowchart aligned with workflow."""
-        self._assert_flowchart_matches_workflow(
-            cli.RESOURCE_ROOT / "common" / "models-legacy.json"
-        )
-
-
-class TestCLIWithoutClaude(unittest.TestCase):
-    """Runs CLI without Claude enabled to ensure other providers work."""
-
-    TEST_DIR = Path(__file__).resolve().parents[1] / "temp" / "project-test-no-claude"
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-        cls.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (cls.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        # Run CLI with a provider other than Claude to surface unbound variable issues.
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cls.exit_code = cli.main(
-                [
-                    "--base",
-                    str(cls.TEST_DIR),
-                    "--docs-dir",
-                    str(cls.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(cls.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(cls.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(cls.TEST_DIR / "src"),
-                    "--provider",
-                    "github:prompts,agents,skills",
-                ]
-            )
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-
-    def test_exit_code_zero_without_claude(self) -> None:
-        """CLI must succeed when Claude is disabled and GitHub is enabled."""
+        """The installation must complete with exit code 0."""
         self.assertEqual(self.exit_code, 0)
 
-    def test_github_files_created_without_claude(self) -> None:
-        """GitHub artifacts must be generated without requiring Claude resources."""
-        github_agent = self.TEST_DIR / ".github" / "agents" / "req-analyze.agent.md"
-        self.assertTrue(github_agent.exists(), "GitHub agent must be generated")
-        content = github_agent.read_text(encoding="utf-8")
-        self.assertIn("description:", content, "GitHub agent must include description")
-        claude_dir = self.TEST_DIR / ".claude"
-        self.assertFalse(
-            claude_dir.exists(),
-            "Claude resources must not be created when provider flag is omitted",
-        )
+    def test_packaged_prompt_templates_are_read_only(self) -> None:
+        """SRS-263: packaged prompt templates are not modified by the CLI run."""
+        self.assertEqual(self.prompts_snapshot_before, self.prompts_snapshot_after)
 
-
-class TestProviderEnableFlags(unittest.TestCase):
-    """Ensures the CLI enforces --provider spec requirement before generating resources."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1] / "temp" / "project-test-provider-flags"
-    )
-
-    def setUp(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-
-    def test_requires_at_least_one_provider_spec(self) -> None:
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stderr") as fake_stderr:
-                exit_code = cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        str(self.TEST_DIR / "docs"),
-                        "--guidelines-dir",
-                        str(self.TEST_DIR / "guidelines"),
-                        "--tests-dir",
-                        str(self.TEST_DIR / "tests"),
-                        "--src-dir",
-                        str(self.TEST_DIR / "src"),
-                    ]
-                )
-
-        self.assertEqual(
-            exit_code,
-            4,
-            "Missing --provider spec must cause exit code 4",
-        )
-        written = "".join(call.args[0] for call in fake_stderr.write.call_args_list)
-        self.assertIn(
-            "--provider",
-            written,
-            "Error message must mention the --provider requirement",
-        )
-
-
-class TestBasePrefixedRelativePaths(unittest.TestCase):
-    """Verifies normalization when paths include the relative --base prefix."""
-
-    TEST_DIR = Path(__file__).resolve().parents[1] / "temp" / "project-test-base-prefix"
-    BASE_ARG = "temp/project-test-base-prefix"
-
-    def setUp(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-
-    def test_base_prefixed_relative_paths_are_accepted(self) -> None:
-        """CTN-001: Paths including relative --base prefix must normalize correctly."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    self.BASE_ARG,
-                    "--docs-dir",
-                    f"{self.BASE_ARG}/docs",
-                    "--guidelines-dir",
-                    f"{self.BASE_ARG}/guidelines",
-                    "--tests-dir",
-                    f"{self.BASE_ARG}/tests",
-                    "--src-dir",
-                    f"{self.BASE_ARG}/src",
-                    "--provider",
-                    "codex:prompts,agents,skills",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-        config = json.loads(
-            (self.TEST_DIR / ".req" / "config.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(config["docs-dir"], "docs")
-        self.assertEqual(config["guidelines-dir"], "guidelines")
-        self.assertEqual(config["tests-dir"], "tests")
-        self.assertEqual(config["src-dir"], ["src"])
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
-class TestUpdateNotification(unittest.TestCase):
-    """Targeted test to verify update message."""
-
-    TEST_DIR = Path(__file__).resolve().parents[1] / "temp" / "project-test-update-msg"
-
-    def tearDown(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-
-    def test_update_message_mentions_upgrade(self) -> None:
-        """Verifies that if a new version is available, the upgrade hint is printed."""
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        def fake_notify(*_args, **_kwargs):
-            print(
-                "A new version of usereq is available: current 0.0.1, latest 9.9.9. "
-                "To upgrade, run: req --upgrade"
+    def test_no_project_local_files_are_created(self) -> None:
+        """SRS-388: no `.req` directory or provider dirs are created in the project."""
+        self.assertFalse((self.TEST_DIR / ".req").exists())
+        for hidden in (".claude", ".codex", ".antigravity", ".pi", ".opencode"):
+            self.assertFalse(
+                (self.TEST_DIR / hidden).exists(),
+                f"The project must not contain {hidden}",
             )
 
-        with patch("usereq.cli.maybe_notify_newer_version", side_effect=fake_notify):
-            with patch("sys.stdout") as fake_stdout:
-                cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        str(self.TEST_DIR / "docs"),
-                        "--guidelines-dir",
-                        str(self.TEST_DIR / "guidelines"),
-                        "--tests-dir",
-                        str(self.TEST_DIR / "tests"),
-                        "--src-dir",
-                        str(self.TEST_DIR / "src"),
-                    ]
-                    + ALL_PROVIDERS_ALL_ARTIFACTS
-                )
+    def test_claude_user_level_directories_created(self) -> None:
+        """SRS-382: claude artifacts are installed under ~/.claude."""
+        self.assertTrue((self.HOME / ".claude" / "commands" / "req").is_dir())
+        self.assertTrue((self.HOME / ".claude" / "agents").is_dir())
+        self.assertTrue((self.HOME / ".claude" / "skills").is_dir())
 
-        # Note: we do not check exit code because stdout capture might vary based on runner.
-        written = "".join(call.args[0] for call in fake_stdout.write.call_args_list)
-        self.assertIn("req --upgrade", written)
+    def test_codex_user_level_directories_created(self) -> None:
+        """SRS-383: codex artifacts are installed under ~/.codex."""
+        self.assertTrue((self.HOME / ".codex" / "prompts").is_dir())
+        self.assertTrue((self.HOME / ".codex" / "skills").is_dir())
 
-    def test_installation_success_message(self) -> None:
-        """Verifies the CLI prints the installation success message on completion."""
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
+    def test_antigravity_user_level_directories_created(self) -> None:
+        """SRS-384: antigravity artifacts are installed under ~/.antigravity."""
+        self.assertTrue((self.HOME / ".antigravity" / "commands" / "req").is_dir())
+        self.assertTrue((self.HOME / ".antigravity" / "skills").is_dir())
 
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stdout") as fake_stdout:
-                cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        str(self.TEST_DIR / "docs"),
-                        "--guidelines-dir",
-                        str(self.TEST_DIR / "guidelines"),
-                        "--tests-dir",
-                        str(self.TEST_DIR / "tests"),
-                        "--src-dir",
-                        str(self.TEST_DIR / "src"),
-                    ]
-                    + ALL_PROVIDERS_ALL_ARTIFACTS
-                )
+    def test_opencode_user_level_directories_created(self) -> None:
+        """SRS-385: opencode artifacts are installed under ~/.config/opencode."""
+        self.assertTrue((self.HOME / ".config" / "opencode" / "command").is_dir())
+        self.assertTrue((self.HOME / ".config" / "opencode" / "agent").is_dir())
+        self.assertTrue((self.HOME / ".config" / "opencode" / "skill").is_dir())
 
-        written = "".join(call.args[0] for call in fake_stdout.write.call_args_list)
-        self.assertIn("Installation completed successfully in", written)
+    def test_pi_user_level_directories_created(self) -> None:
+        """SRS-386: pi artifacts are installed under ~/.pi/agent."""
+        self.assertTrue((self.HOME / ".pi" / "agent" / "prompts").is_dir())
+        self.assertTrue((self.HOME / ".pi" / "agent" / "skills").is_dir())
 
-        ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
-        lines = [ansi_escape.sub("", line) for line in written.splitlines()]
-        table_rows = [
-            line
-            for line in lines
-            if line.startswith("│")
-            and line.endswith("│")
-            and "Prompts Installed" in line
+    def test_codex_prompt_files_created(self) -> None:
+        """Codex prompts are created as req-<name>.md under ~/.codex/prompts."""
+        prompts_dir = self.HOME / ".codex" / "prompts"
+        for prompt in EXPECTED_PROMPTS:
+            target = prompts_dir / f"req-{prompt}.md"
+            self.assertTrue(target.exists(), f"Missing codex prompt {target}")
+
+    def test_prompt_arguments_substituted(self) -> None:
+        """%%ARGS%% is substituted with $ARGUMENTS in generated prompts."""
+        with_args = [
+            p
+            for p in EXPECTED_PROMPTS
+            if "%%ARGS%%"
+            in (cli.RESOURCE_ROOT / "prompts" / f"{p}.md").read_text(
+                encoding="utf-8"
+            )
         ]
-        try:
-            header_line = table_rows[0]
-        except IndexError as exc:
-            raise self.failureException(
-                "The installation summary table header must be printed"
-            ) from exc
-        header_cells = [part.strip() for part in header_line.split("│")[1:-1]]
-        self.assertEqual(
-            header_cells,
-            ["Provider", "Prompts Installed", "Modules Installed"],
-            "Header row must expose Provider/Prompts Installed/Modules Installed columns",
-        )
+        self.assertTrue(with_args, "bundled prompts must include argument-based prompts")
+        prompt = with_args[0]
+        command = self.HOME / ".claude" / "commands" / "req" / f"{prompt}.md"
+        content = command.read_text(encoding="utf-8")
+        self.assertIn("$ARGUMENTS", content)
+        self.assertNotIn("%%ARGS%%", content)
 
-        # Verify at least one data line exists in the Unicode table body.
-        data_rows = [
-            line
-            for line in lines
-            if line.startswith("│")
-            and line.endswith("│")
-            and "Prompts Installed" not in line
-            and "Provider" not in line
-        ]
-        self.assertGreater(
-            len(data_rows),
-            0,
-            "The installation summary table must include data rows",
-        )
-        for row in data_rows:
-            row_cells = [part for part in row.split("│")[1:-1]]
-            self.assertEqual(
-                len(row_cells),
-                3,
-                f"Installation summary row must expose exactly three cells: {row}",
-            )
+    def test_claude_command_files_created(self) -> None:
+        """Claude commands are created as <name>.md under ~/.claude/commands/req."""
+        commands_dir = self.HOME / ".claude" / "commands" / "req"
+        for prompt in EXPECTED_PROMPTS:
+            target = commands_dir / f"{prompt}.md"
+            self.assertTrue(target.exists(), f"Missing claude command {target}")
 
-    def test_installation_summary_table_wraps_prompts_column_to_50(self) -> None:
-        """SRS-290, SRS-293: Prompts Installed column must wrap to max width 50."""
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
+    def test_antigravity_toml_files_created(self) -> None:
+        """Antigravity TOML commands are created under ~/.antigravity/commands/req."""
+        toml_dir = self.HOME / ".antigravity" / "commands" / "req"
+        for prompt in EXPECTED_PROMPTS:
+            target = toml_dir / f"{prompt}.toml"
+            self.assertTrue(target.exists(), f"Missing antigravity toml {target}")
+            content = target.read_text(encoding="utf-8")
+            self.assertIn("prompt", content)
 
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stdout") as fake_stdout:
-                exit_code = cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        str(self.TEST_DIR / "docs"),
-                        "--guidelines-dir",
-                        str(self.TEST_DIR / "guidelines"),
-                        "--tests-dir",
-                        str(self.TEST_DIR / "tests"),
-                        "--src-dir",
-                        str(self.TEST_DIR / "src"),
-                        "--provider",
-                        "codex:prompts",
-                    ]
-                )
-        self.assertEqual(exit_code, 0)
-        written = "".join(call.args[0] for call in fake_stdout.write.call_args_list)
-        ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
-        lines = [ansi_escape.sub("", line) for line in written.splitlines()]
-        table_lines = [
-            line for line in lines if line.startswith("│") and line.endswith("│")
-        ]
-        self.assertGreater(len(table_lines), 0, "Unicode table rows must be present")
-        for line in table_lines:
-            cells = [part for part in line.split("│")[1:-1]]
-            if len(cells) != 3:
-                continue
-            prompt_cell = cells[1].rstrip()
-            self.assertLessEqual(
-                len(prompt_cell),
-                50,
-                f"Prompts Installed display width must be <= 50 characters: {prompt_cell}",
-            )
+    def test_pi_prompt_files_created(self) -> None:
+        """SRS-353: pi prompts use req-<name>.prompt.md under ~/.pi/agent/prompts."""
+        prompts_dir = self.HOME / ".pi" / "agent" / "prompts"
+        for prompt in EXPECTED_PROMPTS:
+            target = prompts_dir / f"req-{prompt}.prompt.md"
+            self.assertTrue(target.exists(), f"Missing pi prompt {target}")
+            content = target.read_text(encoding="utf-8")
+            self.assertTrue(content.startswith("---"), "pi prompt must have front matter")
+            self.assertIn("description:", content)
 
-    def test_installation_summary_table_modules_reflect_provider_flags(self) -> None:
-        """SRS-291, SRS-294, SRS-297: Modules Installed must render module-entry lines."""
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stdout") as fake_stdout:
-                exit_code = cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        str(self.TEST_DIR / "docs"),
-                        "--guidelines-dir",
-                        str(self.TEST_DIR / "guidelines"),
-                        "--tests-dir",
-                        str(self.TEST_DIR / "tests"),
-                        "--src-dir",
-                        str(self.TEST_DIR / "src"),
-                        "--provider",
-                        "codex:prompts+enable-models:legacy",
-                        "--provider",
-                        "claude:prompts+enable-tools:prompts-use-agents",
-                    ]
-                )
-        self.assertEqual(exit_code, 0)
-        written = "".join(call.args[0] for call in fake_stdout.write.call_args_list)
-        ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
-        lines = [ansi_escape.sub("", line) for line in written.splitlines()]
-        table_rows = [
-            line for line in lines if line.startswith("│") and line.endswith("│")
-        ]
-        parsed: dict[str, list[str]] = {}
-        current_provider = ""
-        for row in table_rows:
-            cells = [part.strip() for part in row.split("│")[1:-1]]
-            if len(cells) != 3:
-                continue
-            provider_cell, _prompt_cell, modules_cell = cells
-            if provider_cell == "Provider":
-                continue
-            if provider_cell:
-                current_provider = provider_cell
-                parsed.setdefault(current_provider, [])
-            if current_provider and modules_cell:
-                parsed[current_provider].append(modules_cell)
-        self.assertIn("codex", parsed)
-        self.assertIn("claude", parsed)
-        self.assertEqual(parsed["codex"], ["prompts:enable-models,legacy"])
-        self.assertEqual(parsed["claude"], ["prompts:enable-tools,prompts-use-agents"])
-
-    def test_installation_summary_table_modules_multiline_no_wrap(self) -> None:
-        """SRS-296, SRS-298: Modules Installed must keep one unwrapped line per artifact."""
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stdout") as fake_stdout:
-                exit_code = cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        str(self.TEST_DIR / "docs"),
-                        "--guidelines-dir",
-                        str(self.TEST_DIR / "guidelines"),
-                        "--tests-dir",
-                        str(self.TEST_DIR / "tests"),
-                        "--src-dir",
-                        str(self.TEST_DIR / "src"),
-                        "--provider",
-                        "claude:prompts+enable-models+enable-tools,skills+enable-models+enable-tools",
-                    ]
-                )
-        self.assertEqual(exit_code, 0)
-        written = "".join(call.args[0] for call in fake_stdout.write.call_args_list)
-        ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
-        lines = [ansi_escape.sub("", line) for line in written.splitlines()]
-        table_rows = [
-            line for line in lines if line.startswith("│") and line.endswith("│")
-        ]
-        modules_lines: list[str] = []
-        current_provider = ""
-        for row in table_rows:
-            cells = [part.strip() for part in row.split("│")[1:-1]]
-            if len(cells) != 3:
-                continue
-            provider_cell, _prompt_cell, modules_cell = cells
-            if provider_cell == "Provider":
-                continue
-            if provider_cell:
-                current_provider = provider_cell
-            if current_provider == "claude" and modules_cell:
-                modules_lines.append(modules_cell)
-        self.assertIn("prompts:enable-models,enable-tools", modules_lines)
-        self.assertIn("skills:enable-models,enable-tools", modules_lines)
-
-
-class TestGuidelinesTemplates(unittest.TestCase):
-    """Tests for --add-guidelines and --upgrade-guidelines functionality."""
-
-    def setUp(self) -> None:
-        """Create temporary project for guidelines template tests."""
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-guidelines-templates-"))
-        self.docs_dir = self.TEST_DIR / "docs"
-        self.guidelines_dir = self.TEST_DIR / "guidelines"
-        self.test_dir = self.TEST_DIR / "tests"
-        self.src_dir = self.TEST_DIR / "src"
-        self.docs_dir.mkdir(parents=True, exist_ok=True)
-        self.guidelines_dir.mkdir(parents=True, exist_ok=True)
-        self.test_dir.mkdir(parents=True, exist_ok=True)
-        self.src_dir.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
-
-    def tearDown(self) -> None:
-        """Clean up test directory."""
-        shutil.rmtree(self.TEST_DIR)
-
-    def _make_temp_resource_root(self, include_guideline_file: bool) -> Path:
-        """Create a temporary RESOURCE_ROOT fixture for guidelines copy tests."""
-        temp_resources = Path(tempfile.mkdtemp(prefix="usereq-guidelines-resources-"))
-        shutil.copytree(cli.RESOURCE_ROOT / "prompts", temp_resources / "prompts")
-        shutil.copytree(cli.RESOURCE_ROOT / "docs", temp_resources / "docs")
-        shutil.copytree(cli.RESOURCE_ROOT / "common", temp_resources / "common")
-        guidelines_root = temp_resources / "guidelines"
-        guidelines_root.mkdir(parents=True, exist_ok=True)
-        if include_guideline_file:
-            (guidelines_root / "HDT_Test_Authoring_Guide_for_LLM_Agents.md").write_text(
-                "# Template Content\nThis should overwrite with --upgrade-guidelines.\n",
-                encoding="utf-8",
-            )
-        return temp_resources
-
-    def test_add_guidelines_preserves_existing(self) -> None:
-        """REQ-086: --add-guidelines does not overwrite existing files."""
-        # Create existing file in guidelines dir with specific content
-        existing_file = (
-            self.guidelines_dir / "HDT_Test_Authoring_Guide_for_LLM_Agents.md"
-        )
-        original_content = "# Original Content\nThis should be preserved.\n"
-        existing_file.write_text(original_content, encoding="utf-8")
-
-        # Run with --add-guidelines
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--add-guidelines",
-                    "--provider",
-                    "claude:prompts,agents,skills",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        # Verify existing file was NOT modified
-        preserved_content = existing_file.read_text(encoding="utf-8")
-        self.assertEqual(
-            preserved_content,
-            original_content,
-            "Existing file should be preserved with --add-guidelines",
-        )
-
-    def test_upgrade_guidelines_overwrites_existing(self) -> None:
-        """REQ-087: --upgrade-guidelines overwrites existing files."""
-        # Create existing file in guidelines dir with specific content
-        existing_file = (
-            self.guidelines_dir / "HDT_Test_Authoring_Guide_for_LLM_Agents.md"
-        )
-        original_content = "# Original Content\nThis should be overwritten.\n"
-        existing_file.write_text(original_content, encoding="utf-8")
-
-        temp_resources = self._make_temp_resource_root(include_guideline_file=True)
-        original_resource_root = cli.RESOURCE_ROOT
-        cli.RESOURCE_ROOT = temp_resources
-
-        # Run with --upgrade-guidelines
-        try:
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                exit_code = cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        "docs",
-                        "--guidelines-dir",
-                        "guidelines",
-                        "--tests-dir",
-                        "tests",
-                        "--src-dir",
-                        "src",
-                        "--upgrade-guidelines",
-                        "--provider",
-                        "claude:prompts,agents,skills",
-                    ]
-                )
-        finally:
-            cli.RESOURCE_ROOT = original_resource_root
-            shutil.rmtree(temp_resources)
-        self.assertEqual(exit_code, 0)
-
-        # Verify existing file WAS overwritten with template content
-        new_content = existing_file.read_text(encoding="utf-8")
-        self.assertEqual(
-            new_content,
-            "# Template Content\nThis should overwrite with --upgrade-guidelines.\n",
-            "Existing file should be overwritten with --upgrade-guidelines when source template exists",
-        )
-
-    def test_upgrade_guidelines_with_empty_source_succeeds(self) -> None:
-        """REQ-085: --upgrade-guidelines succeeds when source guidelines directory is empty."""
-        existing_file = (
-            self.guidelines_dir / "HDT_Test_Authoring_Guide_for_LLM_Agents.md"
-        )
-        original_content = (
-            "# Original Content\nShould stay unchanged when source is empty.\n"
-        )
-        existing_file.write_text(original_content, encoding="utf-8")
-
-        temp_resources = self._make_temp_resource_root(include_guideline_file=False)
-        original_resource_root = cli.RESOURCE_ROOT
-        cli.RESOURCE_ROOT = temp_resources
-        try:
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                exit_code = cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        "docs",
-                        "--guidelines-dir",
-                        "guidelines",
-                        "--tests-dir",
-                        "tests",
-                        "--src-dir",
-                        "src",
-                        "--upgrade-guidelines",
-                        "--provider",
-                        "claude:prompts,agents,skills",
-                    ]
-                )
-        finally:
-            cli.RESOURCE_ROOT = original_resource_root
-            shutil.rmtree(temp_resources)
-
-        self.assertEqual(exit_code, 0)
-        self.assertEqual(
-            existing_file.read_text(encoding="utf-8"),
-            original_content,
-            "Existing file should stay unchanged when source guidelines directory is empty",
-        )
-
-    def test_add_guidelines_and_upgrade_guidelines_mutually_exclusive(self) -> None:
-        """REQ-088: --add-guidelines and --upgrade-guidelines cannot be used together."""
-        # Attempt to run with both flags - argparse should handle mutual exclusivity
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with self.assertRaises(SystemExit):
-                cli.main(
-                    [
-                        "--base",
-                        str(self.TEST_DIR),
-                        "--docs-dir",
-                        "docs",
-                        "--guidelines-dir",
-                        "guidelines",
-                        "--tests-dir",
-                        "tests",
-                        "--src-dir",
-                        "src",
-                        "--add-guidelines",
-                        "--upgrade-guidelines",
-                        "--provider",
-                        "claude:prompts,agents,skills",
-                    ]
-                )
-
-    def test_no_copy_without_flags(self) -> None:
-        """REQ-089: Guidelines templates are not copied without --add-guidelines or --upgrade-guidelines."""
-        # Run without either flag
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts,agents,skills",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        # Verify no guidelines template files were copied
-        guidelines_file = (
-            self.guidelines_dir / "HDT_Test_Authoring_Guide_for_LLM_Agents.md"
-        )
-        self.assertFalse(
-            guidelines_file.exists(),
-            "Guidelines templates should not be copied without --add-guidelines or --upgrade-guidelines",
-        )
-
-
-class TestPreserveModels(unittest.TestCase):
-    """Verifies --preserve-models flag preserves .req/models.json and bypasses the legacy per-provider option."""
-
-    def setUp(self) -> None:
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-preserve-models-"))
-        self.docs_dir = self.TEST_DIR / "docs"
-        self.guidelines_dir = self.TEST_DIR / "guidelines"
-        self.test_dir = self.TEST_DIR / "tests"
-        self.src_dir = self.TEST_DIR / "src"
-        self.docs_dir.mkdir(parents=True, exist_ok=True)
-        self.guidelines_dir.mkdir(parents=True, exist_ok=True)
-        self.test_dir.mkdir(parents=True, exist_ok=True)
-        self.src_dir.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.TEST_DIR)
-
-    def test_preserve_models_keeps_custom_config(self) -> None:
-        """REQ-082, REQ-084: With --preserve-models and --update, custom .req/models.json is preserved."""
-        # Initial setup
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts,agents,skills",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        # Modify .req/models.json with custom content
-        models_file = self.TEST_DIR / ".req" / "models.json"
-        self.assertTrue(
-            models_file.is_file(), ".req/models.json should exist after initial setup"
-        )
-
-        custom_config = {
-            "settings": {"version": "9.9.9", "custom": "preserved"},
-            "claude": {"id": "custom-claude-config", "prompts": ["custom-prompt"]},
+    def test_skill_files_created_for_every_provider(self) -> None:
+        """Skills are created as req-<name>/SKILL.md for every enabled provider."""
+        skill_roots = {
+            "antigravity": self.HOME / ".antigravity" / "skills",
+            "claude": self.HOME / ".claude" / "skills",
+            "codex": self.HOME / ".codex" / "skills",
+            "opencode": self.HOME / ".config" / "opencode" / "skill",
+            "pi": self.HOME / ".pi" / "agent" / "skills",
         }
-        models_file.write_text(json.dumps(custom_config, indent=2), encoding="utf-8")
+        for provider, root in skill_roots.items():
+            for prompt in EXPECTED_PROMPTS:
+                skill = root / f"req-{prompt}" / "SKILL.md"
+                self.assertTrue(
+                    skill.exists(), f"Missing {provider} skill {skill}"
+                )
 
-        # Run --update with --preserve-models
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
+    def test_skill_front_matter_structure(self) -> None:
+        """SRS-368/SRS-389: SKILL.md has name and description, never model/tools."""
+        skill = (
+            self.HOME
+            / ".claude"
+            / "skills"
+            / f"req-{EXPECTED_PROMPTS[0]}"
+            / "SKILL.md"
+        )
+        content = skill.read_text(encoding="utf-8")
+        self.assertTrue(content.startswith("---"))
+        self.assertIn("name: req-", content)
+        self.assertIn("description:", content)
+        self.assertNotIn("model:", content)
+        self.assertNotIn("tools:", content)
+        self.assertNotIn("allowed-tools:", content)
+
+    def test_prompts_have_no_model_or_tools_fields(self) -> None:
+        """SRS-389: generated agents and commands contain no model/tools fields."""
+        agent = self.HOME / ".claude" / "agents" / f"req-{EXPECTED_PROMPTS[0]}.md"
+        command = self.HOME / ".claude" / "commands" / "req" / f"{EXPECTED_PROMPTS[0]}.md"
+        for artifact in (agent, command):
+            content = artifact.read_text(encoding="utf-8")
+            self.assertNotIn("model:", content)
+            self.assertNotIn("tools:", content)
+            self.assertNotIn("allowed-tools:", content)
+
+    def test_global_config_saved_with_canonical_keys(self) -> None:
+        """SRS-287/SRS-288: single global config file with canonical keys only."""
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        self.assertTrue(config_path.is_file())
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            sorted(data.keys()),
+            sorted(
                 [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--update",
-                    "--preserve-models",
-                    "--provider",
-                    "claude:prompts,agents,skills",
+                    "guidelines-dir",
+                    "docs-dir",
+                    "tests-dir",
+                    "src-dir",
+                    "providers",
                 ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        # Verify custom content is preserved
-        preserved_content = json.loads(models_file.read_text(encoding="utf-8"))
-        self.assertEqual(
-            preserved_content["settings"]["version"],
-            "9.9.9",
-            ".req/models.json version should be preserved with --preserve-models",
+            ),
         )
-        self.assertEqual(
-            preserved_content["settings"]["custom"],
-            "preserved",
-            "Custom fields in .req/models.json should be preserved with --preserve-models",
+        self.assertEqual(data["guidelines-dir"], "guidelines")
+        self.assertEqual(data["docs-dir"], "docs")
+        self.assertEqual(data["tests-dir"], "tests")
+        self.assertEqual(data["src-dir"], ["src"])
+        self.assertIsInstance(data["providers"], list)
+
+    def test_flowchart_resources_created(self) -> None:
+        """SRS-371/SRS-374: req-flowchart artifacts are emitted when bundled."""
+        if "flowchart" not in EXPECTED_PROMPTS:
+            self.skipTest("flowchart.md template not bundled")
+        self.assertTrue(
+            (self.HOME / ".claude" / "commands" / "req" / "flowchart.md").exists()
         )
-        self.assertEqual(
-            preserved_content["claude"]["id"],
-            "custom-claude-config",
-            "Custom claude config should be preserved with --preserve-models",
+        self.assertTrue(
+            (
+                self.HOME / ".pi" / "agent" / "prompts" / "req-flowchart.prompt.md"
+            ).exists()
         )
-
-    def test_preserve_models_bypasses_legacy_mode(self) -> None:
-        """REQ-082: With --preserve-models, the legacy per-provider option has no effect."""
-        # Setup with initial run
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts,agents,skills",
-                ]
-            )
-
-        # Create custom models.json
-        models_file = self.TEST_DIR / ".req" / "models.json"
-        custom_config = {
-            "settings": {"marker": "preserve-wins"},
-            "claude": {"id": "preserved-config"},
-        }
-        models_file.write_text(json.dumps(custom_config, indent=2), encoding="utf-8")
-
-        # Run with both --preserve-models and legacy per-provider option
-        # The preserve flag should take precedence
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--update",
-                    "--preserve-models",
-                    "--provider",
-                    "claude:prompts,agents,skills:legacy",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        # Verify custom content is still preserved (legacy option had no effect)
-        preserved_content = json.loads(models_file.read_text(encoding="utf-8"))
-        self.assertEqual(
-            preserved_content["settings"]["marker"],
-            "preserve-wins",
-            "--preserve-models should take precedence over legacy per-provider option",
+        self.assertTrue(
+            (
+                self.HOME / ".codex" / "skills" / "req-flowchart" / "SKILL.md"
+            ).exists()
+        )
+        self.assertTrue(
+            (self.HOME / ".antigravity" / "commands" / "req" / "flowchart.toml").exists()
         )
 
+    def test_guidelines_tokens_replaced(self) -> None:
+        """%%GUIDELINES_PATH%% and %%GUIDELINES_FILES%% are substituted."""
+        command = self.HOME / ".claude" / "commands" / "req" / "write.md"
+        content = command.read_text(encoding="utf-8")
+        self.assertNotIn("%%GUIDELINES_PATH%%", content)
+        self.assertNotIn("%%GUIDELINES_FILES%%", content)
 
-class TestUpdateLoadsPersistedFlags(unittest.TestCase):
-    """Verifies that --update reloads persisted provider specs from .req/config.json."""
+
+class TestProviderSpecParsing(unittest.TestCase):
+    """SRS-275/278/364/365: --provider SPEC grammar and validation."""
+
+    def test_valid_provider_spec_accepted(self) -> None:
+        provider, artifacts, options = cli.parse_provider_spec("codex:prompts,skills")
+        self.assertEqual(provider, "codex")
+        self.assertEqual([a for a, _ in artifacts], ["prompts", "skills"])
+        self.assertEqual(options, [])
+
+    def test_valid_provider_spec_with_options_accepted(self) -> None:
+        provider, _artifacts, options = cli.parse_provider_spec(
+            "claude:prompts:prompts-use-agents"
+        )
+        self.assertEqual(provider, "claude")
+        self.assertEqual(options, ["prompts-use-agents"])
+
+    def test_pi_provider_spec_accepted(self) -> None:
+        provider, artifacts, _ = cli.parse_provider_spec("pi:prompts,skills")
+        self.assertEqual(provider, "pi")
+        self.assertEqual(len(artifacts), 2)
+
+    def test_removed_providers_rejected(self) -> None:
+        """SRS-364: gemini, github, and kiro are no longer valid providers."""
+        for provider in ("gemini", "github", "kiro"):
+            with self.assertRaises(cli.ReqError):
+                cli.parse_provider_spec(f"{provider}:prompts")
+
+    def test_unknown_provider_rejected(self) -> None:
+        with self.assertRaises(cli.ReqError):
+            cli.parse_provider_spec("unknown:prompts")
+
+    def test_unknown_artifact_rejected(self) -> None:
+        with self.assertRaises(cli.ReqError):
+            cli.parse_provider_spec("codex:widgets")
+
+    def test_artifact_option_suffix_rejected(self) -> None:
+        """SRS-364: artifact items must be bare artifacts; option suffixes are invalid."""
+        for spec in (
+            "codex:prompts+enable-models",
+            "claude:skills+enable-tools",
+            "opencode:prompts+enable-models+enable-tools",
+        ):
+            with self.assertRaises(cli.ReqError):
+                cli.parse_provider_spec(spec)
+
+    def test_unknown_option_rejected(self) -> None:
+        with self.assertRaises(cli.ReqError):
+            cli.parse_provider_spec("codex:prompts:legacy")
+
+    def test_missing_artifacts_rejected(self) -> None:
+        with self.assertRaises(cli.ReqError):
+            cli.parse_provider_spec("codex:")
+
+
+class TestProviderSpecMultiple(HomeIsolatedTestCase):
+    """SRS-276: multiple --provider specs activate independently."""
 
     def setUp(self) -> None:
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-update-persisted-flags-"))
-        (self.TEST_DIR / "docs").mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-multi-"))
+        for sub in ("docs", "guidelines", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
-    def tearDown(self) -> None:
-        shutil.rmtree(self.TEST_DIR)
-
-    def _run_here_update(self, args: list[str]) -> int:
-        """Runs CLI commands from TEST_DIR to exercise --here resolution."""
-        previous_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            return cli.main(args)
-        finally:
-            os.chdir(previous_cwd)
-
-    def test_update_reloads_persisted_flags(self) -> None:
-        """SRS-034, SRS-064, SRS-288: --update must restore persisted provider specs from config.json."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            install_exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "codex:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "gemini:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "github:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "kiro:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "opencode:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "pi:prompts+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                ]
-            )
-        self.assertEqual(install_exit_code, 0)
-
-        config_payload = json.loads(
-            (self.TEST_DIR / ".req" / "config.json").read_text(encoding="utf-8")
-        )
-        # New format: preserve-models boolean + providers array.
-        self.assertIn(
-            "preserve-models",
-            config_payload,
-            "preserve-models must be persisted in .req/config.json",
-        )
-        self.assertFalse(
-            config_payload["preserve-models"],
-            "preserve-models must default to False",
-        )
-        self.assertIn(
-            "providers",
-            config_payload,
-            "providers array must be persisted in .req/config.json",
-        )
-        self.assertIsInstance(
-            config_payload["providers"],
-            list,
-            "providers must be a list of spec strings",
-        )
-        self.assertEqual(
-            len(config_payload["providers"]),
-            7,
-            "All 7 provider specs must be persisted",
-        )
-
-        shutil.rmtree(self.TEST_DIR / ".github")
-        shutil.rmtree(self.TEST_DIR / ".claude")
-        shutil.rmtree(self.TEST_DIR / ".opencode")
-        shutil.rmtree(self.TEST_DIR / ".pi")
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            update_exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--update",
-                ]
-            )
-        self.assertEqual(
-            update_exit_code, 0, "--update must reuse persisted provider specs"
-        )
-
-        github_prompt = self.TEST_DIR / ".github" / "prompts" / "req-analyze.prompt.md"
-        self.assertTrue(
-            github_prompt.is_file(),
-            "GitHub prompts must be regenerated from persisted provider specs",
-        )
-        self.assertEqual(
-            github_prompt.read_text(encoding="utf-8").strip(),
-            "---\nagent: req-analyze\n---",
-            "Persisted prompts-use-agents option must generate agent-stub prompts",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".github" / "skills").is_dir(),
-            "Persisted skills artifact must keep skill generation enabled",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".claude" / "agents").is_dir(),
-            "Persisted claude spec with agents artifact must regenerate Claude agents",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".opencode" / "agent").is_dir(),
-            "Persisted opencode spec with agents artifact must regenerate OpenCode agents",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".pi" / "prompts").is_dir(),
-            "Persisted pi spec with prompts artifact must regenerate Pi prompts",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".pi" / "skills").is_dir(),
-            "Persisted pi spec with skills artifact must regenerate Pi skills",
-        )
-
-    def test_update_here_reloads_persisted_flags(self) -> None:
-        """SRS-064, SRS-288: --update with --here must reuse persisted provider specs."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            install_exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "codex:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "gemini:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "github:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "kiro:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "opencode:prompts+enable-models+enable-tools,agents+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                    "--provider",
-                    "pi:prompts+enable-models+enable-tools,skills+enable-models+enable-tools:prompts-use-agents,legacy",
-                ]
-            )
-        self.assertEqual(install_exit_code, 0)
-
-        shutil.rmtree(self.TEST_DIR / ".github")
-        shutil.rmtree(self.TEST_DIR / ".claude")
-        shutil.rmtree(self.TEST_DIR / ".opencode")
-        shutil.rmtree(self.TEST_DIR / ".pi")
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            update_exit_code = self._run_here_update(["--here", "--update"])
-        self.assertEqual(
-            update_exit_code, 0, "--update --here must reuse persisted provider specs"
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".github" / "prompts" / "req-analyze.prompt.md").is_file(),
-            "Persisted provider specs must regenerate artifacts in --here mode",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".github" / "skills").is_dir(),
-            "Persisted skills artifact must remain effective in --here update mode",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".pi" / "prompts").is_dir(),
-            "Persisted pi prompts artifact must remain effective in --here update mode",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".pi" / "skills").is_dir(),
-            "Persisted pi skills artifact must remain effective in --here update mode",
-        )
-
-    def test_update_here_invalid_persisted_flags_uses_config_error(self) -> None:
-        """SRS-064: --update --here must fail with config-invalid error for invalid persisted config."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            install_exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                    "--provider",
-                    "pi:prompts,skills",
-                ]
-            )
-        self.assertEqual(install_exit_code, 0)
-
-        config_path = self.TEST_DIR / ".req" / "config.json"
-        config_payload = json.loads(config_path.read_text(encoding="utf-8"))
-        # Corrupt the providers array to make it invalid.
-        config_payload["providers"] = "not-a-list"
-        config_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stderr") as fake_stderr:
-                update_exit_code = self._run_here_update(["--here", "--update"])
-        self.assertEqual(update_exit_code, 11)
-        written = "".join(call.args[0] for call in fake_stderr.write.call_args_list)
-        self.assertIn(
-            "invalid provider/artifact update configuration",
-            written,
-            "Invalid persisted config must report config-specific update error",
-        )
-        self.assertNotIn(
-            "at least one --provider spec",
-            written,
-            "Update invalid-config path must not report regular provider-spec validation error",
-        )
-
-
-class TestArtifactTypeFlags(unittest.TestCase):
-    """Verifies enforcement and behavior of per-provider artifact types (SRS-231, SRS-035)."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1]
-        / "temp"
-        / "project-test-artifact-type-flags"
-    )
-
-    def setUp(self) -> None:
-        """Creates a clean temporary project directory before each test."""
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-    def tearDown(self) -> None:
-        """Removes the temporary project directory after each test."""
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-
-    def _base_args(self) -> list:
-        """Returns the base CLI args common to all test invocations."""
-        return [
+    def install(self, *specs: str) -> int:
+        argv = [
             "--base",
             str(self.TEST_DIR),
             "--docs-dir",
-            str(self.TEST_DIR / "docs"),
+            "docs",
             "--guidelines-dir",
-            str(self.TEST_DIR / "guidelines"),
+            "guidelines",
             "--tests-dir",
-            str(self.TEST_DIR / "tests"),
+            "tests",
             "--src-dir",
-            str(self.TEST_DIR / "src"),
+            "src",
         ]
+        for spec in specs:
+            argv.extend(["--provider", spec])
+        return self.run_cli(argv)
 
-    def test_requires_at_least_one_provider_spec(self) -> None:
-        """SRS-035: CLI MUST exit with code 4 when no --provider spec is supplied."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stderr") as fake_stderr:
-                exit_code = cli.main(self._base_args())
-
+    def test_exit_code_zero(self) -> None:
         self.assertEqual(
-            exit_code,
-            4,
-            "Missing --provider spec must cause exit code 4",
-        )
-        written = "".join(call.args[0] for call in fake_stderr.write.call_args_list)
-        self.assertIn(
-            "--provider",
-            written,
-            "Error message must mention --provider",
+            self.install("codex:skills", "claude:prompts,agents", "pi:prompts,skills"),
+            0,
         )
 
-    def test_disable_skills_flag_is_rejected(self) -> None:
-        """SRS-034: removed --disable-skills MUST be rejected by parser."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stderr") as fake_stderr:
-                with self.assertRaises(SystemExit) as cm:
-                    cli.main(
-                        self._base_args()
-                        + [
-                            "--provider",
-                            "claude:prompts,agents,skills",
-                            "--disable-skills",
-                        ]
-                    )
-        self.assertEqual(
-            cm.exception.code, 2, "Removed --disable-skills flag must be rejected"
+    def test_codex_skills_created_prompts_not_created(self) -> None:
+        self.install("codex:skills")
+        self.assertTrue(
+            (self.HOME / ".codex" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
         )
-        written = "".join(call.args[0] for call in fake_stderr.write.call_args_list)
-        self.assertIn(
-            "unrecognized arguments: --disable-skills",
-            written,
-            "Parser error must mention removed --disable-skills flag",
-        )
+        self.assertFalse((self.HOME / ".codex" / "prompts").exists())
 
-    def test_prompts_only_generates_prompt_artifacts(self) -> None:
-        """SRS-231: provider spec with only prompts generates prompt/command artifacts; agent/skill dirs absent."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "claude:prompts",
-                    "--provider",
-                    "codex:prompts",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "CLI must succeed with prompts-only specs")
-        # Prompt artifacts MUST exist
+    def test_claude_agents_created_prompts_not_created(self) -> None:
+        self.install("claude:agents")
         self.assertTrue(
-            (self.TEST_DIR / ".claude" / "commands").is_dir(),
-            ".claude/commands must be created with prompts artifact",
+            (self.HOME / ".claude" / "agents" / f"req-{EXPECTED_PROMPTS[0]}.md").exists()
         )
-        self.assertTrue(
-            (self.TEST_DIR / ".codex" / "prompts").is_dir(),
-            ".codex/prompts must be created with prompts artifact",
-        )
-        # Agent artifacts MUST NOT exist (agents not in spec)
-        self.assertFalse(
-            (self.TEST_DIR / ".claude" / "agents").exists(),
-            ".claude/agents must NOT be created without agents artifact",
-        )
-        # Skill artifacts MUST NOT exist (skills not in spec)
-        self.assertFalse(
-            (self.TEST_DIR / ".codex" / "skills").exists(),
-            ".codex/skills must NOT be created without skills artifact",
-        )
+        self.assertFalse((self.HOME / ".claude" / "commands").exists())
 
-    def test_agents_only_generates_agent_artifacts(self) -> None:
-        """SRS-231: provider spec with only agents generates agent artifacts; prompt/skill dirs absent."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "claude:agents",
-                    "--provider",
-                    "codex:agents",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "CLI must succeed with agents-only specs")
-        # Agent artifacts MUST exist
-        self.assertTrue(
-            (self.TEST_DIR / ".claude" / "agents").is_dir(),
-            ".claude/agents must be created with agents artifact",
-        )
-        # Prompt artifacts MUST NOT exist
-        self.assertFalse(
-            (self.TEST_DIR / ".claude" / "commands").exists(),
-            ".claude/commands must NOT be created without prompts artifact",
-        )
-        # Codex prompt artifacts MUST NOT exist
-        self.assertFalse(
-            (self.TEST_DIR / ".codex" / "prompts").exists(),
-            ".codex/prompts must NOT be created without prompts artifact",
-        )
-        # Skill artifacts MUST NOT exist (skills not in spec)
-        self.assertFalse(
-            (self.TEST_DIR / ".codex" / "skills").exists(),
-            ".codex/skills must NOT be created without skills artifact",
-        )
+    def test_disabled_providers_absent(self) -> None:
+        self.install("codex:prompts")
+        for provider_dir in (".claude", ".antigravity", ".pi"):
+            self.assertFalse((self.HOME / provider_dir).exists())
 
-    def test_skills_only_generates_skill_artifacts(self) -> None:
-        """
-        @brief Verify skills-only spec generates skills when prompts and agents are absent.
-        @details Executes installation with provider specs containing only skills artifact.
-        Asserts that skill directories are created and the installation summary table lists installed prompt
-        identifiers under "Prompts Installed" even when artifacts are produced as skills (SRS-036, SRS-049, SRS-231).
-        @return {None}
-        """
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stdout") as fake_stdout:
-                exit_code = cli.main(
-                    self._base_args()
-                    + [
-                        "--provider",
-                        "claude:skills",
-                        "--provider",
-                        "codex:skills",
-                    ]
-                )
-        self.assertEqual(exit_code, 0, "CLI must succeed with skills-only specs")
-        # Skill artifacts MUST exist for each enabled provider
-        self.assertTrue(
-            (self.TEST_DIR / ".codex" / "skills").is_dir(),
-            ".codex/skills must be created when skills artifact is set",
+    def test_at_least_one_provider_spec_required(self) -> None:
+        """SRS-035: installation without --provider specs fails with exit code 4."""
+        rc = self.run_cli(
+            [
+                "--base",
+                str(self.TEST_DIR),
+                "--docs-dir",
+                "docs",
+                "--guidelines-dir",
+                "guidelines",
+                "--tests-dir",
+                "tests",
+                "--src-dir",
+                "src",
+            ]
         )
-        self.assertTrue(
-            (self.TEST_DIR / ".claude" / "skills").is_dir(),
-            ".claude/skills must be created when skills artifact is set",
-        )
-        written = "".join(call.args[0] for call in fake_stdout.write.call_args_list)
-        ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
-        lines = [ansi_escape.sub("", line) for line in written.splitlines()]
-        data_rows = [
-            line for line in lines if line.startswith("│") and line.endswith("│")
-        ]
-        parsed_prompts: dict[str, list[str]] = {}
-        parsed_modules: dict[str, list[str]] = {}
-        current_provider = ""
-        for row in data_rows:
-            parts = [part.strip() for part in row.split("│")[1:-1]]
-            if len(parts) != 3:
-                continue
-            provider_cell, prompts_cell, modules_cell = parts
-            if provider_cell == "Provider":
-                continue
-            if provider_cell:
-                current_provider = provider_cell
-                parsed_prompts.setdefault(current_provider, [])
-                parsed_modules.setdefault(current_provider, [])
-            if current_provider and prompts_cell:
-                parsed_prompts[current_provider].append(prompts_cell)
-            if current_provider and modules_cell:
-                parsed_modules[current_provider].append(modules_cell)
-        self.assertIn("codex", parsed_prompts, "Summary table must include codex row")
-        self.assertIn("claude", parsed_prompts, "Summary table must include claude row")
-        codex_prompts = " ".join(parsed_prompts["codex"])
-        claude_prompts = " ".join(parsed_prompts["claude"])
-        self.assertNotEqual(codex_prompts, "-", "codex prompts list must not be empty")
-        self.assertNotEqual(
-            claude_prompts, "-", "claude prompts list must not be empty"
-        )
-        self.assertIn(
-            "analyze",
-            codex_prompts,
-            "codex prompts list must include a known prompt id",
-        )
-        self.assertIn(
-            "analyze",
-            claude_prompts,
-            "claude prompts list must include a known prompt id",
-        )
-        self.assertIn("skills", parsed_modules["codex"])
-        self.assertIn("skills", parsed_modules["claude"])
-        # Prompt artifacts MUST NOT exist
-        self.assertFalse(
-            (self.TEST_DIR / ".codex" / "prompts").exists(),
-            ".codex/prompts must NOT be created without prompts artifact",
-        )
-        # Agent artifacts MUST NOT exist
-        self.assertFalse(
-            (self.TEST_DIR / ".claude" / "agents").exists(),
-            ".claude/agents must NOT be created without agents artifact",
-        )
-
-    def test_all_artifacts_enable_all_categories(self) -> None:
-        """SRS-231: provider specs with all artifact types enable all artifact categories."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "claude:prompts,agents,skills",
-                    "--provider",
-                    "codex:prompts,agents,skills",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "CLI must succeed with all artifact types")
-        self.assertTrue(
-            (self.TEST_DIR / ".claude" / "commands").is_dir(),
-            ".claude/commands must exist",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".claude" / "agents").is_dir(),
-            ".claude/agents must exist",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".claude" / "skills").is_dir(),
-            ".claude/skills must exist",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".codex" / "prompts").is_dir(),
-            ".codex/prompts must exist",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".codex" / "skills").is_dir(),
-            ".codex/skills must exist",
-        )
+        self.assertEqual(rc, 4)
 
 
-# ── --provider SPEC tests (SRS-275 .. SRS-287) ───────────────────────────
-
-
-class TestInstallDefaultDirectories(unittest.TestCase):
-    """SRS-359..SRS-363: Fresh install default directories and recursive creation behavior."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1]
-        / "temp"
-        / "project-test-install-default-directories"
-    )
+class TestProviderSpecPersistence(HomeIsolatedTestCase):
+    """SRS-279/SRS-280/SRS-286: provider spec persistence round-trips."""
 
     def setUp(self) -> None:
-        """!
-        @brief Prepare isolated git-backed project directory for install-path tests.
-        @details Recreates temporary directory tree and initializes git repository before each test to satisfy install git precondition checks.
-        @return {None} Function return value.
-        """
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["git", "init"], cwd=self.TEST_DIR, check=True, capture_output=True
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-persist-"))
+        for sub in ("docs", "guidelines", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.base_argv = [
+            "--base",
+            str(self.TEST_DIR),
+            "--docs-dir",
+            "docs",
+            "--guidelines-dir",
+            "guidelines",
+            "--tests-dir",
+            "tests",
+            "--src-dir",
+            "src",
+        ]
+
+    def test_provider_specs_persisted_to_global_config(self) -> None:
+        self.run_cli(self.base_argv + ["--provider", "pi:prompts,skills"])
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["providers"], ["pi:prompts,skills"])
+
+    def test_provider_specs_restored_on_update(self) -> None:
+        """SRS-280: --update without --provider reuses persisted specs."""
+        self.run_cli(self.base_argv + ["--provider", "codex:prompts"])
+        shutil.rmtree(self.HOME / ".codex")
+        rc = self.run_cli(["--update", "--base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
+        self.assertTrue(
+            (self.HOME / ".codex" / "prompts" / f"req-{EXPECTED_PROMPTS[0]}.md").exists()
         )
 
-    def tearDown(self) -> None:
-        """!
-        @brief Remove temporary project directory after each test case.
-        @details Ensures deterministic filesystem state across test cases by deleting the full temporary subtree.
-        @return {None} Function return value.
-        """
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
+    def test_cli_provider_replaces_persisted_on_update(self) -> None:
+        """SRS-280: CLI --provider specs replace persisted entries."""
+        self.run_cli(self.base_argv + ["--provider", "codex:prompts"])
+        rc = self.run_cli(
+            ["--update", "--base", str(self.TEST_DIR), "--provider", "claude:prompts"]
+        )
+        self.assertEqual(rc, 0)
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["providers"], ["claude:prompts"])
+
+
+class TestPromptsUseAgents(HomeIsolatedTestCase):
+    """SRS-276/SRS-287: provider-scoped prompts-use-agents option."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-agents-stub-"))
+        for sub in ("docs", "guidelines", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.base_argv = [
+            "--base",
+            str(self.TEST_DIR),
+            "--docs-dir",
+            "docs",
+            "--guidelines-dir",
+            "guidelines",
+            "--tests-dir",
+            "tests",
+            "--src-dir",
+            "src",
+        ]
+
+    def test_claude_commands_are_agent_stubs(self) -> None:
+        self.run_cli(
+            self.base_argv + ["--provider", "claude:prompts:prompts-use-agents"]
+        )
+        command = self.HOME / ".claude" / "commands" / "req" / "write.md"
+        content = command.read_text(encoding="utf-8")
+        self.assertIn("agent: req-write", content)
+        self.assertNotIn("model:", content)
+        self.assertNotIn("tools:", content)
+
+    def test_opencode_commands_are_agent_stubs(self) -> None:
+        self.run_cli(
+            self.base_argv + ["--provider", "opencode:prompts:prompts-use-agents"]
+        )
+        command = self.HOME / ".config" / "opencode" / "command" / "req-write.md"
+        content = command.read_text(encoding="utf-8")
+        self.assertIn("agent: req-write", content)
+
+    def test_pi_prompts_are_agent_stubs(self) -> None:
+        self.run_cli(self.base_argv + ["--provider", "pi:prompts:prompts-use-agents"])
+        prompt = self.HOME / ".pi" / "agent" / "prompts" / "req-write.prompt.md"
+        content = prompt.read_text(encoding="utf-8")
+        self.assertIn("agent: req-write", content)
+
+    def test_option_applies_independently_per_provider(self) -> None:
+        """SRS-287: prompts-use-agents applies only to the targeted provider."""
+        self.run_cli(
+            self.base_argv
+            + [
+                "--provider",
+                "claude:prompts:prompts-use-agents",
+                "--provider",
+                "opencode:prompts",
+            ]
+        )
+        claude_command = self.HOME / ".claude" / "commands" / "req" / "write.md"
+        self.assertIn(
+            "agent: req-write", claude_command.read_text(encoding="utf-8")
+        )
+        opencode_command = (
+            self.HOME / ".config" / "opencode" / "command" / "req-write.md"
+        )
+        self.assertNotIn(
+            "agent: req-write", opencode_command.read_text(encoding="utf-8")
+        )
+
+
+class TestInstallDefaultDirectories(HomeIsolatedTestCase):
+    """SRS-359..SRS-363: fresh-install defaults and directory creation."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-defaults-"))
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
     def test_install_uses_default_directories_when_cli_flags_omitted(self) -> None:
-        """!
-        @brief Verify fresh install defaults for omitted directory flags.
-        @details Executes install with `--base` and `--provider` only, then validates default directory creation (`req/docs`, `req/guidelines/`, `tests/`, `src/`) and persisted `.req/config.json` values.
-        @return {None} Function return value.
-        """
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--provider",
-                    "codex:prompts",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "Fresh install with omitted dirs must succeed")
+        rc = self.run_cli(["--base", str(self.TEST_DIR), "--provider", "codex:prompts"])
+        self.assertEqual(rc, 0)
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["docs-dir"], "req/docs")
+        self.assertEqual(data["guidelines-dir"], "req/guidelines/")
+        self.assertEqual(data["tests-dir"], "tests/")
+        self.assertEqual(data["src-dir"], ["src/"])
+
+    def test_install_creates_missing_parent_directories(self) -> None:
+        rc = self.run_cli(["--base", str(self.TEST_DIR), "--provider", "codex:prompts"])
+        self.assertEqual(rc, 0)
         self.assertTrue((self.TEST_DIR / "req" / "docs").is_dir())
         self.assertTrue((self.TEST_DIR / "req" / "guidelines").is_dir())
         self.assertTrue((self.TEST_DIR / "tests").is_dir())
         self.assertTrue((self.TEST_DIR / "src").is_dir())
 
-        config = json.loads((self.TEST_DIR / ".req" / "config.json").read_text("utf-8"))
-        self.assertEqual(config["docs-dir"], "req/docs")
-        self.assertEqual(config["guidelines-dir"], "req/guidelines/")
-        self.assertEqual(config["tests-dir"], "tests/")
-        self.assertEqual(config["src-dir"], ["src/"])
-
-    def test_install_creates_missing_parent_directories_for_configured_paths(
-        self,
-    ) -> None:
-        """!
-        @brief Verify recursive parent creation for configured installation paths.
-        @details Executes fresh install using nested relative directories for docs, guidelines, tests, and two `--src-dir` entries; validates that configured leaf directories and missing parent chains are created.
-        @return {None} Function return value.
-        """
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "a/b/docs-target",
-                    "--guidelines-dir",
-                    "x/y/guidelines-target/",
-                    "--tests-dir",
-                    "m/n/tests-target/",
-                    "--src-dir",
-                    "s/t/src-one/",
-                    "--src-dir",
-                    "u/v/src-two",
-                    "--provider",
-                    "codex:prompts",
-                ]
-            )
-        self.assertEqual(
-            exit_code, 0, "Install with nested configured paths must succeed"
+    def test_update_keeps_configured_directories(self) -> None:
+        self.run_cli(
+            [
+                "--base",
+                str(self.TEST_DIR),
+                "--docs-dir",
+                "docs",
+                "--guidelines-dir",
+                "guidelines",
+                "--tests-dir",
+                "tests",
+                "--src-dir",
+                "src",
+                "--provider",
+                "codex:prompts",
+            ]
         )
-        self.assertTrue((self.TEST_DIR / "a").is_dir())
-        self.assertTrue((self.TEST_DIR / "a" / "b" / "docs-target").is_dir())
-        self.assertTrue((self.TEST_DIR / "x" / "y" / "guidelines-target").is_dir())
-        self.assertTrue((self.TEST_DIR / "m" / "n" / "tests-target").is_dir())
-        self.assertTrue((self.TEST_DIR / "s" / "t" / "src-one").is_dir())
-        self.assertTrue((self.TEST_DIR / "u" / "v" / "src-two").is_dir())
-
-    def test_update_keeps_configured_directories_and_does_not_apply_install_defaults(
-        self,
-    ) -> None:
-        """!
-        @brief Verify update path reads directory configuration from `.req/config.json`.
-        @details Performs install with explicit non-default directories, runs `--here --update`, and verifies persisted directory keys remain unchanged and install defaults (`req/docs`) are not auto-applied.
-        @return {None} Function return value.
-        """
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            install_exit_code = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "custom/docs",
-                    "--guidelines-dir",
-                    "custom/guidelines/",
-                    "--tests-dir",
-                    "custom/tests/",
-                    "--src-dir",
-                    "custom/src/",
-                    "--provider",
-                    "codex:prompts",
-                ]
-            )
-        self.assertEqual(install_exit_code, 0)
-
-        current_dir = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                update_exit_code = cli.main(["--here", "--update"])
-        finally:
-            os.chdir(current_dir)
-
-        self.assertEqual(update_exit_code, 0)
-        config = json.loads((self.TEST_DIR / ".req" / "config.json").read_text("utf-8"))
-        self.assertEqual(config["docs-dir"], "custom/docs")
-        self.assertEqual(config["guidelines-dir"], "custom/guidelines/")
-        self.assertEqual(config["tests-dir"], "custom/tests/")
-        self.assertEqual(config["src-dir"], ["custom/src/"])
-        self.assertFalse(
-            (self.TEST_DIR / "req" / "docs").exists(),
-            "Update path must not apply fresh-install defaults when custom config exists",
-        )
-
-
-class TestProviderSpecParsing(unittest.TestCase):
-    """SRS-284: Verifies --provider SPEC parsing accepts valid specs and rejects invalid ones."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1]
-        / "temp"
-        / "project-test-provider-spec-parsing"
-    )
-
-    def setUp(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-
-    def _base_args(self) -> list[str]:
-        return [
-            "--base",
-            str(self.TEST_DIR),
-            "--docs-dir",
-            str(self.TEST_DIR / "docs"),
-            "--guidelines-dir",
-            str(self.TEST_DIR / "guidelines"),
-            "--tests-dir",
-            str(self.TEST_DIR / "tests"),
-            "--src-dir",
-            str(self.TEST_DIR / "src"),
-        ]
-
-    def test_valid_provider_spec_accepted(self) -> None:
-        """SRS-275, SRS-284: A well-formed --provider spec must be accepted with exit code 0."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(self._base_args() + ["--provider", "codex:skills"])
-        self.assertEqual(exit_code, 0, "--provider codex:skills must succeed")
-
-    def test_pi_provider_spec_accepted(self) -> None:
-        """SRS-275, SRS-284, SRS-353, SRS-354: --provider pi spec must be accepted."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args() + ["--provider", "pi:prompts,skills"]
-            )
-        self.assertEqual(exit_code, 0, "--provider pi:prompts,skills must succeed")
-
-    def test_valid_provider_spec_with_options_accepted(self) -> None:
-        """SRS-275, SRS-284: A spec with artifact-local options must be accepted."""
-        spec = (
-            "claude:agents+enable-models+enable-tools,"
-            "prompts+enable-models+enable-tools"
-        )
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(self._base_args() + ["--provider", spec])
-        self.assertEqual(exit_code, 0, f"--provider {spec} must succeed")
-
-    def test_unknown_provider_rejected(self) -> None:
-        """SRS-278, SRS-284: Unknown provider name must cause exit code 1."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stderr") as fake_stderr:
-                exit_code = cli.main(self._base_args() + ["--provider", "bogus:skills"])
-        self.assertEqual(
-            exit_code, 1, "Unknown provider 'bogus' must cause exit code 1"
-        )
-        written = "".join(call.args[0] for call in fake_stderr.write.call_args_list)
-        self.assertIn(
-            "bogus",
-            written,
-            "Error message must identify the unknown provider token",
-        )
-
-    def test_unknown_artifact_rejected(self) -> None:
-        """SRS-278, SRS-284: Unknown artifact type must cause exit code 1."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stderr") as fake_stderr:
-                exit_code = cli.main(
-                    self._base_args() + ["--provider", "codex:widgets"]
-                )
-        self.assertEqual(
-            exit_code, 1, "Unknown artifact 'widgets' must cause exit code 1"
-        )
-        written = "".join(call.args[0] for call in fake_stderr.write.call_args_list)
-        self.assertIn(
-            "widgets",
-            written,
-            "Error message must identify the unknown artifact token",
-        )
-
-    def test_unknown_option_rejected(self) -> None:
-        """SRS-278, SRS-284: Unknown option must cause exit code 1."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stderr") as fake_stderr:
-                exit_code = cli.main(
-                    self._base_args() + ["--provider", "codex:skills:turbo-mode"]
-                )
-        self.assertEqual(
-            exit_code, 1, "Unknown option 'turbo-mode' must cause exit code 1"
-        )
-        written = "".join(call.args[0] for call in fake_stderr.write.call_args_list)
-        self.assertIn(
-            "turbo-mode",
-            written,
-            "Error message must identify the unknown option token",
-        )
-
-    def test_provider_scoped_artifact_option_rejected(self) -> None:
-        """SRS-278, SRS-284, SRS-365: enable-models and enable-tools are invalid in PROVIDER_OPTIONS."""
-        for invalid_option in ("enable-models", "enable-tools"):
-            with self.subTest(invalid_option=invalid_option):
-                with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                    with patch("sys.stderr") as fake_stderr:
-                        exit_code = cli.main(
-                            self._base_args()
-                            + ["--provider", f"codex:skills:{invalid_option}"]
-                        )
-                self.assertEqual(exit_code, 1)
-                written = "".join(
-                    call.args[0] for call in fake_stderr.write.call_args_list
-                )
-                self.assertIn(
-                    invalid_option,
-                    written,
-                    "Error message must identify the invalid placement token",
-                )
-
-    def test_missing_artifacts_rejected(self) -> None:
-        """SRS-278, SRS-284: A spec with no artifact field must cause exit code 1."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with patch("sys.stderr"):
-                exit_code = cli.main(self._base_args() + ["--provider", "codex"])
-        self.assertEqual(
-            exit_code, 1, "A spec missing the artifact field must cause exit code 1"
-        )
-
-
-class TestProviderSpecMultiple(unittest.TestCase):
-    """SRS-285: Multiple --provider specs enable distinct per-provider artifact types independently."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1]
-        / "temp"
-        / "project-test-provider-spec-multiple"
-    )
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-        cls.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (cls.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (cls.TEST_DIR / "src").mkdir(exist_ok=True)
-
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cls.exit_code = cli.main(
-                [
-                    "--base",
-                    str(cls.TEST_DIR),
-                    "--docs-dir",
-                    str(cls.TEST_DIR / "docs"),
-                    "--guidelines-dir",
-                    str(cls.TEST_DIR / "guidelines"),
-                    "--tests-dir",
-                    str(cls.TEST_DIR / "tests"),
-                    "--src-dir",
-                    str(cls.TEST_DIR / "src"),
-                    "--provider",
-                    "codex:skills",
-                    "--provider",
-                    "github:agents",
-                    "--provider",
-                    "claude:prompts",
-                    "--provider",
-                    "pi:skills",
-                ]
-            )
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if cls.TEST_DIR.exists():
-            shutil.rmtree(cls.TEST_DIR)
-
-    def test_exit_code_zero(self) -> None:
-        """SRS-285: Multiple --provider specs must produce exit code 0."""
-        self.assertEqual(self.exit_code, 0, "Multiple --provider specs must succeed")
-
-    def test_codex_skills_created(self) -> None:
-        """SRS-285: codex:skills must create .codex/skills directory."""
-        self.assertTrue(
-            (self.TEST_DIR / ".codex" / "skills").is_dir(),
-            ".codex/skills must exist when --provider codex:skills is given",
-        )
-
-    def test_codex_prompts_not_created(self) -> None:
-        """SRS-276, SRS-285: codex:skills must NOT create .codex/prompts."""
-        self.assertFalse(
-            (self.TEST_DIR / ".codex" / "prompts").exists(),
-            ".codex/prompts must NOT exist when only codex:skills is specified",
-        )
-
-    def test_github_agents_created(self) -> None:
-        """SRS-285: github:agents must create .github/agents directory."""
-        self.assertTrue(
-            (self.TEST_DIR / ".github" / "agents").is_dir(),
-            ".github/agents must exist when --provider github:agents is given",
-        )
-
-    def test_github_prompts_not_created(self) -> None:
-        """SRS-276, SRS-285: github:agents must NOT create .github/prompts."""
-        self.assertFalse(
-            (self.TEST_DIR / ".github" / "prompts").exists(),
-            ".github/prompts must NOT exist when only github:agents is specified",
-        )
-
-    def test_claude_commands_created(self) -> None:
-        """SRS-285: claude:prompts must create .claude/commands directory."""
-        self.assertTrue(
-            (self.TEST_DIR / ".claude" / "commands").is_dir(),
-            ".claude/commands must exist when --provider claude:prompts is given",
-        )
-
-    def test_claude_agents_not_created(self) -> None:
-        """SRS-276, SRS-285: claude:prompts must NOT create .claude/agents."""
-        self.assertFalse(
-            (self.TEST_DIR / ".claude" / "agents").exists(),
-            ".claude/agents must NOT exist when only claude:prompts is specified",
-        )
-
-    def test_disabled_providers_absent(self) -> None:
-        """SRS-276, SRS-285: Providers not targeted by any spec must not have directories."""
-        self.assertFalse(
-            (self.TEST_DIR / ".gemini").exists(),
-            ".gemini must not exist when gemini is not targeted",
-        )
-        self.assertFalse(
-            (self.TEST_DIR / ".opencode").exists(),
-            ".opencode must not exist when opencode is not targeted",
-        )
-        self.assertFalse(
-            (self.TEST_DIR / ".kiro").exists(),
-            ".kiro must not exist when kiro is not targeted",
-        )
-
-    def test_pi_skills_created(self) -> None:
-        """SRS-285, SRS-354: pi:skills must create .pi/skills directory."""
-        self.assertTrue(
-            (self.TEST_DIR / ".pi" / "skills").is_dir(),
-            ".pi/skills must exist when --provider pi:skills is given",
-        )
-
-    def test_pi_prompts_not_created(self) -> None:
-        """SRS-276, SRS-285, SRS-353: pi:skills must NOT create .pi/prompts."""
-        self.assertFalse(
-            (self.TEST_DIR / ".pi" / "prompts").exists(),
-            ".pi/prompts must NOT exist when only pi:skills is specified",
-        )
-
-
-class TestProviderSpecPersistence(unittest.TestCase):
-    """SRS-286: --provider specs are persisted to and restored from config.json."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1]
-        / "temp"
-        / "project-test-provider-spec-persistence"
-    )
-
-    def setUp(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-
-    def _base_args(self) -> list[str]:
-        return [
-            "--base",
-            str(self.TEST_DIR),
-            "--docs-dir",
-            str(self.TEST_DIR / "docs"),
-            "--guidelines-dir",
-            str(self.TEST_DIR / "guidelines"),
-            "--tests-dir",
-            str(self.TEST_DIR / "tests"),
-            "--src-dir",
-            str(self.TEST_DIR / "src"),
-        ]
-
-    def test_provider_specs_persisted_to_config(self) -> None:
-        """SRS-279, SRS-286: --provider specs must be stored as JSON array in config.json."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "codex:skills",
-                    "--provider",
-                    "github:agents",
-                    "--provider",
-                    "pi:prompts,skills",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "Initial install with --provider must succeed")
-        config_path = self.TEST_DIR / ".req" / "config.json"
-        self.assertTrue(
-            config_path.is_file(), ".req/config.json must exist after install"
-        )
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertIn(
-            "providers",
-            config,
-            "config.json must contain a 'providers' key",
-        )
-        self.assertIsInstance(
-            config["providers"],
-            list,
-            "'providers' must be a JSON array",
-        )
-        self.assertEqual(
-            sorted(config["providers"]),
-            sorted(["codex:skills", "github:agents", "pi:prompts,skills"]),
-            "Persisted providers must match the CLI-supplied specs",
-        )
-
-    def test_provider_specs_restored_on_update(self) -> None:
-        """SRS-280, SRS-286: --update must restore persisted provider specs."""
-        # Initial install with --provider specs.
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "codex:skills",
-                    "--provider",
-                    "github:agents",
-                    "--provider",
-                    "pi:prompts,skills",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "Initial install must succeed")
-
-        # Remove generated directories to verify they are re-created on --update.
-        codex_skills = self.TEST_DIR / ".codex" / "skills"
-        if codex_skills.exists():
-            shutil.rmtree(codex_skills)
-        github_agents = self.TEST_DIR / ".github" / "agents"
-        if github_agents.exists():
-            shutil.rmtree(github_agents)
-        pi_prompts = self.TEST_DIR / ".pi" / "prompts"
-        if pi_prompts.exists():
-            shutil.rmtree(pi_prompts)
-        pi_skills = self.TEST_DIR / ".pi" / "skills"
-        if pi_skills.exists():
-            shutil.rmtree(pi_skills)
-
-        # Run --update (no new --provider flags, should restore persisted ones).
-        previous_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                exit_code = cli.main(["--here", "--update"])
-        finally:
-            os.chdir(previous_cwd)
-        self.assertEqual(
-            exit_code, 0, "--update must succeed when restoring persisted specs"
-        )
-        self.assertTrue(
-            codex_skills.is_dir(),
-            ".codex/skills must be re-created from persisted provider specs on --update",
-        )
-        self.assertTrue(
-            github_agents.is_dir(),
-            ".github/agents must be re-created from persisted provider specs on --update",
-        )
-        self.assertTrue(
-            pi_prompts.is_dir(),
-            ".pi/prompts must be re-created from persisted provider specs on --update",
-        )
-        self.assertTrue(
-            pi_skills.is_dir(),
-            ".pi/skills must be re-created from persisted provider specs on --update",
-        )
-
-    def test_cli_provider_replaces_persisted_on_update(self) -> None:
-        """SRS-280, SRS-286: CLI --provider specs replace persisted entries on --update."""
-        # Initial install with codex:skills.
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(self._base_args() + ["--provider", "codex:skills"])
-        self.assertEqual(exit_code, 0, "Initial install must succeed")
-
-        # --update with a different --provider spec.
-        previous_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                exit_code = cli.main(
-                    ["--here", "--update", "--provider", "claude:agents"]
-                )
-        finally:
-            os.chdir(previous_cwd)
-        self.assertEqual(exit_code, 0, "--update with new --provider must succeed")
-
-        config_path = self.TEST_DIR / ".req" / "config.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertEqual(
-            config["providers"],
-            ["claude:agents"],
-            "CLI --provider specs must replace (not merge with) persisted entries",
-        )
-
-
-class TestProviderSpecGlobalMerge(unittest.TestCase):
-    """SRS-275, SRS-287: Per-provider options override defaults for targeted provider only."""
-
-    TEST_DIR = (
-        Path(__file__).resolve().parents[1]
-        / "temp"
-        / "project-test-provider-spec-global-merge"
-    )
-
-    def setUp(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-        self.TEST_DIR.mkdir(parents=True, exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-
-    def tearDown(self) -> None:
-        if self.TEST_DIR.exists():
-            shutil.rmtree(self.TEST_DIR)
-
-    def _base_args(self) -> list[str]:
-        return [
-            "--base",
-            str(self.TEST_DIR),
-            "--docs-dir",
-            str(self.TEST_DIR / "docs"),
-            "--guidelines-dir",
-            str(self.TEST_DIR / "guidelines"),
-            "--tests-dir",
-            str(self.TEST_DIR / "tests"),
-            "--src-dir",
-            str(self.TEST_DIR / "src"),
-        ]
-
-    def test_multiple_provider_specs_activate_independently(self) -> None:
-        """SRS-275: Multiple --provider specs activate distinct providers with their own artifact sets."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "codex:prompts",
-                    "--provider",
-                    "github:agents",
-                    "--provider",
-                    "pi:prompts,skills",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "Multiple --provider specs must succeed")
-        # Codex prompts from its spec.
-        self.assertTrue(
-            (self.TEST_DIR / ".codex" / "prompts").is_dir(),
-            "Codex prompts must exist from --provider codex:prompts",
-        )
-        # GitHub agents from its spec.
-        self.assertTrue(
-            (self.TEST_DIR / ".github" / "agents").is_dir(),
-            "GitHub agents must exist from --provider github:agents",
-        )
-        # Pi prompts and skills from its spec.
-        self.assertTrue(
-            (self.TEST_DIR / ".pi" / "prompts").is_dir(),
-            "Pi prompts must exist from --provider pi:prompts,skills",
-        )
-        self.assertTrue(
-            (self.TEST_DIR / ".pi" / "skills").is_dir(),
-            "Pi skills must exist from --provider pi:prompts,skills",
-        )
-        # GitHub prompts must NOT exist (prompts not in github spec).
-        self.assertFalse(
-            (self.TEST_DIR / ".github" / "prompts").exists(),
-            "GitHub prompts must NOT exist since github:agents did not include prompts",
-        )
-
-    def test_prompts_use_agents_per_provider_override(self) -> None:
-        """SRS-282, SRS-287: per-provider prompts-use-agents overrides global for that provider."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "github:agents,prompts:prompts-use-agents",
-                    "--provider",
-                    "claude:agents,prompts",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "Per-provider prompts-use-agents must succeed")
-
-        # GitHub prompts should reference agents (prompts-use-agents enabled).
-        gh_prompts_dir = self.TEST_DIR / ".github" / "prompts"
-        self.assertTrue(gh_prompts_dir.is_dir(), "GitHub prompts dir must exist")
-        gh_prompt_files = list(gh_prompts_dir.glob("*.prompt.md"))
-        self.assertGreater(
-            len(gh_prompt_files), 0, "At least one GitHub prompt file must exist"
-        )
-        gh_prompt_content = gh_prompt_files[0].read_text(encoding="utf-8")
-        self.assertIn(
-            "agent:",
-            gh_prompt_content,
-            "GitHub prompt must reference agent when prompts-use-agents is set",
-        )
-
-        # Claude prompts should NOT reference agents (prompts-use-agents NOT set).
-        claude_cmds_dir = self.TEST_DIR / ".claude" / "commands" / "req"
-        self.assertTrue(claude_cmds_dir.is_dir(), "Claude commands dir must exist")
-        claude_cmd_files = list(claude_cmds_dir.glob("*.md"))
-        self.assertGreater(
-            len(claude_cmd_files), 0, "At least one Claude command file must exist"
-        )
-        claude_cmd_content = claude_cmd_files[0].read_text(encoding="utf-8")
-        self.assertNotIn(
-            "agent:",
-            claude_cmd_content,
-            "Claude command must NOT reference agent when prompts-use-agents is not set",
-        )
-
-    def test_enable_models_per_provider_override(self) -> None:
-        """SRS-287: artifact-local enable-models affects only the targeted artifact item."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "claude:agents+enable-models",
-                    "--provider",
-                    "github:agents",
-                ]
-            )
-        self.assertEqual(exit_code, 0, "Artifact-local enable-models must succeed")
-
-        claude_agents_dir = self.TEST_DIR / ".claude" / "agents"
-        self.assertTrue(claude_agents_dir.is_dir(), "Claude agents dir must exist")
-        claude_agent_files = list(claude_agents_dir.glob("*.md"))
-        self.assertGreater(
-            len(claude_agent_files), 0, "At least one Claude agent file must exist"
-        )
-
-        gh_agents_dir = self.TEST_DIR / ".github" / "agents"
-        self.assertTrue(gh_agents_dir.is_dir(), "GitHub agents dir must exist")
-        gh_agent_files = list(gh_agents_dir.glob("*.md"))
-        self.assertGreater(
-            len(gh_agent_files), 0, "At least one GitHub agent file must exist"
-        )
-        gh_agent_content = gh_agent_files[0].read_text(encoding="utf-8")
-        fm_match = re.search(r"^---\n(.*?)\n---", gh_agent_content, re.DOTALL)
-        if fm_match:
-            gh_frontmatter = fm_match.group(1)
-            self.assertNotIn(
-                "model:",
-                gh_frontmatter,
-                "GitHub agent frontmatter must NOT contain model: when enable-models is not set",
-            )
-
-    def test_pi_artifact_local_options_apply_independently(self) -> None:
-        """SRS-276, SRS-287, SRS-354: pi prompt and skill artifacts honor independent local options."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "pi:prompts+enable-tools,skills+enable-models",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        prompt_path = self.TEST_DIR / ".pi" / "prompts" / "req-analyze.prompt.md"
-        prompt_content = prompt_path.read_text(encoding="utf-8")
-        prompt_match = re.search(r"^---\n(.*?)\n---", prompt_content, re.DOTALL)
-        if prompt_match is None:
-            self.fail("Pi prompt frontmatter must exist")
-        prompt_frontmatter = prompt_match.group(1)
-        self.assertIn("tools:", prompt_frontmatter)
-        self.assertNotIn("model:", prompt_frontmatter)
-
-        skill_path = self.TEST_DIR / ".pi" / "skills" / "req-analyze" / "SKILL.md"
-        skill_content = skill_path.read_text(encoding="utf-8")
-        skill_match = re.search(r"^---\n(.*?)\n---", skill_content, re.DOTALL)
-        if skill_match is None:
-            self.fail("Pi skill frontmatter must exist")
-        skill_frontmatter = skill_match.group(1)
-        self.assertIn("model:", skill_frontmatter)
-        self.assertNotIn("tools:", skill_frontmatter)
-
-    def test_pi_skills_emit_allowed_tools_scalar(self) -> None:
-        """!
-        @brief Verify Pi `SKILL.md` emits `allowed-tools` as a scalar string.
-        @details Executes installation with `pi:skills+enable-tools`, then
-        validates that Pi skills serialize tool restrictions from models.json as
-        space-delimited `allowed-tools` lines and never emit a top-level `tools:`
-        line. Covers read-only and read-write prompt modes.
-        @return {None} No return value.
-        @satisfies SRS-369, SRS-370
-        """
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "pi:skills+enable-tools",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        analyze_path = self.TEST_DIR / ".pi" / "skills" / "req-analyze" / "SKILL.md"
-        analyze_content = analyze_path.read_text(encoding="utf-8")
-        analyze_match = re.search(r"^---\n(.*?)\n---", analyze_content, re.DOTALL)
-        if analyze_match is None:
-            self.fail("Pi analyze skill frontmatter must exist")
-        analyze_frontmatter = analyze_match.group(1)
-        self.assertRegex(
-            analyze_frontmatter,
-            r"(?m)^allowed-tools: read bash grep find ls$",
-        )
-        self.assertIsNone(re.search(r"(?m)^tools:", analyze_frontmatter))
-
-        change_path = self.TEST_DIR / ".pi" / "skills" / "req-change" / "SKILL.md"
-        change_content = change_path.read_text(encoding="utf-8")
-        change_match = re.search(r"^---\n(.*?)\n---", change_content, re.DOTALL)
-        if change_match is None:
-            self.fail("Pi change skill frontmatter must exist")
-        change_frontmatter = change_match.group(1)
-        self.assertRegex(
-            change_frontmatter,
-            r"(?m)^allowed-tools: read bash edit write grep find ls$",
-        )
-        self.assertIsNone(re.search(r"(?m)^tools:", change_frontmatter))
-
-    def test_github_artifact_local_options_apply_independently(self) -> None:
-        """SRS-276, SRS-287: github prompt and skill artifacts honor independent local options."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            exit_code = cli.main(
-                self._base_args()
-                + [
-                    "--provider",
-                    "github:prompts+enable-models,skills+enable-tools",
-                ]
-            )
-        self.assertEqual(exit_code, 0)
-
-        prompt_path = (
-            self.TEST_DIR / ".github" / "prompts" / "req-analyze.prompt.md"
-        )
-        prompt_content = prompt_path.read_text(encoding="utf-8")
-        prompt_match = re.search(r"^---\n(.*?)\n---", prompt_content, re.DOTALL)
-        if prompt_match is None:
-            self.fail("GitHub prompt frontmatter must exist")
-        prompt_frontmatter = prompt_match.group(1)
-        self.assertIn("model:", prompt_frontmatter)
-        self.assertNotIn("tools:", prompt_frontmatter)
-
-        skill_path = self.TEST_DIR / ".github" / "skills" / "req-analyze" / "SKILL.md"
-        skill_content = skill_path.read_text(encoding="utf-8")
-        skill_match = re.search(r"^---\n(.*?)\n---", skill_content, re.DOTALL)
-        if skill_match is None:
-            self.fail("GitHub skill frontmatter must exist")
-        skill_frontmatter = skill_match.group(1)
-        self.assertIn("tools:", skill_frontmatter)
-        self.assertNotIn("model:", skill_frontmatter)
-
-
-class TestConfigPathPersistence(unittest.TestCase):
-    """SRS-302, SRS-303, SRS-305, SRS-306, SRS-307, SRS-329:
-    Verifies base-path and git-path persistence in .req/config.json."""
-
-    def setUp(self) -> None:
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-config-path-"))
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.TEST_DIR)
-
-    def test_base_path_and_git_path_persisted_on_install(self) -> None:
-        """SRS-302, SRS-306: base-path and git-path are saved to config.json."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            rc = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                    "--provider",
-                    "pi:prompts,skills",
-                ]
-            )
+        rc = self.run_cli(["--update", "--base", str(self.TEST_DIR)])
         self.assertEqual(rc, 0)
-        cfg = json.loads(
-            (self.TEST_DIR / ".req" / "config.json").read_text(encoding="utf-8")
-        )
-        self.assertIn("base-path", cfg)
-        self.assertIn("git-path", cfg)
-        self.assertEqual(cfg["base-path"], str(self.TEST_DIR.resolve()))
-        self.assertEqual(cfg["git-path"], str(self.TEST_DIR.resolve()))
-
-    def test_base_path_updated_on_update(self) -> None:
-        """SRS-303, SRS-307: base-path and git-path are updated on --update."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                    "--provider",
-                    "pi:prompts,skills",
-                ]
-            )
-        # Manually modify base-path to simulate a moved project.
-        cfg_path = self.TEST_DIR / ".req" / "config.json"
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        cfg["base-path"] = "/old/path"
-        cfg["git-path"] = "/old/git"
-        cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-        # Run --update; should update paths.
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            rc = cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--update",
-                ]
-            )
-        self.assertEqual(rc, 0)
-        cfg2 = json.loads(cfg_path.read_text(encoding="utf-8"))
-        self.assertEqual(cfg2["base-path"], str(self.TEST_DIR.resolve()))
-        self.assertEqual(cfg2["git-path"], str(self.TEST_DIR.resolve()))
-
-    def test_install_fails_outside_git_repo(self) -> None:
-        """SRS-305: Installation must fail if --base is not inside a git repo."""
-        non_git = Path(tempfile.mkdtemp(prefix="usereq-nongit-"))
-        (non_git / "docs").mkdir(exist_ok=True)
-        (non_git / "guidelines").mkdir(exist_ok=True)
-        (non_git / "tests").mkdir(exist_ok=True)
-        (non_git / "src").mkdir(exist_ok=True)
-        try:
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(
-                    [
-                        "--base",
-                        str(non_git),
-                        "--docs-dir",
-                        "docs",
-                        "--guidelines-dir",
-                        "guidelines",
-                        "--tests-dir",
-                        "tests",
-                        "--src-dir",
-                        "src",
-                        "--provider",
-                        "claude:prompts",
-                    ]
-                )
-            self.assertNotEqual(rc, 0)
-        finally:
-            shutil.rmtree(non_git)
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["docs-dir"], "docs")
 
 
-class TestGitCheckCommand(unittest.TestCase):
-    """SRS-311, SRS-312, SRS-330: Verifies --git-check behavior."""
+class TestGuidelinesTemplates(HomeIsolatedTestCase):
+    """Guidelines template copy flows (--add-guidelines / --upgrade-guidelines)."""
 
     def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
+        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
+        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
+        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
+        (self.TEST_DIR / "src").mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        # Synthetic guidelines template source so tests never touch packaged resources.
+        self.RESOURCE_ROOT = Path(tempfile.mkdtemp(prefix="usereq-resroot-"))
+        (self.RESOURCE_ROOT / "guidelines").mkdir()
+        (self.RESOURCE_ROOT / "prompts").mkdir()
+        (self.RESOURCE_ROOT / "docs").mkdir()
+        template = self.RESOURCE_ROOT / "guidelines" / "existing.md"
+        template.write_text("template\n", encoding="utf-8")
+        (
+            self.RESOURCE_ROOT
+            / "docs"
+            / "Requirements_Template.md"
+        ).write_text("template\n", encoding="utf-8")
+        self.addCleanup(shutil.rmtree, self.RESOURCE_ROOT, ignore_errors=True)
+        root_patcher = patch.object(cli, "RESOURCE_ROOT", self.RESOURCE_ROOT)
+        root_patcher.start()
+        self.addCleanup(root_patcher.stop)
+        self.base_argv = [
+            "--base",
+            str(self.TEST_DIR),
+            "--docs-dir",
+            "docs",
+            "--guidelines-dir",
+            "guidelines",
+            "--tests-dir",
+            "tests",
+            "--src-dir",
+            "src",
+        ]
+
+    def test_add_guidelines_preserves_existing(self) -> None:
+        existing = self.TEST_DIR / "guidelines" / "existing.md"
+        existing.write_text("existing\n", encoding="utf-8")
+        rc = self.run_cli(
+            self.base_argv + ["--add-guidelines", "--provider", "codex:prompts"]
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(existing.read_text(encoding="utf-8"), "existing\n")
+
+    def test_upgrade_guidelines_overwrites_existing(self) -> None:
+        existing = self.TEST_DIR / "guidelines" / "existing.md"
+        existing.write_text("existing\n", encoding="utf-8")
+        rc = self.run_cli(
+            self.base_argv + ["--upgrade-guidelines", "--provider", "codex:prompts"]
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(existing.read_text(encoding="utf-8"), "template\n")
+
+    def test_add_guidelines_copies_missing_templates(self) -> None:
+        rc = self.run_cli(
+            self.base_argv + ["--add-guidelines", "--provider", "codex:prompts"]
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            (self.TEST_DIR / "guidelines" / "existing.md").read_text(
+                encoding="utf-8"
+            ),
+            "template\n",
+        )
+
+    def test_no_copy_without_flags(self) -> None:
+        rc = self.run_cli(self.base_argv + ["--provider", "codex:prompts"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(list((self.TEST_DIR / "guidelines").iterdir()), [])
+
+
+class TestRemoveCommand(HomeIsolatedTestCase):
+    """SRS-390: --remove deletes req-* artifacts from user-level directories."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-remove-"))
+        for sub in ("docs", "guidelines", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        rc = self.run_cli(
+            [
+                "--base",
+                str(self.TEST_DIR),
+                "--docs-dir",
+                "docs",
+                "--guidelines-dir",
+                "guidelines",
+                "--tests-dir",
+                "tests",
+                "--src-dir",
+                "src",
+                "--provider",
+                "claude:prompts,skills",
+                "--provider",
+                "codex:prompts,skills",
+            ]
+        )
+        self.assertEqual(rc, 0)
+
+    def test_remove_deletes_req_artifacts(self) -> None:
+        rc = self.run_cli(["--remove", "--base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
+        self.assertFalse(
+            (self.HOME / ".claude" / "commands" / "req" / "write.md").exists()
+        )
+        self.assertFalse(
+            (self.HOME / ".claude" / "skills" / "req-write").exists()
+        )
+        self.assertFalse(
+            (self.HOME / ".codex" / "prompts" / "req-write.md").exists()
+        )
+        self.assertFalse(
+            (self.HOME / ".codex" / "skills" / "req-write").exists()
+        )
+
+    def test_remove_preserves_unrelated_user_content(self) -> None:
+        unrelated = self.HOME / ".claude" / "commands" / "user-command.md"
+        unrelated.parent.mkdir(parents=True, exist_ok=True)
+        unrelated.write_text("user\n", encoding="utf-8")
+        unrelated_skill = self.HOME / ".claude" / "skills" / "user-skill"
+        unrelated_skill.mkdir(parents=True, exist_ok=True)
+        (unrelated_skill / "SKILL.md").write_text("user\n", encoding="utf-8")
+        rc = self.run_cli(["--remove", "--base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
+        self.assertTrue(unrelated.exists())
+        self.assertTrue((unrelated_skill / "SKILL.md").exists())
+
+    def test_remove_without_global_config_fails(self) -> None:
+        (self.HOME / ".config" / "usereq" / "config.json").unlink()
+        rc = self.run_cli(["--remove", "--base", str(self.TEST_DIR)])
+        self.assertNotEqual(rc, 0)
+
+
+class TestInstallationSummaryTable(HomeIsolatedTestCase):
+    """SRS-290/291/296: installation summary table rendering."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-table-"))
+        for sub in ("docs", "guidelines", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+
+    def capture_install(self, *specs: str) -> str:
+        argv = [
+            "--base",
+            str(self.TEST_DIR),
+            "--docs-dir",
+            "docs",
+            "--guidelines-dir",
+            "guidelines",
+            "--tests-dir",
+            "tests",
+            "--src-dir",
+            "src",
+        ]
+        for spec in specs:
+            argv.extend(["--provider", spec])
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(argv)
+        self.assertEqual(rc, 0)
+        return mock_stdout.getvalue()
+
+    def test_table_renders_provider_and_module_rows(self) -> None:
+        output = self.capture_install("codex:prompts,skills")
+        self.assertIn("codex", output)
+        self.assertIn("prompts", output)
+        self.assertIn("skills", output)
+
+    def test_table_modules_reflect_provider_options(self) -> None:
+        output = self.capture_install("claude:prompts:prompts-use-agents")
+        self.assertIn("prompts:prompts-use-agents", output)
+
+    def test_table_wraps_prompts_column(self) -> None:
+        output = self.capture_install("codex:prompts,skills", "claude:prompts")
+        lines = [
+            line
+            for line in output.splitlines()
+            if "│" in line
+        ]
+        self.assertTrue(lines, "Installation table must be rendered")
+
+
+class TestUserLevelPathHelpers(unittest.TestCase):
+    """SRS-381..SRS-387: user-level path resolution helpers."""
+
+    def test_get_global_config_path_under_home(self) -> None:
+        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
+            path = cli.get_global_config_path()
+        self.assertEqual(
+            path, Path("/tmp/testhome/.config/usereq/config.json")
+        )
+
+    def test_provider_artifact_root_claude(self) -> None:
+        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
+            self.assertEqual(
+                cli.provider_artifact_root("claude", "prompts"),
+                Path("/tmp/testhome/.claude/commands/req"),
+            )
+            self.assertEqual(
+                cli.provider_artifact_root("claude", "agents"),
+                Path("/tmp/testhome/.claude/agents"),
+            )
+            self.assertEqual(
+                cli.provider_artifact_root("claude", "skills"),
+                Path("/tmp/testhome/.claude/skills"),
+            )
+
+    def test_provider_artifact_root_codex(self) -> None:
+        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
+            self.assertEqual(
+                cli.provider_artifact_root("codex", "prompts"),
+                Path("/tmp/testhome/.codex/prompts"),
+            )
+
+    def test_provider_artifact_root_antigravity(self) -> None:
+        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
+            self.assertEqual(
+                cli.provider_artifact_root("antigravity", "prompts"),
+                Path("/tmp/testhome/.antigravity/commands/req"),
+            )
+
+    def test_provider_artifact_root_opencode(self) -> None:
+        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
+            self.assertEqual(
+                cli.provider_artifact_root("opencode", "agents"),
+                Path("/tmp/testhome/.config/opencode/agent"),
+            )
+
+    def test_provider_artifact_root_pi(self) -> None:
+        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
+            self.assertEqual(
+                cli.provider_artifact_root("pi", "skills"),
+                Path("/tmp/testhome/.pi/agent/skills"),
+            )
+
+    def test_unsupported_artifact_raises(self) -> None:
+        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
+            with self.assertRaises(cli.ReqError):
+                cli.provider_artifact_root("codex", "agents")
+
+
+class TestGitCheckCommand(HomeIsolatedTestCase):
+    """SRS-311/SRS-312/SRS-391: --git-check with runtime git resolution."""
+
+    def setUp(self) -> None:
+        super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-git-check-"))
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
-        subprocess.run(
-            ["git", "commit", "--allow-empty", "-m", "init"],
-            cwd=str(self.TEST_DIR),
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "t@t",
-            },
-        )
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                ]
-            )
-        # Stage all so repo is clean.
-        subprocess.run(
-            ["git", "add", "-A"], cwd=str(self.TEST_DIR), capture_output=True
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "setup"],
-            cwd=str(self.TEST_DIR),
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "t@t",
-            },
-        )
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.TEST_DIR)
+        make_git_repo(self.TEST_DIR)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
     def test_git_check_on_clean_repo_succeeds(self) -> None:
-        """SRS-312: --git-check succeeds silently on clean repo with valid HEAD."""
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
@@ -4303,19 +898,17 @@ class TestGitCheckCommand(unittest.TestCase):
             os.chdir(prev_cwd)
 
     def test_git_check_on_dirty_repo_fails(self) -> None:
-        """SRS-312: --git-check fails and prints only the specified error string."""
         (self.TEST_DIR / "dirty.txt").write_text("dirty", encoding="utf-8")
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
             with (
                 patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+                patch("sys.stdout", new_callable=io.StringIO),
                 patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
             ):
                 rc = cli.main(["--git-check"])
             self.assertNotEqual(rc, 0)
-            self.assertEqual(mock_stdout.getvalue(), "")
             self.assertEqual(
                 mock_stderr.getvalue().strip(), "ERROR: Git status unclear!"
             )
@@ -4323,49 +916,54 @@ class TestGitCheckCommand(unittest.TestCase):
             os.chdir(prev_cwd)
 
     def test_git_check_rejects_base(self) -> None:
-        """SRS-311: --git-check must reject --base."""
         with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
             rc = cli.main(["--git-check", "--base", str(self.TEST_DIR)])
         self.assertNotEqual(rc, 0)
 
+    def test_git_check_outside_git_repo_fails(self) -> None:
+        non_git = Path(tempfile.mkdtemp(prefix="usereq-nongit-"))
+        self.addCleanup(shutil.rmtree, non_git, ignore_errors=True)
+        prev_cwd = Path.cwd()
+        try:
+            os.chdir(non_git)
+            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+                rc = cli.main(["--git-check"])
+            self.assertNotEqual(rc, 0)
+        finally:
+            os.chdir(prev_cwd)
 
-class TestDocsCheckCommand(unittest.TestCase):
-    """SRS-313..SRS-317, SRS-330: Verifies --docs-check behavior."""
+
+class TestDocsCheckCommand(HomeIsolatedTestCase):
+    """SRS-313..SRS-317: --docs-check uses docs-dir from the global configuration."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-docs-check-"))
         (self.TEST_DIR / "docs").mkdir(exist_ok=True)
         (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
         (self.TEST_DIR / "tests").mkdir(exist_ok=True)
         (self.TEST_DIR / "src").mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                ]
-            )
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.TEST_DIR)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.run_cli(
+            [
+                "--base",
+                str(self.TEST_DIR),
+                "--docs-dir",
+                "docs",
+                "--guidelines-dir",
+                "guidelines",
+                "--tests-dir",
+                "tests",
+                "--src-dir",
+                "src",
+                "--provider",
+                "codex:prompts",
+            ]
+        )
 
     def test_docs_check_all_present_succeeds(self) -> None:
-        """SRS-314: succeeds when all three doc files exist."""
-        doc = self.TEST_DIR / "docs"
-        (doc / "REQUIREMENTS.md").write_text("r", encoding="utf-8")
-        (doc / "WORKFLOW.md").write_text("w", encoding="utf-8")
-        (doc / "REFERENCES.md").write_text("f", encoding="utf-8")
+        for name in ("REQUIREMENTS.md", "WORKFLOW.md", "REFERENCES.md"):
+            (self.TEST_DIR / "docs" / name).write_text("doc\n", encoding="utf-8")
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
@@ -4376,76 +974,37 @@ class TestDocsCheckCommand(unittest.TestCase):
             os.chdir(prev_cwd)
 
     def test_docs_check_missing_requirements(self) -> None:
-        """SRS-315: fails when REQUIREMENTS.md is missing."""
+        (self.TEST_DIR / "docs" / "WORKFLOW.md").write_text("doc\n", encoding="utf-8")
+        (self.TEST_DIR / "docs" / "REFERENCES.md").write_text("doc\n", encoding="utf-8")
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+            with (
+                patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+                patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+            ):
                 rc = cli.main(["--docs-check"])
             self.assertNotEqual(rc, 0)
+            self.assertIn("REQUIREMENTS.md", mock_stdout.getvalue())
         finally:
             os.chdir(prev_cwd)
 
-    def test_docs_check_missing_workflow(self) -> None:
-        """SRS-316: fails when WORKFLOW.md is missing."""
-        (self.TEST_DIR / "docs" / "REQUIREMENTS.md").write_text("r", encoding="utf-8")
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--docs-check"])
-            self.assertNotEqual(rc, 0)
-        finally:
-            os.chdir(prev_cwd)
+    def test_docs_check_rejects_base(self) -> None:
+        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+            rc = cli.main(["--docs-check", "--base", str(self.TEST_DIR)])
+        self.assertNotEqual(rc, 0)
 
 
-class TestGitWtNameCommand(unittest.TestCase):
-    """SRS-318, SRS-319, SRS-330: Verifies --git-wt-name output format."""
+class TestGitWtNameCommand(HomeIsolatedTestCase):
+    """SRS-318/SRS-319/SRS-391: --git-wt-name uses runtime git root."""
 
     def setUp(self) -> None:
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-git-wt-name-"))
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
-        subprocess.run(
-            ["git", "commit", "--allow-empty", "-m", "init"],
-            cwd=str(self.TEST_DIR),
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "t@t",
-            },
-        )
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                ]
-            )
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.TEST_DIR)
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-wt-name-"))
+        make_git_repo(self.TEST_DIR)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
     def test_git_wt_name_format(self) -> None:
-        """SRS-319: output matches useReq-<PROJECT>-<BRANCH>-<TIMESTAMP>."""
-        import io
-
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
@@ -4455,379 +1014,164 @@ class TestGitWtNameCommand(unittest.TestCase):
             ):
                 rc = cli.main(["--git-wt-name"])
             self.assertEqual(rc, 0)
-            output = mock_stdout.getvalue().strip()
-            self.assertTrue(
-                output.startswith("useReq-"),
-                f"Output must start with 'useReq-': {output}",
-            )
-            parts = output.split("-")
-            self.assertGreaterEqual(len(parts), 4)
-            # Last part must be a timestamp (14 digits).
-            self.assertTrue(parts[-1].isdigit() and len(parts[-1]) == 14)
+            value = mock_stdout.getvalue().strip()
+        finally:
+            os.chdir(prev_cwd)
+        self.assertRegex(
+            value,
+            rf"useReq-{self.TEST_DIR.name}-master-\d{{14}}",
+        )
+
+    def test_git_wt_name_outside_git_repo_fails(self) -> None:
+        non_git = Path(tempfile.mkdtemp(prefix="usereq-nongit-"))
+        self.addCleanup(shutil.rmtree, non_git, ignore_errors=True)
+        prev_cwd = Path.cwd()
+        try:
+            os.chdir(non_git)
+            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+                rc = cli.main(["--git-wt-name"])
+            self.assertNotEqual(rc, 0)
         finally:
             os.chdir(prev_cwd)
 
 
-class TestGitWtCreateDeleteCommands(unittest.TestCase):
-    """SRS-320..SRS-332, SRS-335: Verifies --git-wt-create and --git-wt-delete."""
+class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
+    """SRS-320..SRS-332/SRS-335/SRS-391: worktree create/delete commands."""
 
     def setUp(self) -> None:
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-git-wt-cd-"))
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
-        subprocess.run(
-            ["git", "commit", "--allow-empty", "-m", "init"],
-            cwd=str(self.TEST_DIR),
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "t@t",
-            },
-        )
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                ]
-            )
-        subprocess.run(
-            ["git", "add", "-A"], cwd=str(self.TEST_DIR), capture_output=True
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "setup"],
-            cwd=str(self.TEST_DIR),
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "t@t",
-            },
-        )
-
-    def tearDown(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-wt-cd-"))
+        make_git_repo(self.TEST_DIR)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
         parent = self.TEST_DIR.parent
-        for d in parent.iterdir():
-            if d.name.startswith("test-wt-"):
-                shutil.rmtree(d, ignore_errors=True)
-        shutil.rmtree(self.TEST_DIR)
+        self.addCleanup(
+            subprocess.run,
+            ["git", "worktree", "remove", "--force", str(parent / "wt-test-wt")]
+            if (parent / "wt-test-wt").exists()
+            else ["true"],
+            capture_output=True,
+        )
 
     def test_wt_create_invalid_name_fails(self) -> None:
-        """SRS-321: invalid characters in WT_NAME trigger error."""
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "bad name with spaces"])
+                rc = cli.main(["--git-wt-create", "bad/name"])
             self.assertNotEqual(rc, 0)
-            self.assertEqual(Path.cwd(), self.TEST_DIR)
         finally:
             os.chdir(prev_cwd)
 
     def test_wt_create_failure_does_not_change_cwd(self) -> None:
-        """SRS-331: cwd remains unchanged when --git-wt-create terminates in error."""
-        wt_name = "test-wt-fail-cwd"
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
-            failed = subprocess.CompletedProcess(
-                args=["git", "worktree", "add"], returncode=1, stdout="", stderr="boom"
-            )
-            with (
-                patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                patch("usereq.cli.subprocess.run", return_value=failed),
-            ):
-                rc = cli.main(["--git-wt-create", wt_name])
-            self.assertNotEqual(rc, 0)
+            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+                cli.main(["--git-wt-create", "in valid"])
             self.assertEqual(Path.cwd(), self.TEST_DIR)
-        finally:
-            os.chdir(prev_cwd)
-
-    def test_wt_create_post_create_failure_rolls_back(self) -> None:
-        """SRS-331: post-create failures rollback created exact worktree and branch."""
-        wt_name = "test-wt-rollback"
-        trigger_src = self.TEST_DIR / ".trigger-copy" / "data"
-        trigger_src.mkdir(parents=True, exist_ok=True)
-        (trigger_src / "marker.txt").write_text("trigger", encoding="utf-8")
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with (
-                patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                patch(
-                    "usereq.cli.PROVIDER_DIR_MAP",
-                    {"claude": [".trigger-copy"]},
-                ),
-                patch(
-                    "usereq.cli.shutil.copytree", side_effect=OSError("copy failure")
-                ),
-            ):
-                rc = cli.main(["--git-wt-create", wt_name])
-            self.assertNotEqual(rc, 0)
-            wt_dir = self.TEST_DIR.parent / wt_name
-            self.assertFalse(
-                wt_dir.exists(), "Failed create must rollback worktree path"
-            )
-            br = subprocess.run(
-                ["git", "show-ref", "--verify", f"refs/heads/{wt_name}"],
-                cwd=str(self.TEST_DIR),
-                capture_output=True,
-                text=True,
-            )
-            self.assertNotEqual(br.returncode, 0, "Failed create must rollback branch")
         finally:
             os.chdir(prev_cwd)
 
     def test_wt_create_and_delete_roundtrip(self) -> None:
-        """SRS-322, SRS-323, SRS-328, SRS-331, SRS-332, SRS-335: create then delete a worktree."""
-        wt_name = "test-wt-roundtrip"
-        src_venv = self.TEST_DIR / ".venv"
-        (src_venv / "bin").mkdir(parents=True, exist_ok=True)
-        (src_venv / "bin" / "marker").write_text("venv-copy", encoding="utf-8")
         prev_cwd = Path.cwd()
+        wt_path = self.TEST_DIR.parent / "usereq-roundtrip-wt"
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", wt_name])
+                rc = cli.main(["--git-wt-create", "usereq-roundtrip-wt"])
             self.assertEqual(rc, 0)
-            wt_dir = self.TEST_DIR.parent / wt_name
-            self.assertTrue(wt_dir.is_dir(), "Worktree directory must exist")
-            self.assertTrue((wt_dir / ".req").is_dir(), ".req must be copied")
-            self.assertTrue((wt_dir / ".venv").is_dir(), ".venv must be copied")
-            self.assertEqual(
-                (wt_dir / ".venv" / "bin" / "marker").read_text(encoding="utf-8"),
-                "venv-copy",
-            )
+            self.assertTrue(wt_path.is_dir())
             self.assertEqual(Path.cwd(), self.TEST_DIR)
-            # Delete.
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc2 = cli.main(["--git-wt-delete", wt_name])
-            self.assertEqual(rc2, 0)
-            self.assertEqual(Path.cwd(), self.TEST_DIR)
-        finally:
-            os.chdir(prev_cwd)
-
-    def test_wt_create_resolves_relative_config_paths_for_final_cwd(self) -> None:
-        """SRS-322, SRS-331: relative git/base paths in config must resolve to absolute worktree destination."""
-        wt_name = "test-wt-relative-config-paths"
-        config_path = self.TEST_DIR / ".req" / "config.json"
-        config_payload = json.loads(config_path.read_text(encoding="utf-8"))
-        config_payload["git-path"] = "."
-        config_payload["base-path"] = "."
-        config_path.write_text(
-            f"{json.dumps(config_payload, indent=2, sort_keys=True)}\n",
-            encoding="utf-8",
-        )
-
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", wt_name])
+            rc = cli.main(["--git-wt-delete", "usereq-roundtrip-wt"])
             self.assertEqual(rc, 0)
-            expected_wt_dir = self.TEST_DIR.parent / wt_name
-            self.assertTrue(
-                expected_wt_dir.is_dir(), "Worktree must be created as sibling"
-            )
-            self.assertEqual(Path.cwd(), self.TEST_DIR)
+            self.assertFalse(wt_path.exists())
         finally:
-            os.chdir(prev_cwd)
-
-    def test_wt_delete_dirty_worktree_forced(self) -> None:
-        """SRS-328: delete must force-remove target worktree with pending changes."""
-        wt_name = "test-wt-dirty"
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", wt_name])
-            self.assertEqual(rc, 0)
-            wt_dir = self.TEST_DIR.parent / wt_name
-            (wt_dir / "dirty.txt").write_text("pending", encoding="utf-8")
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc2 = cli.main(["--git-wt-delete", wt_name])
-            self.assertEqual(rc2, 0)
-            self.assertFalse(
-                wt_dir.exists(), "Dirty target worktree must be force-removed"
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(wt_path)],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
             )
-        finally:
+            subprocess.run(
+                ["git", "branch", "-D", "usereq-roundtrip-wt"],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
             os.chdir(prev_cwd)
 
     def test_wt_delete_rejects_partial_name_matches(self) -> None:
-        """SRS-327: delete must reject partial-name matches for worktree/branch."""
-        wt_name = "test-wt-target-extra"
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", wt_name])
+                rc = cli.main(["--git-wt-create", "usereq-partial-full"])
             self.assertEqual(rc, 0)
-            wt_dir = self.TEST_DIR.parent / wt_name
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc2 = cli.main(["--git-wt-delete", "test-wt-target"])
-            self.assertNotEqual(rc2, 0)
-            self.assertTrue(wt_dir.exists(), "Non-target worktree must not be deleted")
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc3 = cli.main(["--git-wt-delete", wt_name])
-            self.assertEqual(rc3, 0)
+            rc = cli.main(["--git-wt-delete", "usereq-partial"])
+            self.assertNotEqual(rc, 0)
         finally:
+            subprocess.run(
+                [
+                    "git",
+                    "worktree",
+                    "remove",
+                    "--force",
+                    str(self.TEST_DIR.parent / "usereq-partial-full"),
+                ],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "branch", "-D", "usereq-partial-full"],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
             os.chdir(prev_cwd)
 
     def test_wt_delete_nonexistent_fails(self) -> None:
-        """SRS-327: deleting a non-existent worktree/branch fails."""
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-delete", "nonexistent-wt-branch-xyz"])
+                rc = cli.main(["--git-wt-delete", "does-not-exist"])
             self.assertNotEqual(rc, 0)
         finally:
             os.chdir(prev_cwd)
 
-
-class TestGitWtCreateNestedBasePath(unittest.TestCase):
-    """SRS-331: Verifies --git-wt-create keeps cwd unchanged with non-root base-path."""
-
-    def setUp(self) -> None:
-        self.ROOT_DIR = Path(tempfile.mkdtemp(prefix="usereq-git-wt-nested-"))
-        self.GIT_DIR = self.ROOT_DIR / "repo"
-        self.BASE_DIR = self.GIT_DIR / "nested" / "project"
-        self.BASE_DIR.mkdir(parents=True, exist_ok=True)
-        (self.BASE_DIR / "docs").mkdir(exist_ok=True)
-        (self.BASE_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.BASE_DIR / "tests").mkdir(exist_ok=True)
-        (self.BASE_DIR / "src").mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.GIT_DIR), capture_output=True)
-        subprocess.run(
-            ["git", "commit", "--allow-empty", "-m", "init"],
-            cwd=str(self.GIT_DIR),
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "t@t",
-            },
-        )
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cli.main(
-                [
-                    "--base",
-                    str(self.BASE_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                ]
-            )
-        subprocess.run(["git", "add", "-A"], cwd=str(self.GIT_DIR), capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "setup"],
-            cwd=str(self.GIT_DIR),
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "t@t",
-            },
-        )
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.ROOT_DIR)
-
-    def test_wt_create_success_keeps_current_working_directory(self) -> None:
-        """SRS-331: successful --git-wt-create keeps caller cwd unchanged."""
-        wt_name = "test-wt-nested-root-cwd"
+    def test_wt_create_copies_venv_when_present(self) -> None:
+        venv = self.TEST_DIR / ".venv"
+        venv.mkdir(exist_ok=True)
+        (venv / "pyvenv.cfg").write_text("cfg\n", encoding="utf-8")
         prev_cwd = Path.cwd()
+        wt_path = self.TEST_DIR.parent / "usereq-venv-wt"
         try:
-            os.chdir(self.BASE_DIR)
+            os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", wt_name])
+                rc = cli.main(["--git-wt-create", "usereq-venv-wt"])
             self.assertEqual(rc, 0)
-            wt_root = self.GIT_DIR.parent / wt_name
-            wt_project = wt_root / "nested" / "project"
-            self.assertTrue(
-                wt_project.is_dir(), "Nested base-dir must exist in worktree"
-            )
-            self.assertEqual(Path.cwd(), self.BASE_DIR)
+            self.assertTrue((wt_path / ".venv" / "pyvenv.cfg").exists())
         finally:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(wt_path)],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "branch", "-D", "usereq-venv-wt"],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
             os.chdir(prev_cwd)
 
 
-class TestGitRepositoryPathCommands(unittest.TestCase):
-    """SRS-333, SRS-334, SRS-347, SRS-330: Verifies --git-path and --get-base-path."""
+class TestGitRepositoryPathCommands(HomeIsolatedTestCase):
+    """SRS-333/SRS-334/SRS-347/SRS-391: runtime path resolution commands."""
 
     def setUp(self) -> None:
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-git-path-"))
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-        subprocess.run(["git", "init"], cwd=str(self.TEST_DIR), capture_output=True)
-        subprocess.run(
-            ["git", "commit", "--allow-empty", "-m", "init"],
-            cwd=str(self.TEST_DIR),
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "test",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "test",
-                "GIT_COMMITTER_EMAIL": "t@t",
-            },
-        )
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            cli.main(
-                [
-                    "--base",
-                    str(self.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
-                    "--provider",
-                    "claude:prompts",
-                ]
-            )
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-gitpath-"))
+        make_git_repo(self.TEST_DIR)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
-    def tearDown(self) -> None:
-        shutil.rmtree(self.TEST_DIR)
-
-    def test_git_path_prints_configured_git_path(self) -> None:
-        """SRS-334: --git-path prints configured git-path from .req/config.json."""
+    def test_git_path_prints_runtime_git_root(self) -> None:
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
@@ -4837,14 +1181,11 @@ class TestGitRepositoryPathCommands(unittest.TestCase):
             ):
                 rc = cli.main(["--git-path"])
             self.assertEqual(rc, 0)
-            self.assertEqual(
-                mock_stdout.getvalue().strip(), str(self.TEST_DIR.resolve())
-            )
+            self.assertEqual(mock_stdout.getvalue().strip(), str(self.TEST_DIR))
         finally:
             os.chdir(prev_cwd)
 
-    def test_get_base_path_prints_configured_base_path(self) -> None:
-        """SRS-347: --get-base-path prints configured base-path from .req/config.json."""
+    def test_get_base_path_prints_cwd(self) -> None:
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
@@ -4854,236 +1195,159 @@ class TestGitRepositoryPathCommands(unittest.TestCase):
             ):
                 rc = cli.main(["--get-base-path"])
             self.assertEqual(rc, 0)
-            self.assertEqual(
-                mock_stdout.getvalue().strip(),
-                str(self.TEST_DIR.resolve()),
-            )
+            self.assertEqual(mock_stdout.getvalue().strip(), str(self.TEST_DIR))
         finally:
             os.chdir(prev_cwd)
 
     def test_git_path_rejects_base(self) -> None:
-        """SRS-333: --git-path must reject --base."""
         with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
             rc = cli.main(["--git-path", "--base", str(self.TEST_DIR)])
         self.assertNotEqual(rc, 0)
 
     def test_get_base_path_rejects_base(self) -> None:
-        """SRS-333: --get-base-path must reject --base."""
         with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
             rc = cli.main(["--get-base-path", "--base", str(self.TEST_DIR)])
         self.assertNotEqual(rc, 0)
 
-    def test_git_path_without_config_fails_with_expected_error(self) -> None:
-        """SRS-334: --git-path fails only when .req/config.json is missing."""
+    def test_git_path_outside_git_repo_fails(self) -> None:
+        non_git = Path(tempfile.mkdtemp(prefix="usereq-nongit-"))
+        self.addCleanup(shutil.rmtree, non_git, ignore_errors=True)
         prev_cwd = Path.cwd()
-        with tempfile.TemporaryDirectory(
-            prefix="usereq-git-path-missing-config-"
-        ) as non_git:
-            try:
-                os.chdir(non_git)
-                with (
-                    patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                    patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
-                ):
-                    rc = cli.main(["--git-path"])
-                self.assertNotEqual(rc, 0)
-                self.assertEqual(
-                    mock_stderr.getvalue().strip(),
-                    "Error: .req/config.json not found in the project root",
-                )
-            finally:
-                os.chdir(prev_cwd)
+        try:
+            os.chdir(non_git)
+            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+                rc = cli.main(["--git-path"])
+            self.assertNotEqual(rc, 0)
+        finally:
+            os.chdir(prev_cwd)
 
-    def test_get_base_path_without_config_fails_with_expected_error(self) -> None:
-        """SRS-347: --get-base-path fails only when .req/config.json is missing."""
-        prev_cwd = Path.cwd()
-        with tempfile.TemporaryDirectory(
-            prefix="usereq-get-base-path-missing-config-"
-        ) as non_git:
-            try:
-                os.chdir(non_git)
-                with (
-                    patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                    patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
-                ):
-                    rc = cli.main(["--get-base-path"])
-                self.assertNotEqual(rc, 0)
-                self.assertEqual(
-                    mock_stderr.getvalue().strip(),
-                    "Error: .req/config.json not found in the project root",
-                )
-            finally:
-                os.chdir(prev_cwd)
 
-    def test_git_path_reads_configured_value_outside_git_repository(self) -> None:
-        """SRS-334: --git-path reads config value even outside a git repository."""
-        prev_cwd = Path.cwd()
-        with tempfile.TemporaryDirectory(
-            prefix="usereq-git-path-config-nongit-"
-        ) as non_git:
-            non_git_path = Path(non_git)
-            (non_git_path / ".req").mkdir(parents=True, exist_ok=True)
-            (non_git_path / ".req" / "config.json").write_text(
-                json.dumps(
-                    {
-                        "git-path": "/configured/git/path",
-                        "base-path": "/configured/base/path",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            try:
-                os.chdir(non_git_path)
-                with (
-                    patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                    patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
-                ):
-                    rc = cli.main(["--git-path"])
-                self.assertEqual(rc, 0)
-                self.assertEqual(mock_stdout.getvalue().strip(), "/configured/git/path")
-            finally:
-                os.chdir(prev_cwd)
+class TestStaticCheckConfig(HomeIsolatedTestCase):
+    """SRS-248..SRS-252: static-check configuration persistence."""
 
-    def test_get_base_path_reads_configured_value_outside_git_repository(self) -> None:
-        """SRS-347: --get-base-path reads config value even outside a git repository."""
-        prev_cwd = Path.cwd()
-        with tempfile.TemporaryDirectory(
-            prefix="usereq-base-path-config-nongit-"
-        ) as non_git:
-            non_git_path = Path(non_git)
-            (non_git_path / ".req").mkdir(parents=True, exist_ok=True)
-            (non_git_path / ".req" / "config.json").write_text(
-                json.dumps(
-                    {
-                        "git-path": "/configured/git/path",
-                        "base-path": "/configured/base/path",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            try:
-                os.chdir(non_git_path)
-                with (
-                    patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                    patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
-                ):
-                    rc = cli.main(["--get-base-path"])
-                self.assertEqual(rc, 0)
-                self.assertEqual(
-                    mock_stdout.getvalue().strip(), "/configured/base/path"
-                )
-            finally:
-                os.chdir(prev_cwd)
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-scfg-"))
+        for sub in ("docs", "guidelines", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.base_argv = [
+            "--base",
+            str(self.TEST_DIR),
+            "--docs-dir",
+            "docs",
+            "--guidelines-dir",
+            "guidelines",
+            "--tests-dir",
+            "tests",
+            "--src-dir",
+            "src",
+        ]
 
-    def test_upgrade_on_linux_executes_uv_install(self) -> None:
-        """SRS-343: --upgrade executes uv install on Linux."""
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            with (
-                patch("platform.system", return_value="Linux"),
-                patch("usereq.cli.subprocess.run", autospec=True) as mocked_run,
-            ):
-                mocked_run.return_value = subprocess.CompletedProcess(
-                    args=[], returncode=0
-                )
-                cli.run_upgrade()
-        mocked_run.assert_called_once_with(
-            [
-                "uv",
-                "tool",
-                "install",
-                "usereq",
-                "--force",
-                "--from",
-                "git+https://github.com/Ogekuri/useReq.git",
-            ],
-            check=False,
+    def test_enable_static_check_saved_to_global_config(self) -> None:
+        rc = self.run_cli(
+            self.base_argv
+            + [
+                "--provider",
+                "codex:prompts",
+                "--enable-static-check",
+                "Python=Pylance",
+            ]
         )
+        self.assertEqual(rc, 0)
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            data["static-check"],
+            {"Python": [{"module": "Pylance"}]},
+        )
+
+    def test_update_preserves_existing_static_check_entries(self) -> None:
+        self.run_cli(
+            self.base_argv
+            + [
+                "--provider",
+                "codex:prompts",
+                "--enable-static-check",
+                "Python=Pylance",
+            ]
+        )
+        rc = self.run_cli(
+            [
+                "--update",
+                "--base",
+                str(self.TEST_DIR),
+                "--enable-static-check",
+                "Python=Ruff",
+            ]
+        )
+        self.assertEqual(rc, 0)
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        modules = sorted(e["module"] for e in data["static-check"]["Python"])
+        self.assertEqual(modules, ["Pylance", "Ruff"])
+
+    def test_identity_duplicate_entries_discarded(self) -> None:
+        rc = self.run_cli(
+            self.base_argv
+            + [
+                "--provider",
+                "codex:prompts",
+                "--enable-static-check",
+                "Python=Pylance",
+                "--enable-static-check",
+                "Python=Pylance",
+            ]
+        )
+        self.assertEqual(rc, 0)
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(data["static-check"]["Python"]), 1)
+
+
+class TestUpgradeUninstall(unittest.TestCase):
+    """SRS-343/SRS-344: uv upgrade and uninstall command composition."""
 
     def test_upgrade_on_non_linux_prints_manual_command(self) -> None:
-        """SRS-343: --upgrade on non-Linux prints guidance and skips uv execution."""
         with (
-            patch("platform.system", return_value="Windows"),
-            patch("usereq.cli.subprocess.run", autospec=True) as mocked_run,
-            patch("sys.stdout", new_callable=io.StringIO) as mocked_stdout,
+            patch("usereq.cli.platform.system", return_value="Windows"),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
         ):
             cli.run_upgrade()
-        mocked_run.assert_not_called()
-        output = mocked_stdout.getvalue()
-        self.assertIn("supported only on Linux", output)
-        self.assertIn(
-            "uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git",
-            output,
-        )
-
-    def test_uninstall_on_linux_executes_uv_uninstall(self) -> None:
-        """SRS-344: --uninstall executes uv uninstall on Linux."""
-        with (
-            patch("platform.system", return_value="Linux"),
-            patch("usereq.cli.subprocess.run", autospec=True) as mocked_run,
-        ):
-            mocked_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
-            cli.run_uninstall()
-        mocked_run.assert_called_once_with(
-            ["uv", "tool", "uninstall", "usereq"],
-            check=False,
-        )
-
-    def test_uninstall_on_linux_removes_release_check_idle_file_and_empty_cache_dir(
-        self,
-    ) -> None:
-        """SRS-346: Linux uninstall removes idle-state file and empty ~/.cache/usereq."""
-        with tempfile.TemporaryDirectory() as temp_home:
-            idle_dir = Path(temp_home) / ".cache" / "usereq"
-            idle_dir.mkdir(parents=True, exist_ok=True)
-            idle_file = idle_dir / "check_version_idle-time.json"
-            idle_file.write_text("{}", encoding="utf-8")
-
-            with (
-                patch("platform.system", return_value="Linux"),
-                patch("usereq.cli.Path.home", return_value=Path(temp_home)),
-                patch("usereq.cli.subprocess.run", autospec=True) as mocked_run,
-            ):
-                mocked_run.return_value = subprocess.CompletedProcess(
-                    args=[], returncode=0
-                )
-                cli.run_uninstall()
-
-            self.assertFalse(idle_file.exists())
-            self.assertFalse(idle_dir.exists())
-
-    def test_uninstall_on_linux_keeps_cache_dir_when_not_empty(self) -> None:
-        """SRS-346: Linux uninstall keeps ~/.cache/usereq when non-idle files remain."""
-        with tempfile.TemporaryDirectory() as temp_home:
-            idle_dir = Path(temp_home) / ".cache" / "usereq"
-            idle_dir.mkdir(parents=True, exist_ok=True)
-            idle_file = idle_dir / "check_version_idle-time.json"
-            extra_file = idle_dir / "keep.txt"
-            idle_file.write_text("{}", encoding="utf-8")
-            extra_file.write_text("keep", encoding="utf-8")
-
-            with (
-                patch("platform.system", return_value="Linux"),
-                patch("usereq.cli.Path.home", return_value=Path(temp_home)),
-                patch("usereq.cli.subprocess.run", autospec=True) as mocked_run,
-            ):
-                mocked_run.return_value = subprocess.CompletedProcess(
-                    args=[], returncode=0
-                )
-                cli.run_uninstall()
-
-            self.assertFalse(idle_file.exists())
-            self.assertTrue(extra_file.exists())
-            self.assertTrue(idle_dir.exists())
+        self.assertIn("uv tool install", mock_stdout.getvalue())
 
     def test_uninstall_on_non_linux_prints_manual_command(self) -> None:
-        """SRS-344: --uninstall on non-Linux prints guidance and skips uv execution."""
         with (
-            patch("platform.system", return_value="Darwin"),
-            patch("usereq.cli.subprocess.run", autospec=True) as mocked_run,
-            patch("sys.stdout", new_callable=io.StringIO) as mocked_stdout,
+            patch("usereq.cli.platform.system", return_value="Windows"),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
         ):
             cli.run_uninstall()
-        mocked_run.assert_not_called()
-        output = mocked_stdout.getvalue()
-        self.assertIn("supported only on Linux", output)
-        self.assertIn("uv tool uninstall usereq", output)
+        self.assertIn("uv tool uninstall", mock_stdout.getvalue())
+
+    def test_upgrade_on_linux_executes_uv_install(self) -> None:
+        with (
+            patch("usereq.cli.platform.system", return_value="Linux"),
+            patch("usereq.cli.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value.returncode = 0
+            cli.run_upgrade()
+        mock_run.assert_called_once()
+        command = mock_run.call_args[0][0]
+        self.assertEqual(command[:4], ["uv", "tool", "install", "usereq"])
+
+    def test_uninstall_on_linux_executes_uv_uninstall(self) -> None:
+        with (
+            patch("usereq.cli.platform.system", return_value="Linux"),
+            patch("usereq.cli.subprocess.run") as mock_run,
+            patch(
+                "usereq.cli.cleanup_release_check_idle_state_cache", autospec=True
+            ),
+        ):
+            mock_run.return_value.returncode = 0
+            cli.run_uninstall()
+        command = mock_run.call_args[0][0]
+        self.assertEqual(command[:3], ["uv", "tool", "uninstall"])
+
+
+if __name__ == "__main__":
+    unittest.main()

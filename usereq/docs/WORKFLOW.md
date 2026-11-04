@@ -2,7 +2,7 @@
 - `PROC:main`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `CLI orchestration for setup, source analysis, compression, token counting, static-check dispatch, git integration, and worktree management`
+  - `role`: `CLI orchestration for user-level provider resource installation, global configuration persistence, source analysis, compression, token counting, static-check dispatch, git integration, and worktree management`
   - `entrypoints`: `main(argv: Optional[list[str]] = None) -> int`
   - `defining_files`: `src/usereq/cli.py`
   - `threads`: `no explicit threads detected`
@@ -16,7 +16,7 @@
 - `PROC:test-install-sh`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `Smoke-install helper that resets generated provider directories and invokes repository installation with the canonical multi-provider configuration`
+  - `role`: `Smoke-install helper that isolates HOME, resets generated user-level provider directories under the disposable HOME, and invokes repository installation with the canonical multi-provider configuration`
   - `entrypoints`: `scripts/test-install.sh`
   - `defining_files`: `scripts/test-install.sh`
   - `threads`: `no explicit threads detected`
@@ -85,7 +85,7 @@
           - `_extract_file_level_doxygen_fields(...)`: extract file-level Doxygen metadata [`src/usereq/find_constructs.py`]
           - `format_construct(...)`: render construct metadata, Doxygen bullets, and code block [`src/usereq/find_constructs.py`]
       - `run_files_static_check_cmd(...)`: process explicit file list for static checks with `fail_only=True`, including Command execution order `<cmd> [params...] <filename>` and project-base runtime context propagation [`src/usereq/cli.py`]
-        - `load_static_check_from_config(...)`: load static-check settings from `.req/config.json` [`src/usereq/cli.py`]
+        - `load_static_check_from_config(...)`: load static-check settings from `~/.config/usereq/config.json` [`src/usereq/cli.py`]
         - `dispatch_static_check_for_file(..., fail_only=True, project_base=...)`: dispatch checker for one file/language with output suppression on pass and runtime context [`src/usereq/static_check.py`]
           - `StaticCheckBase.run(...)`: execute checker and aggregate exit code; suppress output for passing files when `fail_only=True` [`src/usereq/static_check.py`]
     - `_is_project_scan_command(...)`: detect project-scan command path including git and worktree commands [`src/usereq/cli.py`]
@@ -103,71 +103,78 @@
         - `find_constructs_in_files(...)`: perform tag/name filtered extraction [`src/usereq/find_constructs.py`]
       - `run_tokens(...)`: count tokens on canonical docs files (REQUIREMENTS/WORKFLOW/REFERENCES) in docs-dir [`src/usereq/cli.py`]
         - `_resolve_project_base(...)`: resolve project root in here-mode path [`src/usereq/cli.py`]
-        - `load_config(...)`: load docs-dir from `.req/config.json` [`src/usereq/cli.py`]
+        - `load_config(...)`: load docs-dir from `~/.config/usereq/config.json` [`src/usereq/cli.py`]
         - `ensure_doc_directory(...)`: validate docs directory existence [`src/usereq/cli.py`]
         - `run_files_tokens(...)`: execute token counting on selected files [`src/usereq/cli.py`]
       - `run_project_static_check_cmd(...)`: static-check project-selected source and test files with `fail_only=True`, including Command execution order `<cmd> [params...] <filename>`, project-base runtime context propagation, and exclusion of fixture corpus paths under `tests/fixtures` / `<tests-dir>/fixtures` [`src/usereq/cli.py`]
-        - `_resolve_project_src_dirs(...)`: resolve project base and source dirs [`src/usereq/cli.py`]
-        - `load_static_check_from_config(...)`: load static-check entries [`src/usereq/cli.py`]
-        - `load_full_config(...)`: load full config to extract `tests-dir` for appending to source dirs [`src/usereq/cli.py`]
+        - `_resolve_project_src_dirs(...)`: resolve project base and source dirs from `~/.config/usereq/config.json` [`src/usereq/cli.py`]
+        - `load_static_check_from_config(...)`: load static-check entries from `~/.config/usereq/config.json` [`src/usereq/cli.py`]
+        - `load_full_config(...)`: load full global config to extract `tests-dir` for appending to source dirs [`src/usereq/cli.py`]
         - `_collect_source_files(...)`: select files via `git ls-files` + extension filtering (including JavaScript `.js` and `.mjs`) before fixture-subtree exclusion for static checks [`src/usereq/cli.py`]
         - `dispatch_static_check_for_file(..., fail_only=True, project_base=...)`: dispatch checker for each selected file with output suppression on pass and runtime context [`src/usereq/static_check.py`]
-      - `run_git_check(...)`: execute `--git-check` verifying clean git status and valid HEAD in configured `git-path`, with output only on failure [`src/usereq/cli.py`]
-        - `_resolve_project_base(...)`: resolve project root in here-mode path [`src/usereq/cli.py`]
-        - `load_full_config(...)`: load all parameters from `.req/config.json` [`src/usereq/cli.py`]
+      - `run_git_check(...)`: execute `--git-check` verifying clean git status and valid HEAD in the runtime-resolved git repository root, with output only on failure [`src/usereq/cli.py`]
+        - `_resolve_runtime_git_root(...)`: resolve git repository root from the current working directory (SRS-391) [`src/usereq/cli.py`]
+          - `resolve_git_root(...)`: execute `git rev-parse --show-toplevel` [`src/usereq/cli.py`]
         - external boundaries: `subprocess.run(["bash", "-c", ...])` git status command
       - `run_docs_check(...)`: execute `--docs-check` verifying existence of REQUIREMENTS.md, WORKFLOW.md, REFERENCES.md [`src/usereq/cli.py`]
         - `_resolve_project_base(...)`: resolve project root in here-mode path [`src/usereq/cli.py`]
-        - `load_full_config(...)`: load all parameters from `.req/config.json` [`src/usereq/cli.py`]
-      - `run_git_wt_name(...)`: execute `--git-wt-name` printing standardized worktree name `useReq-<PROJECT>-<BRANCH>-<TIMESTAMP>` [`src/usereq/cli.py`]
-        - `_resolve_project_base(...)`: resolve project root in here-mode path [`src/usereq/cli.py`]
-        - `load_full_config(...)`: load all parameters from `.req/config.json` [`src/usereq/cli.py`]
+        - `load_full_config(...)`: load `docs-dir` from `~/.config/usereq/config.json` [`src/usereq/cli.py`]
+      - `run_git_wt_name(...)`: execute `--git-wt-name` printing standardized worktree name `useReq-<PROJECT>-<BRANCH>-<TIMESTAMP>` with PROJECT derived from the runtime-resolved git repository root [`src/usereq/cli.py`]
+        - `_resolve_runtime_git_root(...)`: resolve git repository root from the current working directory (SRS-391) [`src/usereq/cli.py`]
+          - `resolve_git_root(...)`: execute `git rev-parse --show-toplevel` [`src/usereq/cli.py`]
         - `sanitize_branch_name(...)`: replace path-incompatible characters with `-` [`src/usereq/cli.py`]
         - external boundaries: `subprocess.run(["git", "branch", "--show-current"], ...)` branch name resolution
-      - `run_git_wt_create(...)`: execute `--git-wt-create` creating worktree+branch, resolving configured git/base paths against project base before destination derivation, running copy steps, never changing caller cwd, and rolling back exact created worktree/branch on post-create failure [`src/usereq/cli.py`]
+      - `run_git_wt_create(...)`: execute `--git-wt-create` creating worktree+branch from runtime-resolved git paths, copying `.venv` when present, never changing caller cwd, and rolling back exact created worktree/branch on post-create failure [`src/usereq/cli.py`]
         - `validate_wt_name(...)`: validate worktree/branch name against invalid character regex [`src/usereq/cli.py`]
-        - `_resolve_project_base(...)`: resolve project root in here-mode path [`src/usereq/cli.py`]
-        - `load_full_config(...)`: load all parameters from `.req/config.json` [`src/usereq/cli.py`]
-        - external boundaries: `subprocess.run(["git", "worktree", "add", ...])` worktree creation, `shutil.copytree(...)` directory copy
-      - `run_git_wt_delete(...)`: execute `--git-wt-delete` by validating exact target path/ref only, changing cwd to configured `base-path`, then force-removing the exact target worktree/branch even with pending target changes [`src/usereq/cli.py`]
-        - `_resolve_project_base(...)`: resolve project root in here-mode path [`src/usereq/cli.py`]
-        - `load_full_config(...)`: load all parameters from `.req/config.json` [`src/usereq/cli.py`]
+        - `_resolve_runtime_git_root(...)`: resolve git repository root from the current working directory (SRS-391) [`src/usereq/cli.py`]
+          - `resolve_git_root(...)`: execute `git rev-parse --show-toplevel` [`src/usereq/cli.py`]
+        - `_rollback_worktree_create(...)`: force-remove exact worktree and branch on post-create failure [`src/usereq/cli.py`]
+        - external boundaries: `subprocess.run(["git", "worktree", "add", ...])` worktree creation, `shutil.copytree(...)` `.venv` copy
+      - `run_git_wt_delete(...)`: execute `--git-wt-delete` by validating exact target path/ref only against runtime-resolved git paths, then force-removing the exact target worktree/branch even with pending target changes [`src/usereq/cli.py`]
+        - `_resolve_runtime_git_root(...)`: resolve git repository root from the current working directory (SRS-391) [`src/usereq/cli.py`]
+          - `resolve_git_root(...)`: execute `git rev-parse --show-toplevel` [`src/usereq/cli.py`]
+        - `_worktree_path_exists_exact(...)`: verify exact worktree path via `git worktree list --porcelain` [`src/usereq/cli.py`]
         - external boundaries: `subprocess.run(["git", "worktree", "remove", ...])` and `subprocess.run(["git", "branch", "-D", ...])` worktree/branch removal
-      - `run_git_path(...)`: execute `--git-path` and print configured `"git-path"` from `.req/config.json` [`src/usereq/cli.py`]
-        - `_resolve_project_base(...)`: resolve project root in here-mode path [`src/usereq/cli.py`]
-        - `load_full_config(...)`: load all parameters from `.req/config.json` [`src/usereq/cli.py`]
-      - `run_get_base_path(...)`: execute `--get-base-path` and print configured `"base-path"` from `.req/config.json` [`src/usereq/cli.py`]
-        - `_resolve_project_base(...)`: resolve project root in here-mode path [`src/usereq/cli.py`]
-        - `load_full_config(...)`: load all parameters from `.req/config.json` [`src/usereq/cli.py`]
-    - `run(...)`: initialization/update command path for resources and config persistence; validates git repository and persists base-path/git-path; on fresh install applies default directory values when `--docs-dir`/`--guidelines-dir`/`--tests-dir`/`--src-dir` are omitted and creates missing parent directories for configured install paths; requires at least one `--provider` spec in non-update mode (SRS-035), supports provider `pi` in provider-spec activation for prompts/skills generation, resolves artifact-local `enable-models`/`enable-tools` and provider-scoped `prompts-use-agents`/`legacy`, emits provider-specific skill tool-restriction fields (including `pi` `allowed-tools` scalar serialization), deduplicates static-check entries by `(language, module, cmd, params)` identity, and preserves pre-existing static-check entries from `.req/config.json` when adding new `--enable-static-check` entries [`src/usereq/cli.py`]
-      - `is_inside_git_repo(...)`: verify target path is inside a git work tree (SRS-305) [`src/usereq/cli.py`]
-      - `resolve_git_root(...)`: resolve git repository root for base-path (SRS-305, SRS-306) [`src/usereq/cli.py`]
-      - `load_persisted_update_flags(...)`: load persisted `preserve-models` boolean from `.req/config.json` and validate `providers` array existence (SRS-288) [`src/usereq/cli.py`]
-      - `load_persisted_provider_specs(...)`: load persisted `--provider` SPEC strings from `.req/config.json` `"providers"` key (SRS-280) [`src/usereq/cli.py`]
+      - `run_git_path(...)`: execute `--git-path` and print the runtime-resolved git repository root (SRS-334, SRS-391) [`src/usereq/cli.py`]
+        - `_resolve_runtime_git_root(...)`: resolve git repository root from the current working directory [`src/usereq/cli.py`]
+          - `resolve_git_root(...)`: execute `git rev-parse --show-toplevel` [`src/usereq/cli.py`]
+      - `run_get_base_path(...)`: execute `--get-base-path` and print the absolute current working directory (SRS-347) [`src/usereq/cli.py`]
+    - `run(...)`: initialization/update command path for user-level resources and global config persistence; on fresh install applies default directory values when `--docs-dir`/`--guidelines-dir`/`--tests-dir`/`--src-dir` are omitted and creates missing parent directories for configured install paths; requires at least one `--provider` spec in non-update mode (SRS-035), supports providers `antigravity`/`claude`/`codex`/`opencode`/`pi` with provider-scoped `prompts-use-agents`, installs artifacts into user-level CLI directories under the user HOME (SRS-381..SRS-386), deduplicates static-check entries by `(language, module, cmd, params)` identity, and preserves pre-existing static-check entries from the global configuration when adding new `--enable-static-check` entries [`src/usereq/cli.py`]
+      - `run_remove(...)`: for `--remove`, delete `req-*` artifacts from user-level provider directories configured in the global configuration (SRS-390) [`src/usereq/cli.py`]
+        - `remove_generated_resources(...)`: resolve provider/artifact user-level roots and delete `req-*` artifacts [`src/usereq/cli.py`]
+          - `load_persisted_provider_specs(...)`: load persisted `--provider` SPEC strings from `~/.config/usereq/config.json` [`src/usereq/cli.py`]
+          - `resolve_provider_configs(...)`: resolve specs into per-provider enablement maps [`src/usereq/cli.py`]
+          - `provider_artifact_root(...)`: resolve user-level artifact root under HOME [`src/usereq/cli.py`]
+            - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
+          - `prune_empty_dirs(...)`: remove emptied user-level provider directories [`src/usereq/cli.py`]
+      - `load_config(...)`: load directory settings from `~/.config/usereq/config.json` for `--here`/`--update` flows [`src/usereq/cli.py`]
+        - `get_global_config_path(...)`: resolve `~/.config/usereq/config.json` path [`src/usereq/cli.py`]
+          - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
+      - `load_persisted_provider_specs(...)`: load persisted `--provider` SPEC strings from `~/.config/usereq/config.json` `"providers"` key (SRS-280) [`src/usereq/cli.py`]
       - `ensure_guidelines_directory(...)`: validate configured guidelines directory for update/here mode and create missing parent directories during fresh installation [`src/usereq/cli.py`]
       - `ensure_doc_directory(...)`: validate configured docs directory for update/here mode and create missing parent directories during fresh installation [`src/usereq/cli.py`]
       - `ensure_test_directory(...)`: validate configured tests directory for update/here mode and create missing parent directories during fresh installation [`src/usereq/cli.py`]
       - `ensure_src_directory(...)`: validate each configured source directory for update/here mode and create missing parent directories during fresh installation [`src/usereq/cli.py`]
-      - `resolve_provider_configs(...)`: resolve `--provider` specs into per-provider config dicts keyed by provider name, with artifact enablement booleans, artifact-local option flags, and provider-scoped options (including provider `pi`) [`src/usereq/cli.py`]
+      - `resolve_provider_configs(...)`: resolve `--provider` specs into per-provider config dicts keyed by provider name, with artifact enablement booleans and provider-scoped `prompts-use-agents` [`src/usereq/cli.py`]
         - `parse_provider_spec(...)`: parse and validate a single `--provider` SPEC string into provider name, ordered artifact items, and ordered provider options [`src/usereq/cli.py`]
-          - `_parse_provider_artifact_item(...)`: parse one `ARTIFACT_ITEM` token and validate artifact-local option placement [`src/usereq/cli.py`]
-          - `_parse_provider_options(...)`: parse optional provider-scoped options and reject artifact-local option placement in the provider-options field [`src/usereq/cli.py`]
-      - `artifact_option_enabled(...)`: read artifact-local option flags from resolved provider configuration during model/tool load gating and artifact generation [`src/usereq/cli.py`]
-      - `load_centralized_models(...)`: load provider models metadata from package resources including `pi` model configuration in `models.json` / `models-legacy.json` [`src/usereq/cli.py`]
-      - `format_tools_space_separated_string(...)`: serialize ordered tool identifiers into the `pi` `allowed-tools` YAML scalar for `SKILL.md` generation [`src/usereq/cli.py`]
+          - `_parse_provider_artifact_item(...)`: parse one bare `ARTIFACT_ITEM` token against `VALID_ARTIFACTS` [`src/usereq/cli.py`]
+          - `_parse_provider_options(...)`: parse optional provider-scoped `prompts-use-agents` options [`src/usereq/cli.py`]
+      - `provider_artifact_root(...)`: resolve user-level installation roots under HOME for each enabled provider/artifact (SRS-381..SRS-386) [`src/usereq/cli.py`]
+        - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
       - `parse_enable_static_check(...)`: parse `--enable-static-check` entries [`src/usereq/static_check.py`]
       - `_static_check_entry_identity(...)`: build normalized static-check identity tuple `(language, module, cmd, params)` used for deduplication/merge [`src/usereq/cli.py`]
       - `_validate_enable_static_check_command_executables(...)`: validate local executability of command-based checkers [`src/usereq/cli.py`]
-      - `build_persisted_update_flags(...)`: collect persisted `preserve-models` boolean flag (SRS-288); provider/artifact/option configuration is persisted via `--provider` specs under `providers` key [`src/usereq/cli.py`]
-      - `save_config(...)`: persist `.req/config.json` including provider specs, base-path, and git-path (SRS-279, SRS-302, SRS-306) [`src/usereq/cli.py`]
-      - `list_docs_templates(...)`: enumerate package `resources/docs` templates [`src/usereq/cli.py`]
-      - `find_requirements_template(...)`: validate `Requirements_Template.md` availability [`src/usereq/cli.py`]
-      - `_build_provider_modules_map(...)`: derive ordered per-provider module-entry lines by merging artifact-local options with applicable provider-scoped options per artifact item from merged `--provider` specs [`src/usereq/cli.py`]
+      - `save_config(...)`: persist `~/.config/usereq/config.json` including provider specs (SRS-279, SRS-387) [`src/usereq/cli.py`]
+        - `get_global_config_path(...)`: resolve `~/.config/usereq/config.json` path [`src/usereq/cli.py`]
+      - `generate_guidelines_file_list(...)`: build `%%GUIDELINES_FILES%%` substitution payload from the project guidelines directory [`src/usereq/cli.py`]
+      - `md_to_toml(...)`: convert Markdown prompt templates to Antigravity TOML commands [`src/usereq/cli.py`]
+      - `replace_tokens(...)`: apply token substitutions inside generated TOML command files [`src/usereq/cli.py`]
+      - `_build_provider_modules_map(...)`: derive ordered per-provider module-entry lines by merging applicable provider-scoped options per artifact item from merged `--provider` specs [`src/usereq/cli.py`]
       - `_format_install_table(...)`: render Unicode box-drawing installation summary table with prompt-column wrapping and non-wrapped per-artifact module-entry lines [`src/usereq/cli.py`]
       - `_colorize_table_border(...)`: apply bright-red ANSI styling to Unicode border glyphs before stdout emission [`src/usereq/cli.py`]
 - **External Boundaries**
   - `subprocess.run(...)` / `subprocess.check_output(...)`: invokes OS-level commands and static-check tools (e.g., git queries, checker executables) [`src/usereq/cli.py`, `src/usereq/static_check.py`]
-  - Filesystem read/write boundaries: `.req/config.json`, project docs directories, selected source files [`src/usereq/cli.py`, `src/usereq/token_counter.py`, `src/usereq/compress_files.py`]
+  - Filesystem read/write boundaries: `~/.config/usereq/config.json`, user-level provider directories under the user HOME (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`), project docs directories, selected source files [`src/usereq/cli.py`, `src/usereq/token_counter.py`, `src/usereq/compress_files.py`]
   - Standard stream I/O boundaries: stdout/stderr reporting for command outputs and status [`src/usereq/cli.py`, `src/usereq/static_check.py`, `src/usereq/token_counter.py`]
 
 ### `PROC:req-sh`
@@ -183,7 +190,7 @@
 - **Type**: Process
 - **Parent Process**: `-`
 - **Entrypoint(s)**: `scripts/test-install.sh` [`scripts/test-install.sh`]
-- **Lifecycle/Trigger**: starts on shell invocation, resolves the target installation path, removes generated provider directories including `.pi/prompts` and `.pi/skills`, recreates the expected folder scaffold, prints the installation command, and then invokes `scripts/req.sh` with the canonical smoke-install provider/static-check configuration.
+- **Lifecycle/Trigger**: starts on shell invocation, resolves the target installation path, isolates HOME to a disposable directory, removes generated user-level provider directories including `~/.pi/agent/prompts` and `~/.pi/agent/skills` under the disposable HOME, recreates the expected folder scaffold, prints the installation command, and then invokes `scripts/req.sh` with the canonical smoke-install provider/static-check configuration.
 - **Internal Call-Trace Tree**
   - `test-install.sh(...)`: disposable installation smoke-test orchestrator [`scripts/test-install.sh`]
     - external boundaries: `rm -rf`, `mkdir -p`, shell directory tests, and child-process invocation of `scripts/req.sh`
@@ -216,4 +223,4 @@
 - `PROC:test-install-sh -> PROC:req-sh`
   - `mechanism`: `child-process spawn`
   - `endpoint/channel`: `scripts/req.sh`
-  - `payload`: `CLI argument vector for disposable installation, including provider specs for claude/codex/gemini/github/kiro/opencode/pi and static-check enablement entries`
+  - `payload`: `CLI argument vector for disposable installation under an isolated HOME, including provider specs for antigravity/claude/codex/opencode/pi and static-check enablement entries`

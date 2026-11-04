@@ -81,7 +81,7 @@ import sys
 
 ---
 
-# cli.py | Python | 5387L | 166 symbols | 33 imports | 253 comments
+# cli.py | Python | 4249L | 152 symbols | 32 imports | 201 comments
 > Path: `src/usereq/cli.py`
 - @brief CLI entry point implementing the useReq initialization flow.
 - @details Handles argument parsing, configuration management, and execution of useReq commands.
@@ -108,10 +108,9 @@ import urllib.request
 import yaml
 from argparse import Namespace
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional
 from .find_constructs import format_available_tags
 from .static_check import parse_enable_static_check as _parse_sc
-import copy
 from .token_counter import count_files_metrics, format_pack_summary
 from .generate_markdown import generate_markdown
 from .compress_files import compress_files
@@ -136,27 +135,52 @@ import traceback
 - @brief Whether verbose output is enabled."""
 - var `REQUIREMENTS_TEMPLATE_NAME = "Requirements_Template.md"` (L42)
 - @brief Whether debug output is enabled."""
-- var `PERSISTED_UPDATE_FLAG_KEYS = ("preserve-models",)` (L45)
+- var `PERSISTED_CONFIG_KEYS = (` (L45)
 - @brief Name of the packaged requirements template file."""
-- var `DEFAULT_DOCS_DIR = "req/docs"` (L48)
-- @brief Config keys persisted for install/update boolean flags (SRS-288)."""
-- var `DEFAULT_GUIDELINES_DIR = "req/guidelines/"` (L51)
+- var `DEFAULT_DOCS_DIR = "req/docs"` (L55)
+- @brief Canonical keys persisted in the user-global configuration file (SRS-288)."""
+- var `DEFAULT_GUIDELINES_DIR = "req/guidelines/"` (L58)
 - @brief Default docs-dir value for fresh installation when --docs-dir is omitted."""
-- var `DEFAULT_TESTS_DIR = "tests/"` (L54)
+- var `DEFAULT_TESTS_DIR = "tests/"` (L61)
 - @brief Default guidelines-dir value for fresh installation when --guidelines-dir is omitted."""
-- var `DEFAULT_SRC_DIRS = ("src/",)` (L57)
+- var `DEFAULT_SRC_DIRS = ("src/",)` (L64)
 - @brief Default tests-dir value for fresh installation when --tests-dir is omitted."""
-- var `VALID_PROVIDERS = frozenset(` (L60)
+- var `VALID_PROVIDERS = frozenset(` (L67)
 - @brief Default src-dir entries for fresh installation when --src-dir is omitted."""
-- var `VALID_ARTIFACTS = frozenset({"prompts", "agents", "skills"})` (L65)
-- @brief Valid provider names accepted by ``--provider`` specs (SRS-275, SRS-353, SRS-354)."""
-- var `VALID_ARTIFACT_OPTIONS = frozenset({"enable-models", "enable-tools"})` (L68)
+- var `VALID_ARTIFACTS = frozenset({"prompts", "agents", "skills"})` (L72)
+- @brief Valid provider names accepted by ``--provider`` specs (SRS-275, SRS-364)."""
+- var `VALID_PROVIDER_OPTIONS = frozenset({"prompts-use-agents"})` (L75)
 - @brief Valid artifact type tokens accepted in ``--provider`` specs (SRS-275, SRS-364)."""
-- var `VALID_PROVIDER_OPTIONS = frozenset({"prompts-use-agents", "legacy"})` (L71)
-- @brief Valid artifact-local option tokens accepted inside ``ARTIFACT_ITEM`` values (SRS-364)."""
-- var `INVALID_WT_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]')` (L91)
-- @brief Provider-to-directory mapping for worktree copy operations (SRS-325, SRS-353, SRS-354)."""
-### fn `def _parse_provider_artifact_item(spec: str, artifact_item: str) -> tuple[str, list[str]]` `priv` (L95-135)
+- var `GLOBAL_CONFIG_DIRNAME = ".config"` (L83)
+- @brief Artifact applicability map for provider-scoped options during installation-table rendering."""
+- var `GLOBAL_CONFIG_APP_DIRNAME = "usereq"` (L86)
+- @brief Root configuration directory name located under the user HOME (SRS-387)."""
+- var `GLOBAL_CONFIG_FILENAME = "config.json"` (L89)
+- @brief Application subdirectory name under ``~/.config`` (SRS-387)."""
+### fn `def home_dir() -> Path` (L93-103)
+- @brief Canonical user-global configuration JSON filename (SRS-387)."""
+- @brief Resolve the user HOME directory used for user-level CLI configuration.
+- @details Single indirection point over ``Path.home()`` so tests and embedders can redirect all user-level provider and configuration paths deterministically.
+- @return {Path} Absolute user HOME directory path.
+- @satisfies SRS-381
+
+### fn `def get_global_config_path() -> Path` (L104-119)
+- @brief Resolve the single user-global configuration file path.
+- @details Builds ``~/.config/usereq/config.json`` from the effective home directory returned by :func:`home_dir`.
+- @return {Path} Absolute path of the user-global configuration file.
+- @satisfies SRS-387
+
+### fn `def provider_artifact_root(provider: str, artifact: str) -> Path` (L120-172)
+- @brief Resolve the user-level installation root for one provider artifact.
+- @details Maps ``provider`` and ``artifact`` selectors to user-level CLI configuration directories under the user HOME (claude -> ``~/.claude``, codex -> ``~/.codex``, antigravity -> ``~/.antigravity``, opencode -> ``~/.config/opencode``, pi -> ``~/.pi/agent``). Paths are computed lazily from :func:`home_dir` so HOME redirection stays consistent across a single process run.
+- @param provider {str} Provider selector from ``{antigravity, claude, codex, opencode, pi}``.
+- @param artifact {str} Artifact selector from ``{prompts, agents, skills}``.
+- @return {Path} Absolute user-level target directory for the artifact.
+- @throws {ReqError} Raised when the provider/artifact pair has no user-level target.
+- @satisfies SRS-381, SRS-382, SRS-383, SRS-384, SRS-385, SRS-386
+
+- var `INVALID_WT_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]')` (L173)
+### fn `def _parse_provider_artifact_item(spec: str, artifact_item: str) -> tuple[str, list[str]]` `priv` (L177-201)
 - @brief Regex matching characters invalid in both Linux and Windows directory names."""
 - @brief Parse one artifact item from a ``--provider`` SPEC.
 - @details Splits `ARTIFACT_ITEM` on `+`, validates the artifact token and artifact-local option tokens, preserves first-seen option order, rejects provider-scoped option placement inside the artifact item, and raises deterministic `ReqError` payloads for all invalid tokens. Complexity: O(N) in artifact-item token count. No side effects.
@@ -166,76 +190,66 @@ import traceback
 - @throws {ReqError} Raised when the artifact token is missing, unknown, or contains invalid option placement.
 - @satisfies SRS-275, SRS-278, SRS-364, SRS-365
 
-### fn `def _parse_provider_options(spec: str, raw_options: str) -> list[str]` `priv` (L136-163)
+### fn `def _parse_provider_options(spec: str, raw_options: str) -> list[str]` `priv` (L202-224)
 - @brief Parse provider-scoped options from a ``--provider`` SPEC.
-- @details Splits `PROVIDER_OPTIONS` on commas, preserves first-seen option order, accepts only provider-scoped tokens, and rejects artifact-local `enable-models` or `enable-tools` as invalid option placement. Complexity: O(N) in provider-option token count. No side effects.
+- @details Splits `PROVIDER_OPTIONS` on commas, preserves first-seen option order, and accepts only the provider-scoped `prompts-use-agents` token (SRS-365). Complexity: O(N) in provider-option token count. No side effects.
 - @param spec {str} Full raw ``--provider`` SPEC used for diagnostics.
 - @param raw_options {str} Raw provider-options field from `SPEC` without leading separators.
 - @return {list[str]} Ordered provider-scoped option tokens.
 - @throws {ReqError} Raised when an option token is unknown or positioned in the wrong field.
 - @satisfies SRS-275, SRS-278, SRS-365
 
-### fn `def parse_provider_spec(spec: str) -> tuple[str, list[tuple[str, list[str]]], list[str]]` (L164-203)
+### fn `def parse_provider_spec(spec: str) -> tuple[str, list[tuple[str, list[str]]], list[str]]` (L225-264)
 - @brief Parse a single ``--provider`` SPEC into ordered provider, artifact-item, and provider-option components.
-- @details Splits `SPEC` on `:`, validates provider token membership, parses each comma-delimited `ARTIFACT_ITEM` with artifact-local `+` options, parses optional provider-scoped options, preserves first-seen artifact order and option order, and rejects legacy provider-scoped placement of `enable-models` or `enable-tools`. Complexity: O(A + O) where A is artifact-item token count and O is provider-option token count. No side effects.
+- @details Splits `SPEC` on `:`, validates provider token membership, parses each comma-delimited bare `ARTIFACT` item (SRS-364), parses optional provider-scoped options, preserves first-seen artifact order and option order, and rejects unknown tokens. Complexity: O(A + O) where A is artifact-item token count and O is provider-option token count. No side effects.
 - @param spec {str} Raw ``--provider`` SPEC in format `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`.
 - @return {tuple[str, list[tuple[str, list[str]]], list[str]]} Tuple `(provider_name, ordered_artifact_items, ordered_provider_options)`.
 - @throws {ReqError} Raised when provider, artifact, option, or option placement validation fails.
 - @see resolve_provider_configs
 - @satisfies SRS-275, SRS-276, SRS-278, SRS-364, SRS-365
 
-### fn `def artifact_option_enabled(` (L204-205)
+### fn `def resolve_provider_configs(` (L265-266)
 
-### fn `def resolve_provider_configs(` (L226-227)
-- @brief Read one artifact-local option flag from a resolved provider configuration.
-- @details Accesses the `artifact-options` sub-map emitted by `resolve_provider_configs`, validates the artifact and option key shape defensively, and returns `False` for absent or malformed internal state. Complexity: O(1). No side effects.
-- @param provider_config {Mapping[str, Any]} Resolved provider configuration entry.
-- @param artifact_name {str} Artifact selector from `{prompts, agents, skills}`.
-- @param option_name {str} Artifact-local option selector from `{enable-models, enable-tools}`.
-- @return {bool} True when the artifact-local option is active; otherwise False.
-- @see resolve_provider_configs
-- @satisfies SRS-276
-
-- var `ANSI_BRIGHT_RED = "\033[91m"` (L270)
+- var `ANSI_BRIGHT_RED = "\033[91m"` (L298)
 - @brief Resolve per-provider configurations from ``--provider`` specs only.
-- @details Initializes every provider as disabled, then merges parsed `ARTIFACT_ITEM` and `PROVIDER_OPTIONS` data across all raw specs for that provider. Artifact enablement is tracked in top-level `prompts`/`agents`/`skills` booleans. Artifact-local `enable-models` and `enable-tools` are stored under `artifact-options[artifact]`. Provider-scoped `prompts-use-agents` and `legacy` remain top-level booleans. Complexity: O(P * (A + O)) where P is spec count. No external side effects.
+- @details Initializes every provider as disabled, then merges parsed `ARTIFACT_ITEM` and `PROVIDER_OPTIONS` data across all raw specs for that provider. Artifact enablement is tracked in top-level `prompts`/`agents`/`skills` booleans. Provider-scoped `prompts-use-agents` remains a top-level boolean. Complexity: O(P * (A + O)) where P is spec count. No external side effects.
 - @param provider_specs {list[str]} Raw ``--provider`` SPEC strings.
 - @return {dict[str, dict[str, Any]]} Mapping provider -> configuration dict with keys `enabled`, `prompts`, `agents`, `skills`, `artifact-options`, `prompts-use-agents`, and `legacy`.
 - @see parse_provider_spec
 - @satisfies SRS-275, SRS-276, SRS-364, SRS-365
-- var `ANSI_BRIGHT_GREEN = "\033[92m"` (L273)
+- var `ANSI_BRIGHT_GREEN = "\033[92m"` (L301)
 - @brief ANSI escape prefix for bright red terminal output."""
-- var `ANSI_RESET = "\033[0m"` (L276)
+- var `ANSI_RESET = "\033[0m"` (L304)
 - @brief ANSI escape prefix for bright green terminal output."""
-- var `RELEASE_CHECK_TIMEOUT_SECONDS = 2.0` (L279)
+- var `RELEASE_CHECK_TIMEOUT_SECONDS = 2.0` (L307)
 - @brief ANSI escape sequence that resets terminal style."""
-- var `RELEASE_CHECK_IDLE_DELAY_SECONDS = 3600` (L282)
+- var `RELEASE_CHECK_IDLE_DELAY_SECONDS = 3600` (L310)
 - @brief Hardcoded default timeout for startup release-check HTTP calls."""
-- var `RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS = 86400` (L285)
+- var `RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS = 86400` (L313)
 - @brief Hardcoded startup release-check idle-delay in seconds."""
-- var `TOOL_PROGRAM_NAME = "usereq"` (L288)
+- var `TOOL_PROGRAM_NAME = "usereq"` (L316)
 - @brief Hardcoded startup release-check idle-delay in seconds for API rate limiting."""
-- var `RELEASE_CHECK_PROGRAM_NAME = TOOL_PROGRAM_NAME` (L291)
+- var `RELEASE_CHECK_PROGRAM_NAME = TOOL_PROGRAM_NAME` (L319)
 - @brief Hardcoded configurable tool identifier used by uv install/uninstall commands."""
-- var `GITHUB_REPOSITORY_OWNER = "Ogekuri"` (L294)
+- var `GITHUB_REPOSITORY_OWNER = "Ogekuri"` (L322)
 - @brief Program identifier used in release-check idle-state cache directory."""
-- var `GITHUB_REPOSITORY_NAME = "useReq"` (L297)
+- var `GITHUB_REPOSITORY_NAME = "useReq"` (L325)
 - @brief Hardcoded GitHub owner used by upgrade and release-check endpoints."""
-- var `RELEASE_CHECK_IDLE_CACHE_ROOT_DIRNAME = ".cache"` (L300)
+- var `RELEASE_CHECK_IDLE_CACHE_ROOT_DIRNAME = ".cache"` (L328)
 - @brief Hardcoded GitHub repository used by upgrade and release-check endpoints."""
-- var `RELEASE_CHECK_IDLE_FILENAME = "check_version_idle-time.json"` (L303)
+- var `RELEASE_CHECK_IDLE_FILENAME = "check_version_idle-time.json"` (L331)
 - @brief Root cache directory name located under `$HOME`."""
-- var `GITHUB_RELEASES_LATEST_URL = (` (L306)
+- var `GITHUB_RELEASES_LATEST_URL = (` (L334)
 - @brief Canonical release-check idle-state JSON filename."""
-- var `GITHUB_UPGRADE_SOURCE = (` (L312)
+- var `GITHUB_UPGRADE_SOURCE = (` (L340)
 - @brief Hardcoded GitHub API endpoint for latest-release resolution."""
-- var `FORCE_ONLINE_RELEASE_CHECK = False` (L317)
+- var `FORCE_ONLINE_RELEASE_CHECK = False` (L345)
 - @brief Hardcoded git source used by uv self-upgrade command."""
-### class `class ReqError(Exception)` : Exception (L321-338)
+### class `class ReqError(Exception)` : Exception (L349-366)
 - @brief Startup-scoped override that bypasses release-check idle-state gating when enabled."""
 - @brief Dedicated exception for expected CLI errors.
 - @details This exception is used to bubble up known error conditions that should be reported to the user without a stack trace.
-- fn `def __init__(self, message: str, code: int = 1) -> None` `priv` (L326-338)
+- fn `def __init__(self, message: str, code: int = 1) -> None` `priv` (L354-366)
   - @brief Dedicated exception for expected CLI errors.
   - @brief Initialize an expected CLI failure payload.
   - @details This exception is used to bubble up known error conditions that should be reported to the user without a stack trace.
@@ -244,126 +258,126 @@ import traceback
   - @param code Process exit code bound to the failure category.
   - @return {None} Function return value.
 
-### fn `def log(msg: str) -> None` (L339-348)
+### fn `def log(msg: str) -> None` (L367-376)
 - @brief Prints an informational message.
 - @details Implements the log function behavior with deterministic control flow.
 - @param msg The message string to print.
 - @return {None} Function return value.
 
-### fn `def dlog(msg: str) -> None` (L349-359)
+### fn `def dlog(msg: str) -> None` (L377-387)
 - @brief Prints a debug message if debugging is active.
 - @details Implements the dlog function behavior with deterministic control flow.
 - @param msg The debug message string to print.
 - @return {None} Function return value.
 
-### fn `def vlog(msg: str) -> None` (L360-370)
+### fn `def vlog(msg: str) -> None` (L388-398)
 - @brief Prints a verbose message if verbose mode is active.
 - @details Implements the vlog function behavior with deterministic control flow.
 - @param msg The verbose message string to print.
 - @return {None} Function return value.
 
-### fn `def _get_available_tags_help() -> str` `priv` (L371-383)
+### fn `def _get_available_tags_help() -> str` `priv` (L399-411)
 - @brief Generate available TAGs help text for argument parser.
 - @details Imports format_available_tags from find_constructs module to generate dynamic TAG listing for CLI help display.
 - @return Formatted multi-line string listing TAGs by language.
 
-### fn `def build_parser() -> argparse.ArgumentParser` (L384-583)
+### fn `def build_parser() -> argparse.ArgumentParser` (L412-611)
 - @brief Builds the CLI argument parser.
 - @details Defines all supported CLI arguments, flags, and help texts. Provider enablement, artifact selection, and per-provider options are configured exclusively via the repeatable ``--provider SPEC`` argument (SRS-275, SRS-034).
 - @return Configured ArgumentParser instance.
 
-### fn `def parse_args(argv: Optional[list[str]] = None) -> Namespace` (L674-683)
+### fn `def parse_args(argv: Optional[list[str]] = None) -> Namespace` (L696-705)
 - @brief Parses command-line arguments into a namespace.
 - @details Implements the parse_args function behavior with deterministic control flow.
 - @param argv List of arguments (defaults to sys.argv).
 - @return Namespace containing parsed arguments.
 
-### fn `def load_package_version() -> str` (L684-698)
+### fn `def load_package_version() -> str` (L706-720)
 - @brief Reads the package version from __init__.py.
 - @details Implements the load_package_version function behavior with deterministic control flow.
 - @return Version string extracted from the package.
 - @throws ReqError If version cannot be determined.
 
-### fn `def maybe_print_version(argv: list[str]) -> bool` (L699-711)
+### fn `def maybe_print_version(argv: list[str]) -> bool` (L721-733)
 - @brief Handles --ver/--version by printing the version.
 - @details Implements the maybe_print_version function behavior with deterministic control flow.
 - @param argv Command line arguments to check.
 - @return True if version was printed, False otherwise.
 
-### fn `def run_upgrade() -> None` (L712-746)
+### fn `def run_upgrade() -> None` (L734-768)
 - @brief Executes the upgrade using uv.
 - @details Implements the run_upgrade function behavior with deterministic control flow.
 - @return {None} Function return value.
 - @throws ReqError If upgrade fails.
 - @satisfies SRS-343
 
-### fn `def run_uninstall() -> None` (L747-779)
+### fn `def run_uninstall() -> None` (L769-801)
 - @brief Executes the uninstallation using uv.
 - @details Implements the run_uninstall function behavior with deterministic control flow.
 - @return {None} Function return value.
 - @throws ReqError If uninstall fails.
 - @satisfies SRS-344, SRS-346
 
-### fn `def normalize_release_tag(tag: str) -> str` (L780-792)
+### fn `def normalize_release_tag(tag: str) -> str` (L802-814)
 - @brief Normalizes the release tag by removing a 'v' prefix if present.
 - @details Implements the normalize_release_tag function behavior with deterministic control flow.
 - @param tag The raw tag string.
 - @return The normalized version string.
 
-### fn `def parse_version_tuple(version: str) -> tuple[int, ...] | None` (L793-817)
+### fn `def parse_version_tuple(version: str) -> tuple[int, ...] | None` (L815-839)
 - @brief Converts a version into a numeric tuple for comparison.
 - @details Accepts versions in 'X.Y.Z' format (ignoring any non-numeric suffixes).
 - @param version The version string to parse.
 - @return Tuple of integers or None if parsing fails.
 
-### fn `def is_newer_version(current: str, latest: str) -> bool` (L818-836)
+### fn `def is_newer_version(current: str, latest: str) -> bool` (L840-858)
 - @brief Returns True if latest is greater than current.
 - @details Implements the is_newer_version function behavior with deterministic control flow.
 - @param current The current installed version string.
 - @param latest The latest available version string.
 - @return True if update is available, False otherwise.
 
-### fn `def parse_github_owner_repository(remote_url: str) -> tuple[str, str] | None` (L837-863)
+### fn `def parse_github_owner_repository(remote_url: str) -> tuple[str, str] | None` (L859-885)
 - @brief Extract GitHub owner/repository from a git remote URL.
 - @details Supports SSH (`git@github.com:owner/repo.git`), HTTPS (`https://github.com/owner/repo.git`), and SSH-scheme (`ssh://git@github.com/owner/repo.git`) forms. Removes optional `.git` suffix.
 - @param remote_url Remote URL string from `git remote -v`.
 - @return Tuple `(owner, repository)` when URL targets github.com; otherwise None.
 
-### fn `def read_git_remote_verbose(cwd: str | None = None) -> str` (L864-883)
+### fn `def read_git_remote_verbose(cwd: str | None = None) -> str` (L886-905)
 - @brief Read git remote definitions using `git remote -v`.
 - @details Executes `git remote -v` with deterministic stderr capture and text decoding. When `cwd` is omitted, the current process working directory is used.
 - @param cwd Optional working directory override for git execution context.
 - @return Raw stdout output generated by `git remote -v`.
 - @throws subprocess.CalledProcessError If git returns a non-zero status.
 
-### fn `def resolve_github_owner_repository_from_active_remotes() -> tuple[str, str]` (L884-944)
+### fn `def resolve_github_owner_repository_from_active_remotes() -> tuple[str, str]` (L906-966)
 - @brief Resolve GitHub owner/repository from active repository remotes.
 - @details Reads `git remote -v`, prioritizes `origin` fetch URL, then other fetch remotes, then non-fetch entries, and returns the first parseable github.com owner/repository pair. If the first inspection fails outside the repository root context, retries once from `REPO_ROOT`.
 - @return Tuple `(owner, repository)` resolved from active remotes.
 - @throws ValueError If no github.com remote URL can be parsed from `git remote -v`.
 - @throws ReqError If git remote inspection cannot execute successfully.
 
-### fn `def resolve_latest_release_api_url() -> str` (L945-953)
+### fn `def resolve_latest_release_api_url() -> str` (L967-975)
 - @brief Resolve latest-release GitHub API URL from hardcoded repository settings.
 - @details Returns the static endpoint derived from `GITHUB_REPOSITORY_OWNER` and `GITHUB_REPOSITORY_NAME`.
 - @return Fully-qualified URL `https://api.github.com/repos/Ogekuri/useReq/releases/latest`.
 
-### fn `def format_unix_timestamp_utc(timestamp_seconds: int) -> str` (L954-966)
+### fn `def format_unix_timestamp_utc(timestamp_seconds: int) -> str` (L976-988)
 - @brief Convert a Unix timestamp into a UTC human-readable string.
 - @details Implements deterministic UTC conversion for release-check idle-state persistence.
 - @param timestamp_seconds Unix timestamp in seconds.
 - @return UTC datetime string in ISO-like `YYYY-MM-DDTHH:MM:SSZ` format.
 
-### fn `def get_release_check_idle_file_path(` (L967-968)
+### fn `def get_release_check_idle_file_path(` (L989-990)
 
-### fn `def cleanup_release_check_idle_state_cache(` (L985-986)
+### fn `def cleanup_release_check_idle_state_cache(` (L1007-1008)
 - @brief Resolve idle-state file path for startup release-check throttling.
 - @details Builds the path using the effective home directory returned by `Path.home()`.
 - @param program_name Program identifier used as cache subdirectory under `$HOME/.cache`.
 - @return Absolute path `$HOME/.cache/<program_name>/check_version_idle-time.json`.
 - @satisfies SRS-345
 
-### fn `def read_release_check_idle_state(file_path: Path) -> dict[str, int | str] | None` (L1009-1073)
+### fn `def read_release_check_idle_state(file_path: Path) -> dict[str, int | str] | None` (L1031-1095)
 - @brief Delete release-check idle-state file and remove empty cache directory.
 - @brief Read and validate release-check idle-state JSON.
 - @details Deletes `$HOME/.cache/<program_name>/check_version_idle-time.json` when present; removes `$HOME/.cache/<program_name>` only when it exists and has no remaining entries.
@@ -377,9 +391,9 @@ import traceback
 - @throws ValueError If required keys are missing or value types are invalid.
 - @satisfies SRS-346
 
-### fn `def should_execute_release_check(` (L1074-1076)
+### fn `def should_execute_release_check(` (L1096-1098)
 
-### fn `def parse_retry_after_seconds(` (L1095-1097)
+### fn `def parse_retry_after_seconds(` (L1117-1119)
 - @brief Decide whether startup release-check should execute in current invocation.
 - @details Executes release-check when state is missing and skips only while the persisted `idle_until_timestamp` is greater than the current timestamp.
 - @param idle_state Parsed idle-state payload or None when unavailable.
@@ -387,14 +401,14 @@ import traceback
 - @return True when release-check must execute; False when still in idle window.
 - @satisfies SRS-348
 
-### fn `def write_release_check_idle_state_payload(` (L1127-1130)
+### fn `def write_release_check_idle_state_payload(` (L1149-1152)
 - @brief Parse an HTTP `Retry-After` header value into non-negative seconds.
 - @details Supports integer-second values and HTTP-date values; HTTP-date values are converted to a delta from `now_timestamp`.
 - @param retry_after_header Raw `Retry-After` header value.
 - @param now_timestamp Current Unix timestamp in seconds.
 - @return Retry delay in seconds when parsing succeeds; otherwise None.
 
-### fn `def write_release_check_idle_state(` (L1157-1160)
+### fn `def write_release_check_idle_state(` (L1179-1182)
 - @brief Persist canonical release-check idle-state payload to disk.
 - @details Serializes both numeric and UTC human-readable timestamps for the success instant and the idle-until instant.
 - @param file_path Absolute idle-state JSON path.
@@ -402,7 +416,7 @@ import traceback
 - @param idle_until_timestamp Unix timestamp until startup release-check remains disabled.
 - @throws OSError If file write fails.
 
-### fn `def write_failed_release_check_idle_state(` (L1179-1183)
+### fn `def write_failed_release_check_idle_state(` (L1201-1205)
 - @brief Persist release-check idle-state after a successful remote check.
 - @details Computes `idle_until_timestamp = now_timestamp + idle_delay_seconds` and persists canonical idle-state keys.
 - @param file_path Absolute idle-state JSON path.
@@ -411,7 +425,7 @@ import traceback
 - @throws OSError If file write fails.
 - @satisfies SRS-349
 
-### fn `def persist_failed_release_check_idle_state(` (L1211-1215)
+### fn `def persist_failed_release_check_idle_state(` (L1233-1237)
 - @brief Persist idle-state after a startup release-check failure.
 - @details Computes `idle_until_timestamp = now + idle_delay_seconds`, rewrites the canonical idle-state payload on every failure, and preserves the previous successful timestamp when available.
 - @param file_path Absolute idle-state JSON path.
@@ -421,7 +435,7 @@ import traceback
 - @throws OSError If file write fails.
 - @satisfies SRS-350, SRS-351
 
-### fn `def maybe_notify_newer_version(` (L1241-1242)
+### fn `def maybe_notify_newer_version(` (L1263-1264)
 - @brief Persist failure idle-state and report write failures.
 - @details Delegates failure idle-state persistence to `write_failed_release_check_idle_state(...)`; converts `OSError` into the standard bright-red stderr diagnostic without swallowing the original release-check failure.
 - @param file_path Absolute idle-state JSON path.
@@ -431,14 +445,14 @@ import traceback
 - @return {None} Function return value.
 - @satisfies SRS-350, SRS-351
 
-### fn `def ensure_guidelines_directory(` (L1395-1396)
+### fn `def ensure_guidelines_directory(` (L1417-1418)
 - @brief Executes idle-gated online version check and prints bright colored status messages.
 - @details Reads idle-state from `$HOME/.cache/usereq/check_version_idle-time.json`, skips remote requests when idle window is active unless startup context enables `FORCE_ONLINE_RELEASE_CHECK`, resolves latest-release URL from hardcoded repository settings when due, compares versions, prints a bright-green update message only for newer versions, persists a 3600-second idle-delay after successful HTTP/JSON validation, prints bright-red diagnostics on every failure, rewrites idle-state JSON on every failure, uses an 86400-second idle-delay for `HTTPError`, `URLError`, and `TimeoutError`, and uses the default 3600-second idle-delay for other release-check failures.
 - @param timeout_seconds Time to wait for the version check response.
 - @return {None} Function return value.
 - @satisfies SRS-345, SRS-348, SRS-349, SRS-350, SRS-351
 
-### fn `def ensure_doc_directory(` (L1427-1428)
+### fn `def ensure_doc_directory(` (L1449-1450)
 - @brief Resolve and validate guidelines directory path under project base.
 - @details Normalizes input path against project base, enforces in-repository containment, and validates directory shape. When `create_missing` is true, creates missing directory and all missing parent directories.
 - @param path {str} Candidate guidelines directory path.
@@ -448,7 +462,7 @@ import traceback
 - @throws {ReqError} Raised when path escapes project base or resolves to a file.
 - @satisfies SRS-360, SRS-363
 
-### fn `def ensure_test_directory(` (L1457-1458)
+### fn `def ensure_test_directory(` (L1479-1480)
 - @brief Resolve and validate docs directory path under project base.
 - @details Normalizes input path against project base, enforces in-repository containment, and validates directory shape. When `create_missing` is true, creates missing directory and all missing parent directories.
 - @param path {str} Candidate docs directory path.
@@ -458,7 +472,7 @@ import traceback
 - @throws {ReqError} Raised when path escapes project base or resolves to a file.
 - @satisfies SRS-359, SRS-363
 
-### fn `def ensure_src_directory(` (L1487-1488)
+### fn `def ensure_src_directory(` (L1509-1510)
 - @brief Resolve and validate tests directory path under project base.
 - @details Normalizes input path against project base, enforces in-repository containment, and validates directory shape. When `create_missing` is true, creates missing directory and all missing parent directories.
 - @param path {str} Candidate tests directory path.
@@ -468,7 +482,7 @@ import traceback
 - @throws {ReqError} Raised when path escapes project base or resolves to a file.
 - @satisfies SRS-361, SRS-363
 
-### fn `def make_relative_if_contains_project(path_value: str, project_base: Path) -> str` (L1517-1558)
+### fn `def make_relative_if_contains_project(path_value: str, project_base: Path) -> str` (L1539-1580)
 - @brief Resolve and validate source directory path under project base.
 - @brief Normalizes the path relative to the project root when possible.
 - @details Normalizes input path against project base, enforces in-repository containment, and validates directory shape. When `create_missing` is true, creates missing directory and all missing parent directories.
@@ -483,118 +497,93 @@ import traceback
 - @throws {ReqError} Raised when path escapes project base or resolves to a file.
 - @satisfies SRS-362, SRS-363
 
-### fn `def resolve_absolute(normalized: str, project_base: Path) -> Optional[Path]` (L1559-1574)
+### fn `def resolve_absolute(normalized: str, project_base: Path) -> Optional[Path]` (L1581-1596)
 - @brief Resolves the absolute path starting from a normalized value.
 - @details Implements the resolve_absolute function behavior with deterministic control flow.
 - @param normalized The normalized relative path string.
 - @param project_base The project root path.
 - @return Absolute Path object or None if normalized is empty.
 
-### fn `def resolve_git_root(target_path: Path) -> Path` (L1575-1602)
+### fn `def resolve_git_root(target_path: Path) -> Path` (L1597-1624)
 - @brief Resolve the git repository root for a given path.
 - @param target_path Absolute path that must be inside a git repository.
 - @return Absolute path to the git repository root.
 - @throws ReqError If the path is not inside a git repository.
 - @satisfies SRS-305, SRS-306
 
-### fn `def is_inside_git_repo(target_path: Path) -> bool` (L1603-1622)
-- @brief Check whether a given path is inside a git work tree.
-- @param target_path Absolute path to check.
-- @return True if inside a git work tree, False otherwise.
-- @satisfies SRS-305
-
-### fn `def sanitize_branch_name(branch: str) -> str` (L1623-1632)
+### fn `def sanitize_branch_name(branch: str) -> str` (L1625-1634)
 - @brief Replace characters incompatible with Linux or Windows paths in a branch name.
 - @param branch Raw git branch name.
 - @return Sanitized string with incompatible characters replaced by `-`.
 - @satisfies SRS-319
 
-### fn `def validate_wt_name(wt_name: str) -> bool` (L1633-1644)
+### fn `def validate_wt_name(wt_name: str) -> bool` (L1635-1646)
 - @brief Validate that a worktree/branch name contains only valid directory characters.
 - @param wt_name Candidate worktree name.
 - @return True if valid, False if invalid characters are present.
 - @satisfies SRS-321
 
-### fn `def load_full_config(project_base: Path) -> dict` (L1645-1664)
-- @brief Load ALL parameters from `.req/config.json` as a raw dictionary.
-- @param project_base The project root path.
-- @return Full dictionary of all config.json key-value pairs.
-- @throws ReqError If config file is missing or invalid JSON.
-- @satisfies SRS-310
+### fn `def load_full_config() -> dict` (L1647-1667)
+- @brief Load ALL parameters from the user-global configuration file as a raw dictionary.
+- @return Full dictionary of all config key-value pairs.
+- @throws ReqError If the global config file is missing or invalid JSON.
+- @satisfies SRS-310, SRS-387
 
-### fn `def save_config(` (L1665-1675)
+### fn `def save_config(` (L1668-1674)
 
-### fn `def load_config(project_base: Path) -> dict[str, str | list[str]]` (L1719-1769)
-- @brief Saves normalized parameters to .req/config.json.
-- @brief Loads parameters saved in .req/config.json.
-- @details Writes full config payload to `.req/config.json`. Includes `"base-path"` and
-`"git-path"` when provided (SRS-302, SRS-306).
-- @details Implements the load_config function behavior with deterministic control flow.
-- @param project_base The project root path.
+### fn `def load_config() -> dict[str, str | list[str]]` (L1709-1765)
+- @brief Saves normalized parameters to the user-global configuration file.
+- @brief Loads directory parameters from the user-global configuration file.
+- @details Writes the configuration payload to `~/.config/usereq/config.json`, creating
+missing parent directories on first write. Only canonical keys from
+`PERSISTED_CONFIG_KEYS` are written (SRS-288, SRS-387).
+- @details Reads `~/.config/usereq/config.json` and validates the canonical directory keys used by install, update, and project-scan flows.
 - @param guidelines_dir_value Relative path to guidelines directory.
 - @param doc_dir_value Relative path to docs directory.
 - @param test_dir_value Relative path to tests directory.
 - @param src_dir_values List of relative paths to source directories.
 - @param static_check_config Optional dict of static-check config to persist under key
 `"static-check"`; omitted from JSON when None or empty.
-- @param persisted_flags Optional dict with persisted boolean flags used by `--update`.
 - @param provider_specs Optional list of raw ``--provider`` SPEC strings to persist
 under the `"providers"` key (SRS-279).
-- @param base_path_abs Optional absolute path string for `"base-path"` (SRS-302).
-- @param git_path_abs Optional absolute path string for `"git-path"` (SRS-306).
-- @param project_base The project root path.
 - @return {None} Function return value.
 - @return Dictionary containing configuration values.
-- @throws ReqError If config file is missing or invalid.
-- @satisfies SRS-302, SRS-306
+- @throws ReqError If the global config file is missing or invalid.
+- @satisfies SRS-279, SRS-288, SRS-387
+- @satisfies SRS-310, SRS-387
 
-### fn `def load_static_check_from_config(project_base: Path) -> dict` (L1770-1801)
-- @brief Load the `"static-check"` section from `.req/config.json` without validation errors.
-- @details Reads config.json silently; returns `{}` on any read or parse error. Does NOT raise `ReqError`; caller decides whether absence is an error.
-- @param project_base The project root path.
-- @return Dict of static-check config (canonical-lang -> list[config-dict]); empty dict if absent or if config.json is missing/invalid.
+### fn `def load_static_check_from_config() -> dict` (L1766-1796)
+- @brief Load the `"static-check"` section from the user-global configuration file without validation errors.
+- @details Reads `~/.config/usereq/config.json` silently; returns `{}` on any read or parse error. Does NOT raise `ReqError`; caller decides whether absence is an error.
+- @return Dict of static-check config (canonical-lang -> list[config-dict]); empty dict if absent or if the global config file is missing/invalid.
 - @see SRS-252, SRS-253, SRS-256
 
-### fn `def _static_check_entry_identity(` `priv` (L1802-1803)
+### fn `def _static_check_entry_identity(` `priv` (L1797-1798)
 
-### fn `def build_persisted_update_flags(args: Namespace) -> dict[str, bool]` (L1826-1839)
+### fn `def load_persisted_provider_specs() -> list[str]` (L1821-1841)
 - @brief Build the canonical identity tuple for one static-check entry.
-- @brief Build persistent update flags from parsed CLI arguments.
+- @brief Load persisted ``--provider`` SPEC strings from the user-global configuration file.
 - @details Identity is defined strictly by language, module, cmd, and params.
 Unknown/additional keys in ``entry`` are ignored; ``params`` is normalized
 to a tuple preserving order, and non-list params are treated as empty.
-- @details Only ``preserve-models`` is persisted as a boolean flag (SRS-288). Provider/artifact/option configuration is persisted via ``--provider`` specs under the ``providers`` key in ``config.json`` (SRS-279).
+- @details Reads the ``"providers"`` key from `~/.config/usereq/config.json` (SRS-280). Returns ``[]`` on any read or parse error rather than raising.
 - @param canonical_lang Canonical language key that owns the entry.
 - @param entry Static-check entry mapping loaded from config or parsed from CLI.
-- @param args Parsed CLI namespace.
 - @return Tuple ``(canonical_lang, module, cmd, params_tuple)``.
-- @return Mapping of config key -> boolean value for install/update persistence.
-- @satisfies SRS-301
-
-### fn `def load_persisted_update_flags(project_base: Path) -> dict[str, bool]` (L1840-1881)
-- @brief Load persisted install/update boolean flags from `.req/config.json`.
-- @details Only ``preserve-models`` is loaded as a boolean flag (SRS-288). Provider/artifact activation is validated via the persisted ``providers`` array (SRS-280).
-- @param project_base The project root path.
-- @return Mapping of persisted config key -> boolean value.
-- @throws ReqError If config file is missing, invalid, or required flag fields are missing/invalid.
-
-### fn `def load_persisted_provider_specs(project_base: Path) -> list[str]` (L1882-1903)
-- @brief Load persisted ``--provider`` SPEC strings from `.req/config.json`.
-- @details Reads the ``"providers"`` key from config.json (SRS-280). Returns ``[]`` on any read or parse error rather than raising.
-- @param project_base The project root path.
 - @return List of raw SPEC strings; empty list if key is missing or config is unreadable.
 - @see SRS-279, SRS-280
+- @satisfies SRS-301
 
-### fn `def generate_guidelines_file_list(guidelines_dir: Path, project_base: Path) -> str` (L1904-1936)
+### fn `def generate_guidelines_file_list(guidelines_dir: Path, project_base: Path) -> str` (L1842-1874)
 - @brief Generates the markdown file list for %%GUIDELINES_FILES%% replacement.
 - @details Implements the generate_guidelines_file_list function behavior with deterministic control flow.
 - @param guidelines_dir Input parameter `guidelines_dir`.
 - @param project_base Input parameter `project_base`.
 - @return {str} Function return value.
 
-### fn `def generate_guidelines_file_items(` (L1937-1938)
+### fn `def generate_guidelines_file_items(` (L1875-1876)
 
-### fn `def upgrade_guidelines_templates(guidelines_dest: Path, overwrite: bool = False) -> int` (L1972-2006)
+### fn `def upgrade_guidelines_templates(guidelines_dest: Path, overwrite: bool = False) -> int` (L1910-1944)
 - @brief Generates a list of relative file paths (no formatting) for printing.
 - @brief Copies guidelines templates from resources/guidelines/ to the target directory.
 - @details Each entry is formatted as `guidelines/file.md` (forward slashes). If there are no files, returns the directory itself with a trailing slash.
@@ -606,7 +595,7 @@ to a tuple preserving order, and non-list params are treated as empty.
 - @return {list[str]} Function return value.
 - @return {int} Function return value.
 
-### fn `def ensure_relative(value: str, name: str, code: int) -> None` (L2007-2022)
+### fn `def ensure_relative(value: str, name: str, code: int) -> None` (L1945-1960)
 - @brief Validates that the path is not absolute and raises an error otherwise.
 - @details Implements the ensure_relative function behavior with deterministic control flow.
 - @param value Input parameter `value`.
@@ -614,23 +603,23 @@ to a tuple preserving order, and non-list params are treated as empty.
 - @param code Input parameter `code`.
 - @return {None} Function return value.
 
-### fn `def apply_replacements(text: str, replacements: Mapping[str, str]) -> str` (L2023-2035)
+### fn `def apply_replacements(text: str, replacements: Mapping[str, str]) -> str` (L1961-1973)
 - @brief Returns text with token replacements applied.
 - @details Implements the apply_replacements function behavior with deterministic control flow.
 - @param text Input parameter `text`.
 - @param replacements Input parameter `replacements`.
 - @return {str} Function return value.
 
-### fn `def write_text_file(dst: Path, text: str) -> None` (L2036-2047)
+### fn `def write_text_file(dst: Path, text: str) -> None` (L1974-1985)
 - @brief Writes text to disk, ensuring the destination folder exists.
 - @details Implements the write_text_file function behavior with deterministic control flow.
 - @param dst Input parameter `dst`.
 - @param text Input parameter `text`.
 - @return {None} Function return value.
 
-### fn `def copy_with_replacements(` (L2048-2049)
+### fn `def copy_with_replacements(` (L1986-1987)
 
-### fn `def normalize_description(value: str) -> str` (L2064-2078)
+### fn `def normalize_description(value: str) -> str` (L2002-2016)
 - @brief Copies a file substituting the indicated tokens with their values.
 - @brief Normalizes a description by removing superfluous quotes and escapes.
 - @details Implements the copy_with_replacements function behavior with deterministic control flow.
@@ -642,7 +631,7 @@ to a tuple preserving order, and non-list params are treated as empty.
 - @return {None} Function return value.
 - @return {str} Function return value.
 
-### fn `def md_to_toml(md_path: Path, toml_path: Path, force: bool) -> None` (L2079-2113)
+### fn `def md_to_toml(md_path: Path, toml_path: Path, force: bool) -> None` (L2017-2051)
 - @brief Converts a Markdown prompt to TOML for Gemini.
 - @details Implements the md_to_toml function behavior with deterministic control flow.
 - @param md_path Input parameter `md_path`.
@@ -650,169 +639,70 @@ to a tuple preserving order, and non-list params are treated as empty.
 - @param force Input parameter `force`.
 - @return {None} Function return value.
 
-### fn `def extract_frontmatter(content: str) -> tuple[str, str]` (L2114-2127)
+### fn `def extract_frontmatter(content: str) -> tuple[str, str]` (L2052-2065)
 - @brief Extracts front matter and body from Markdown.
 - @details Implements the extract_frontmatter function behavior with deterministic control flow.
 - @param content Input parameter `content`.
 - @return {tuple[str, str]} Function return value.
 
-### fn `def extract_description(frontmatter: str) -> str` (L2128-2140)
+### fn `def extract_description(frontmatter: str) -> str` (L2066-2078)
 - @brief Extracts the description from front matter.
 - @details Implements the extract_description function behavior with deterministic control flow.
 - @param frontmatter Input parameter `frontmatter`.
 - @return {str} Function return value.
 
-### fn `def extract_argument_hint(frontmatter: str) -> str` (L2141-2153)
+### fn `def extract_argument_hint(frontmatter: str) -> str` (L2079-2091)
 - @brief Extracts the argument-hint from front matter, if present.
 - @details Implements the extract_argument_hint function behavior with deterministic control flow.
 - @param frontmatter Input parameter `frontmatter`.
 - @return {str} Function return value.
 
-### fn `def extract_purpose_first_bullet(body: str) -> str` (L2154-2178)
+### fn `def extract_purpose_first_bullet(body: str) -> str` (L2092-2116)
 - @brief Returns the first bullet of the Purpose section.
 - @details Implements the extract_purpose_first_bullet function behavior with deterministic control flow.
 - @param body Input parameter `body`.
 - @return {str} Function return value.
 
-### fn `def _extract_section_text(body: str, section_name: str) -> str` `priv` (L2179-2206)
+### fn `def _extract_section_text(body: str, section_name: str) -> str` `priv` (L2117-2144)
 - @brief Extracts and collapses the text content of a named ## section.
 - @details Scans `body` line by line for a heading matching `## <section_name>` (case-insensitive). Collects all subsequent non-empty lines until the next `##`-level heading (or end of string). Strips each line, joins with a single space, and returns the collapsed single-line result.
 - @param[in] body str -- Full prompt body text (after front matter removal).
 - @param[in] section_name str -- Target section name without `##` prefix (case-insensitive match).
 - @return str -- Single-line collapsed text of the section; empty string if section absent or empty.
 
-### fn `def extract_skill_description(frontmatter: str) -> str` (L2207-2225)
+### fn `def extract_skill_description(frontmatter: str) -> str` (L2145-2163)
 - @brief Extracts the usage field from YAML front matter as a single YAML-safe line.
 - @details Parses the YAML front matter and returns the `usage` field value with all whitespace normalized to a single line. Returns an empty string if the field is absent.
 - @param[in] frontmatter str -- YAML front matter text (without the leading/trailing `---` delimiters).
 - @return str -- Single-line text of the usage field; empty string if absent.
 
-### fn `def json_escape(value: str) -> str` (L2226-2235)
-- @brief Escapes a string for JSON without external delimiters.
-- @details Implements the json_escape function behavior with deterministic control flow.
-- @param value Input parameter `value`.
-- @return {str} Function return value.
-
-### fn `def generate_kiro_resources(` (L2236-2239)
-
-### fn `def render_kiro_agent(` (L2265-2274)
-- @brief Generates the resource list for the Kiro agent.
-- @details Implements the generate_kiro_resources function behavior with deterministic control flow.
-- @param req_dir Input parameter `req_dir`.
-- @param project_base Input parameter `project_base`.
-- @param prompt_rel_path Input parameter `prompt_rel_path`.
-- @return {list[str]} Function return value.
-
-### fn `def replace_tokens(path: Path, replacements: Mapping[str, str]) -> None` (L2320-2333)
-- @brief Renders the Kiro agent JSON and populates main fields.
+### fn `def replace_tokens(path: Path, replacements: Mapping[str, str]) -> None` (L2164-2177)
 - @brief Replaces tokens in the specified file.
-- @details Implements the render_kiro_agent function behavior with deterministic control flow.
 - @details Implements the replace_tokens function behavior with deterministic control flow.
-- @param template Input parameter `template`.
-- @param name Input parameter `name`.
-- @param description Input parameter `description`.
-- @param prompt Input parameter `prompt`.
-- @param resources Input parameter `resources`.
-- @param tools Input parameter `tools`.
-- @param model Input parameter `model`.
-- @param include_tools Input parameter `include_tools`.
-- @param include_model Input parameter `include_model`.
 - @param path Input parameter `path`.
 - @param replacements Input parameter `replacements`.
-- @return {str} Function return value.
 - @return {None} Function return value.
 
-### fn `def yaml_double_quote_escape(value: str) -> str` (L2334-2343)
+### fn `def yaml_double_quote_escape(value: str) -> str` (L2178-2187)
 - @brief Minimal escape for a double-quoted string in YAML.
 - @details Implements the yaml_double_quote_escape function behavior with deterministic control flow.
 - @param value Input parameter `value`.
 - @return {str} Function return value.
 
-### fn `def list_docs_templates() -> list[Path]` (L2344-2363)
+### fn `def list_docs_templates() -> list[Path]` (L2188-2207)
 - @brief Returns non-hidden files available in resources/docs.
 - @details Implements the list_docs_templates function behavior with deterministic control flow.
 - @return Sorted list of file paths under resources/docs.
 - @throws ReqError If resources/docs does not exist or has no non-hidden files.
 
-### fn `def find_requirements_template(docs_templates: list[Path]) -> Path` (L2364-2380)
+### fn `def find_requirements_template(docs_templates: list[Path]) -> Path` (L2208-2224)
 - @brief Returns the packaged Requirements template file.
 - @details Implements the find_requirements_template function behavior with deterministic control flow.
 - @param docs_templates Runtime docs template file list from resources/docs.
 - @return Path to `Requirements_Template.md`.
 - @throws ReqError If `Requirements_Template.md` is not present.
 
-### fn `def load_kiro_template() -> tuple[str, dict[str, Any]]` (L2381-2420)
-- @brief Loads the Kiro template from centralized models configuration.
-- @details Implements the load_kiro_template function behavior with deterministic control flow.
-- @return {tuple[str, dict[str, Any]]} Function return value.
-
-### fn `def strip_json_comments(text: str) -> str` (L2421-2445)
-- @brief Removes // and /* */ comments to allow JSONC parsing.
-- @details Implements the strip_json_comments function behavior with deterministic control flow.
-- @param text Input parameter `text`.
-- @return {str} Function return value.
-
-### fn `def load_settings(path: Path) -> dict[str, Any]` (L2446-2461)
-- @brief Loads JSON/JSONC settings, removing comments when necessary.
-- @details Implements the load_settings function behavior with deterministic control flow.
-- @param path Input parameter `path`.
-- @return {dict[str, Any]} Function return value.
-
-### fn `def load_centralized_models(` (L2462-2465)
-
-### fn `def get_model_tools_for_prompt(` (L2536-2537)
-- @brief Loads centralized models configuration from common/models.json.
-- @details Returns a map cli_name -> parsed_json or None if not present. When preserve_models_path is provided and exists, loads from that file, ignoring legacy_mode. Otherwise, when legacy_mode is True, attempts to load models-legacy.json first, falling back to models.json if not found.
-- @param resource_root Input parameter `resource_root`.
-- @param legacy_mode Input parameter `legacy_mode`.
-- @param preserve_models_path Input parameter `preserve_models_path`.
-- @return {dict[str, dict[str, Any] | None]} Function return value.
-
-### fn `def get_raw_tools_for_prompt(config: dict[str, Any] | None, prompt_name: str) -> Any` (L2577-2598)
-- @brief Extracts model and tools for the prompt from the CLI config.
-- @brief Returns the raw value of `usage_modes[mode]['tools']` for the prompt.
-- @details Returns (model, tools) where each value can be None if not available.
-- @details Can return a list of strings, a string, or None depending on how it is defined in `config.json`. Does not perform CSV parsing: returns the value exactly as present in the configuration file.
-- @param config Input parameter `config`.
-- @param prompt_name Input parameter `prompt_name`.
-- @param source_name Input parameter `source_name`.
-- @param config Input parameter `config`.
-- @param prompt_name Input parameter `prompt_name`.
-- @return {tuple[Optional[str], Optional[list[str]]]} Function return value.
-- @return {Any} Function return value.
-
-### fn `def format_tools_inline_list(tools: list[str]) -> str` (L2599-2612)
-- @brief Formats the tools list as an inline YAML sequence.
-- @details Preserves input order, escapes embedded single quotes, and emits a deterministic inline list literal suitable for `tools:` front-matter fields. Complexity: O(N) in tool count. No side effects.
-- @param tools {list[str]} Ordered tool identifiers.
-- @return {str} Inline YAML sequence literal.
-
-### fn `def format_tools_space_separated_string(tools: Sequence[str]) -> str` (L2613-2625)
-- @brief Formats the tools list as one space-delimited YAML scalar.
-- @details Preserves input order, coerces each tool identifier to `str`, and emits a scalar payload for providers that require `allowed-tools` instead of `tools`. Complexity: O(N) in tool count. No side effects.
-- @param tools {Sequence[str]} Ordered tool identifiers resolved from provider configuration.
-- @return {str} Space-delimited tool identifiers.
-- @satisfies SRS-369, SRS-370
-
-### fn `def deep_merge_dict(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]` (L2626-2641)
-- @brief Recursively merges dictionaries, prioritizing incoming values.
-- @details Implements the deep_merge_dict function behavior with deterministic control flow.
-- @param base Input parameter `base`.
-- @param incoming Input parameter `incoming`.
-- @return {dict[str, Any]} Function return value.
-
-### fn `def find_vscode_settings_source() -> Optional[Path]` (L2642-2653)
-- @brief Finds the VS Code settings template if available.
-- @details Implements the find_vscode_settings_source function behavior with deterministic control flow.
-- @return {Optional[Path]} Function return value.
-
-### fn `def build_prompt_recommendations(prompts_dir: Path) -> dict[str, bool]` (L2654-2668)
-- @brief Generates chat.promptFilesRecommendations from available prompts.
-- @details Implements the build_prompt_recommendations function behavior with deterministic control flow.
-- @param prompts_dir Input parameter `prompts_dir`.
-- @return {dict[str, bool]} Function return value.
-
-### fn `def ensure_wrapped(target: Path, project_base: Path, code: int) -> None` (L2669-2684)
+### fn `def ensure_wrapped(target: Path, project_base: Path, code: int) -> None` (L2225-2240)
 - @brief Verifies that the path is under the project root.
 - @details Implements the ensure_wrapped function behavior with deterministic control flow.
 - @param target Input parameter `target`.
@@ -820,66 +710,54 @@ to a tuple preserving order, and non-list params are treated as empty.
 - @param code Input parameter `code`.
 - @return {None} Function return value.
 
-### fn `def save_vscode_backup(req_root: Path, settings_path: Path) -> None` (L2685-2699)
-- @brief Saves a backup of VS Code settings if the file exists.
-- @details Implements the save_vscode_backup function behavior with deterministic control flow.
-- @param req_root Input parameter `req_root`.
-- @param settings_path Input parameter `settings_path`.
-- @return {None} Function return value.
-
-### fn `def restore_vscode_settings(project_base: Path) -> None` (L2700-2715)
-- @brief Restores VS Code settings from backup, if present.
-- @details Implements the restore_vscode_settings function behavior with deterministic control flow.
-- @param project_base Input parameter `project_base`.
-- @return {None} Function return value.
-
-### fn `def prune_empty_dirs(root: Path) -> None` (L2716-2733)
+### fn `def prune_empty_dirs(root: Path) -> None` (L2241-2257)
 - @brief Removes empty directories under the specified root.
 - @details Implements the prune_empty_dirs function behavior with deterministic control flow.
 - @param root Input parameter `root`.
 - @return {None} Function return value.
 
-### fn `def remove_generated_resources(project_base: Path) -> None` (L2734-2786)
-- @brief Removes resources generated by the tool in the project root.
-- @details Implements the remove_generated_resources function behavior with deterministic control flow.
-- @param project_base Input parameter `project_base`.
+### fn `def remove_generated_resources() -> None` (L2258-2305)
+- @brief Removes `req-*` artifacts generated by the tool from user-level provider directories.
+- @details Loads the persisted `providers` array from the user-global configuration file, resolves each enabled provider/artifact user-level root via :func:`provider_artifact_root`, and deletes only `req-*` files and `req-*` skill directories. Empty user-level provider subdirectories are pruned afterwards; unrelated user content is never touched.
 - @return {None} Function return value.
+- @satisfies SRS-390
 
-### fn `def run_remove(args: Namespace) -> None` (L2787-2837)
-- @brief Handles the removal of generated resources.
-- @details Implements the run_remove function behavior with deterministic control flow.
+### fn `def run_remove(args: Namespace) -> None` (L2306-2338)
+- @brief Handles the removal of generated user-level resources.
+- @details Validates that `--update` and directory flags are not combined with `--remove`, verifies that the user-global configuration file exists, and removes `req-*` artifacts from user-level provider directories (SRS-390).
 - @param args Input parameter `args`.
 - @return {None} Function return value.
+- @satisfies SRS-390
 
-### fn `def _validate_enable_static_check_command_executables(` `priv` (L2838-2841)
+### fn `def _validate_enable_static_check_command_executables(` `priv` (L2339-2342)
 
-### fn `def run(args: Namespace) -> None` (L2870-3069)
+### fn `def run(args: Namespace) -> None` (L2371-2570)
 - @brief Validate Command-module executables in `--enable-static-check` parsed entries.
 - @brief Handles the main initialization flow.
 - @details Validation scope is limited to Command entries coming from CLI specs.
 Each Command `cmd` is resolved with `shutil.which`; on miss, raises `ReqError(code=1)`
 before any configuration persistence.
-- @details Validates input arguments, resolves install/update path sources, applies fresh-install defaults for omitted directory flags, creates configured directory trees during installation, and orchestrates provider artifact generation. Requires at least one ``--provider`` spec (SRS-035). Deduplicates ``--enable-static-check`` entries (SRS-251, SRS-301).
+- @details Validates input arguments, resolves install/update path sources, applies fresh-install defaults for omitted directory flags, creates configured directory trees during installation, persists the user-global configuration, and orchestrates user-level provider artifact generation. Requires at least one ``--provider`` spec (SRS-035). Deduplicates ``--enable-static-check`` entries (SRS-251, SRS-301).
 - @param static_check_config Parsed static-check entries grouped by canonical language.
 - @param enforce When false, skip validation and return immediately.
-- @param args Parsed CLI namespace; must contain ``provider_specs`` list and ``preserve_models`` boolean.
+- @param args Parsed CLI namespace; must contain ``provider_specs`` list.
 - @return {None} Function return value.
 - @return {None} Function return value.
 - @throws ReqError If a Command entry references a non-executable `cmd` on this system.
 - @see SRS-250
-- @satisfies SRS-035, SRS-064, SRS-251, SRS-301, SRS-359, SRS-360, SRS-361, SRS-362, SRS-363
+- @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-280, SRS-301, SRS-359, SRS-360, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388
 
-- var `VERBOSE = args.verbose` (L2879)
+- var `VERBOSE = args.verbose` (L2380)
 - @brief Handles the main initialization flow.
-- @details Validates input arguments, resolves install/update path sources, applies fresh-install defaults for omitted directory flags, creates configured directory trees during installation, and orchestrates provider artifact generation. Requires at least one ``--provider`` spec (SRS-035). Deduplicates ``--enable-static-check`` entries (SRS-251, SRS-301).
-- @param args Parsed CLI namespace; must contain ``provider_specs`` list and ``preserve_models`` boolean.
+- @details Validates input arguments, resolves install/update path sources, applies fresh-install defaults for omitted directory flags, creates configured directory trees during installation, persists the user-global configuration, and orchestrates user-level provider artifact generation. Requires at least one ``--provider`` spec (SRS-035). Deduplicates ``--enable-static-check`` entries (SRS-251, SRS-301).
+- @param args Parsed CLI namespace; must contain ``provider_specs`` list.
 - @return {None} Function return value.
-- @satisfies SRS-035, SRS-064, SRS-251, SRS-301, SRS-359, SRS-360, SRS-361, SRS-362, SRS-363
-- var `DEBUG = args.debug` (L2880)
-- var `PROMPT = prompt_path.stem` (L3377)
-### fn `def _format_install_table(` `priv` (L4068-4070)
+- @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-280, SRS-301, SRS-359, SRS-360, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388
+- var `DEBUG = args.debug` (L2381)
+- var `PROMPT = prompt_path.stem` (L2721)
+### fn `def _format_install_table(` `priv` (L3005-3007)
 
-### fn `def _wrap_cell(value: str, width: int, allow_wrap: bool) -> list[str]` `priv` (L4107-4129)
+### fn `def _wrap_cell(value: str, width: int, allow_wrap: bool) -> list[str]` `priv` (L3044-3066)
 - @brief Format the Unicode installation summary table.
 - @brief Normalize one table cell to printable lines.
 - @details Builds a deterministic box-drawing table with columns: Provider, Prompts Installed, Modules Installed.
@@ -897,7 +775,7 @@ Borders are emitted with Unicode line-drawing characters and bright-red ANSI sty
 - @note Complexity: O(C * (P log P + M)) where C is provider count, P is prompts per provider, M is module-entry lines per provider.
 - @note Side effects: None (pure formatting).
 
-### fn `def _render_row(provider: str, prompts: str, modules: str) -> list[str]` `priv` (L4130-4156)
+### fn `def _render_row(provider: str, prompts: str, modules: str) -> list[str]` `priv` (L3067-3093)
 - @brief Render one logical table row into one or more physical lines.
 - @details Applies per-cell wrapping and left alignment, then expands the row height to the maximum wrapped cell line count.
 - @param provider {str} Provider cell text.
@@ -905,86 +783,93 @@ Borders are emitted with Unicode line-drawing characters and bright-red ANSI sty
 - @param modules {str} Modules Installed cell text.
 - @return {list[str]} Physical row lines encoded with box-drawing separators.
 
-### fn `def _build_provider_modules_map(provider_specs: list[str]) -> dict[str, list[str]]` `priv` (L4171-4229)
+### fn `def _build_provider_modules_map(provider_specs: list[str]) -> dict[str, list[str]]` `priv` (L3108-3166)
 - @brief Build provider-to-module-entry mapping for installation table rendering.
 - @details Parses validated raw `--provider` specifications, preserves first-seen artifact-item order and artifact-local option order, appends applicable provider-scoped options in first-seen order, and emits one module-entry line per active artifact item as `artifact` or `artifact:options`. Complexity: O(P * (A + O)) where P is spec count. No side effects.
 - @param provider_specs {list[str]} Raw `--provider` SPEC values after update-merging logic.
 - @return {dict[str, list[str]]} Mapping from provider to ordered module-entry lines.
 - @satisfies SRS-291, SRS-294, SRS-297
 
-### fn `def _colorize_table_border(line: str) -> str` `priv` (L4230-4242)
+### fn `def _colorize_table_border(line: str) -> str` `priv` (L3167-3179)
 - @brief Colorize box-drawing border glyphs with bright-red ANSI style.
 - @details Applies color to border characters while preserving cell payload text color.
 - @param line {str} One already-rendered table line.
 - @return {str} Line with border glyphs wrapped in ANSI bright-red and reset sequences.
 
-- var `SUPPORTED_EXTENSIONS = frozenset(` (L4257)
-### fn `def _collect_source_files(src_dirs: list[str], project_base: Path) -> list[str]` `priv` (L4285-4342)
+- var `SUPPORTED_EXTENSIONS = frozenset(` (L3194)
+### fn `def _collect_source_files(src_dirs: list[str], project_base: Path) -> list[str]` `priv` (L3222-3279)
 - @brief Collect source files from git-indexed project paths.
 - @details Uses `git ls-files --cached --others --exclude-standard` in project root, filters by src-dir prefixes, applies EXCLUDED_DIRS filtering, and keeps only SUPPORTED_EXTENSIONS files.
 - @param src_dirs Input parameter `src_dirs`.
 - @param project_base Input parameter `project_base`.
 - @return {list[str]} Function return value.
 
-### fn `def _build_ascii_tree(paths: list[str]) -> str` `priv` (L4343-4388)
+### fn `def _build_ascii_tree(paths: list[str]) -> str` `priv` (L3280-3325)
 - @brief Build a deterministic tree string from project-relative paths.
 - @details Implements the _build_ascii_tree function behavior with deterministic control flow.
 - @param paths Project-relative file paths.
 - @return Rendered tree rooted at '.'.
 
-### fn `def _emit(` `priv` (L4367-4369)
+### fn `def _emit(` `priv` (L3304-3306)
 - @brief Build a deterministic tree string from project-relative paths.
 - @details Implements the _build_ascii_tree function behavior with deterministic control flow.
 - @param paths Project-relative file paths.
 - @return Rendered tree rooted at '.'.
 
-### fn `def _format_files_structure_markdown(files: list[str], project_base: Path) -> str` `priv` (L4389-4403)
+### fn `def _format_files_structure_markdown(files: list[str], project_base: Path) -> str` `priv` (L3326-3340)
 - @brief Format markdown section containing the scanned files tree.
 - @details Implements the _format_files_structure_markdown function behavior with deterministic control flow.
 - @param files Absolute file paths selected for --references processing.
 - @param project_base Project root used to normalize relative paths.
 - @return Markdown section with heading and fenced tree.
 
-### fn `def _is_standalone_command(args: Namespace) -> bool` `priv` (L4404-4422)
+### fn `def _is_standalone_command(args: Namespace) -> bool` `priv` (L3341-3359)
 - @brief Check if the parsed args contain a standalone file command.
 - @details Standalone commands require no `--base`/`--here`: `--files-tokens`, `--files-references`, `--files-compress`, `--files-find`, `--test-static-check`, and `--files-static-check`. SRS-253 adds `--files-static-check` to this group.
 - @param args Parsed CLI namespace.
 - @return True when any file-scope standalone flag is present.
 
-### fn `def _is_project_scan_command(args: Namespace) -> bool` `priv` (L4423-4447)
+### fn `def _is_project_scan_command(args: Namespace) -> bool` `priv` (L3360-3384)
 - @brief Check if the parsed args contain a project-scan command.
 - @details Project-scan commands: `--references`, `--compress`, `--tokens`, `--find`, `--static-check`, `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`, `--git-path`, and `--get-base-path`.
 - @param args Parsed CLI namespace.
 - @return True when any project-scan flag is present.
 
-### fn `def _is_here_only_project_scan_command(args: Namespace) -> bool` `priv` (L4448-4473)
+### fn `def _is_here_only_project_scan_command(args: Namespace) -> bool` `priv` (L3385-3410)
 - @brief Check if args request a project-scan command restricted to `--here` mode.
 - @details Includes `--references`, `--compress`, `--tokens`, `--find`, `--static-check`, `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`, `--git-path`, and `--get-base-path`.
 - @param args Parsed CLI namespace.
 - @return True when command requires implicit `--here` and rejects `--base`.
 - @satisfies SRS-311, SRS-313, SRS-318, SRS-320, SRS-326, SRS-333
 
-### fn `def run_git_check(args: Namespace) -> None` (L4474-4505)
+### fn `def _resolve_runtime_git_root() -> Path` `priv` (L3411-3421)
+- @brief Resolve the git repository root at runtime from the current working directory.
+- @details Executes `git rev-parse --show-toplevel` from the CWD (SRS-391) and returns the absolute repository root path. Project-local configuration is never consulted.
+- @return {Path} Absolute git repository root path.
+- @throws ReqError If the CWD is not inside a git work tree or git is unavailable.
+- @satisfies SRS-391
+
+### fn `def run_git_check(args: Namespace) -> None` (L3422-3449)
 - @brief Execute --git-check: verify clean git status and valid HEAD.
 - @param args Parsed CLI namespace.
 - @return {None} Function return value.
-- @throws ReqError On git status unclear or config load failure.
-- @satisfies SRS-311, SRS-312
+- @throws ReqError On git status unclear or when CWD is outside a git repository.
+- @satisfies SRS-311, SRS-312, SRS-391
 
-### fn `def run_docs_check(args: Namespace) -> None` (L4506-4535)
+### fn `def run_docs_check(args: Namespace) -> None` (L3450-3479)
 - @brief Execute --docs-check: verify existence of REQUIREMENTS.md, WORKFLOW.md, REFERENCES.md.
 - @param args Parsed CLI namespace.
 - @return {None} Function return value.
 - @throws ReqError If any required doc file is missing.
 - @satisfies SRS-313, SRS-314, SRS-315, SRS-316, SRS-317
 
-### fn `def run_git_wt_name(args: Namespace) -> None` (L4536-4564)
+### fn `def run_git_wt_name(args: Namespace) -> None` (L3480-3504)
 - @brief Execute --git-wt-name: print standardized worktree name.
 - @param args Parsed CLI namespace.
 - @return {None} Function return value.
-- @satisfies SRS-318, SRS-319
+- @satisfies SRS-318, SRS-319, SRS-391
 
-### fn `def _worktree_path_exists_exact(git_path: Path, target_path: Path) -> bool` `priv` (L4565-4594)
+### fn `def _worktree_path_exists_exact(git_path: Path, target_path: Path) -> bool` `priv` (L3505-3534)
 - @brief Check whether a git worktree exists at the exact target path.
 - @details Parses `git worktree list --porcelain` output by `worktree <path>` records and performs exact path comparison to prevent partial-name or substring matches.
 - @param git_path Absolute git root path used as command cwd.
@@ -992,7 +877,7 @@ Borders are emitted with Unicode line-drawing characters and bright-red ANSI sty
 - @return {bool} True only when target_path is listed as an exact worktree path.
 - @throws ReqError On git command execution errors.
 
-### fn `def _rollback_worktree_create(git_path: Path, wt_path: Path, wt_name: str) -> None` `priv` (L4595-4631)
+### fn `def _rollback_worktree_create(git_path: Path, wt_path: Path, wt_name: str) -> None` `priv` (L3535-3571)
 - @brief Roll back worktree and branch created by --git-wt-create on post-create failure.
 - @details Uses `git worktree remove <path> --force` and `git branch -D <name>` to restore a clean git state when post-create copy/chdir operations fail.
 - @param git_path Absolute git root path used as command cwd.
@@ -1001,129 +886,130 @@ Borders are emitted with Unicode line-drawing characters and bright-red ANSI sty
 - @return {None} Function return value.
 - @throws ReqError If rollback cannot remove the exact target worktree and branch.
 
-### fn `def run_git_wt_create(args: Namespace) -> None` (L4632-4731)
-- @brief Execute --git-wt-create: create a git worktree and copy .req/provider dirs.
+### fn `def run_git_wt_create(args: Namespace) -> None` (L3572-3633)
+- @brief Execute --git-wt-create: create a git worktree, branch, and optional .venv copy.
 - @param args Parsed CLI namespace.
 - @return {None} Function return value.
-- @throws ReqError On invalid name, git command failure, or config errors.
-- @satisfies SRS-320, SRS-321, SRS-322, SRS-323, SRS-324, SRS-325, SRS-331, SRS-335
+- @throws ReqError On invalid name, git command failure, or when CWD is outside a git repository.
+- @satisfies SRS-320, SRS-321, SRS-322, SRS-331, SRS-335, SRS-391
 
-### fn `def run_git_wt_delete(args: Namespace) -> None` (L4732-4809)
+### fn `def run_git_wt_delete(args: Namespace) -> None` (L3634-3702)
 - @brief Execute --git-wt-delete: remove a git worktree and branch by name.
 - @param args Parsed CLI namespace.
 - @return {None} Function return value.
 - @throws ReqError On invalid name or git removal failure.
-- @satisfies SRS-326, SRS-327, SRS-328, SRS-332
+- @satisfies SRS-326, SRS-327, SRS-328, SRS-332, SRS-391
 
-### fn `def run_git_path(args: Namespace) -> None` (L4810-4822)
-- @brief Execute --git-path: print configured git-path from `.req/config.json`.
+### fn `def run_git_path(args: Namespace) -> None` (L3703-3714)
+- @brief Execute --git-path: print the runtime-resolved git repository root.
 - @param args Parsed CLI namespace.
 - @return {None} Function return value.
-- @throws ReqError If `.req/config.json` is not present.
-- @satisfies SRS-333, SRS-334
+- @throws ReqError If the current working directory is not inside a git repository.
+- @satisfies SRS-333, SRS-334, SRS-391
 
-### fn `def run_get_base_path(args: Namespace) -> None` (L4823-4835)
-- @brief Execute --get-base-path: print configured base-path from `.req/config.json`.
+### fn `def run_get_base_path(args: Namespace) -> None` (L3715-3724)
+- @brief Execute --get-base-path: print the absolute current working directory.
 - @param args Parsed CLI namespace.
 - @return {None} Function return value.
-- @throws ReqError If `.req/config.json` is not present.
 - @satisfies SRS-333, SRS-347
 
-### fn `def run_files_tokens(files: list[str]) -> None` (L4836-4858)
+### fn `def run_files_tokens(files: list[str]) -> None` (L3725-3747)
 - @brief Execute --files-tokens: count tokens for arbitrary files.
 - @details Implements the run_files_tokens function behavior with deterministic control flow.
 - @param files Input parameter `files`.
 - @return {None} Function return value.
 
-### fn `def run_files_references(files: list[str]) -> None` (L4859-4875)
+### fn `def run_files_references(files: list[str]) -> None` (L3748-3764)
 - @brief Execute --files-references: generate markdown for arbitrary files.
 - @details Implements the run_files_references function behavior with deterministic control flow.
 - @param files Input parameter `files`.
 - @return {None} Function return value.
 
-### fn `def run_files_compress(files: list[str], enable_line_numbers: bool = False) -> None` (L4876-4894)
+### fn `def run_files_compress(files: list[str], enable_line_numbers: bool = False) -> None` (L3765-3783)
 - @brief Execute --files-compress: compress arbitrary files.
 - @details Renders output header paths relative to current working directory.
 - @param files List of source file paths to compress.
 - @param enable_line_numbers If True, emits <n>: prefixes in compressed entries.
 - @return {None} Function return value.
 
-### fn `def run_files_find(args_list: list[str], enable_line_numbers: bool = False) -> None` (L4895-4923)
+### fn `def run_files_find(args_list: list[str], enable_line_numbers: bool = False) -> None` (L3784-3812)
 - @brief Execute --files-find: find constructs in arbitrary files.
 - @details Implements the run_files_find function behavior with deterministic control flow.
 - @param args_list Combined list: [TAG, PATTERN, FILE1, FILE2, ...].
 - @param enable_line_numbers If True, emits <n>: prefixes in output.
 - @return {None} Function return value.
 
-### fn `def run_references(args: Namespace) -> None` (L4924-4941)
+### fn `def run_references(args: Namespace) -> None` (L3813-3830)
 - @brief Execute --references: generate markdown for project source files.
 - @details Implements the run_references function behavior with deterministic control flow.
 - @param args Input parameter `args`.
 - @return {None} Function return value.
 
-### fn `def run_compress_cmd(args: Namespace) -> None` (L4942-4963)
+### fn `def run_compress_cmd(args: Namespace) -> None` (L3831-3852)
 - @brief Execute --compress: compress project source files.
 - @details Implements the run_compress_cmd function behavior with deterministic control flow.
 - @param args Parsed CLI arguments namespace.
 - @return {None} Function return value.
 
-### fn `def run_find(args: Namespace) -> None` (L4964-4993)
+### fn `def run_find(args: Namespace) -> None` (L3853-3882)
 - @brief Execute --find: find constructs in project source files.
 - @details Implements the run_find function behavior with deterministic control flow.
 - @param args Parsed CLI arguments namespace.
 - @return {None} Function return value.
 - @throws ReqError If no source files found or no constructs match criteria with available TAGs listing.
 
-### fn `def run_tokens(args: Namespace) -> None` (L4994-5021)
+### fn `def run_tokens(args: Namespace) -> None` (L3883-3911)
 - @brief Execute --tokens on the canonical documentation files in --docs-dir.
-- @details Uses docs-dir from .req/config.json in here-only mode, ignores explicit --docs-dir, selects only REQUIREMENTS.md/WORKFLOW.md/REFERENCES.md as direct regular files in fixed order, and delegates summary rendering to run_files_tokens.
+- @details Uses docs-dir from ~/.config/usereq/config.json in here-only mode, ignores explicit --docs-dir, selects only REQUIREMENTS.md/WORKFLOW.md/REFERENCES.md as direct regular files in fixed order, and delegates summary rendering to run_files_tokens.
 - @param args Parsed CLI arguments namespace.
 - @return None.
 - @exception ReqError Raised when no canonical documentation file exists in configured docs-dir.
+- @satisfies SRS-310, SRS-387
 
-### fn `def run_files_static_check_cmd(files: list[str], args: Namespace) -> int` (L5022-5099)
+### fn `def run_files_static_check_cmd(files: list[str], args: Namespace) -> int` (L3912-3984)
 - @brief Execute `--files-static-check`: run static analysis on an explicit file list.
-- @details Project-base resolution order: 1. `--base PATH` -> use PATH. 2. `--here` -> use CWD. 3. Fallback -> use CWD. If `.req/config.json` is not found at the resolved project base, emits a warning to stderr and returns 0 (SRS-254). For each file: - Resolves absolute path; skips with warning if not a regular file. - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on the lowercase extension. - Looks up language in the `"static-check"` config section; skips silently if absent. - Executes each configured language entry sequentially via `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`. - For `Command` module entries, execution order is `<cmd> [params...] <filename>`. Dispatch context provides project root for checker runtime execution. All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-253). Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-253, SRS-255)
+- @details Static-check configuration is loaded from `~/.config/usereq/config.json`. When the global configuration file cannot be located, emits a warning to stderr and returns 0 (SRS-254). Project-base resolution order for dispatch context: 1. `--base PATH` -> use PATH. 2. `--here` or fallback -> use CWD. For each file: - Resolves absolute path; skips with warning if not a regular file. - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on the lowercase extension. - Looks up language in the `"static-check"` config section; skips silently if absent. - Executes each configured language entry sequentially via `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`. - For `Command` module entries, execution order is `<cmd> [params...] <filename>`. Dispatch context provides project root for checker runtime execution. All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-253). Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-253, SRS-255)
 - @param files List of raw file paths supplied by the user.
-- @param args Parsed CLI namespace; `--here`/`--base` are used to locate config.json.
+- @param args Parsed CLI namespace; `--here`/`--base` are used to resolve dispatch context.
 - @return Exit code: 0 if all checked files pass (or none are checked), 1 if any fail.
 - @see SRS-253, SRS-254, SRS-255, SRS-341
 
-### fn `def run_project_static_check_cmd(args: Namespace) -> int` (L5100-5199)
+### fn `def run_project_static_check_cmd(args: Namespace) -> int` (L3985-4084)
 - @brief Execute `--static-check`: run static analysis on project source and test files.
-- @details Collects files from configured `src-dir` directories and the `tests-dir` directory (SRS-256, SRS-336), applies `EXCLUDED_DIRS` filtering and `SUPPORTED_EXTENSIONS` matching. If `tests-dir` is missing or invalid in `.req/config.json`, test directory inclusion is skipped silently without error (SRS-336). Files under `<tests-dir>/fixtures/` are excluded from static-check selection because they are fixture corpus inputs for parser/static-check tests and can intentionally contain diagnostics unrelated to project code quality gates. For each collected file: - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on lowercase extension. - Looks up language in the `"static-check"` section of `.req/config.json`. - Skips silently when no tool is configured for the file's language. - Executes each configured language entry sequentially via `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`. - For `Command` module entries, execution order is `<cmd> [params...] <filename>`. Dispatch context provides project root for checker runtime execution. All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-256). Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
+- @details Collects files from configured `src-dir` directories and the `tests-dir` directory (SRS-256, SRS-336), applies `EXCLUDED_DIRS` filtering and `SUPPORTED_EXTENSIONS` matching. If `tests-dir` is missing or invalid in the global configuration file, test directory inclusion is skipped silently without error (SRS-336). Files under `<tests-dir>/fixtures/` are excluded from static-check selection because they are fixture corpus inputs for parser/static-check tests and can intentionally contain diagnostics unrelated to project code quality gates. For each collected file: - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on lowercase extension. - Looks up language in the `"static-check"` section of `~/.config/usereq/config.json`. - Skips silently when no tool is configured for the file's language. - Executes each configured language entry sequentially via `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`. - For `Command` module entries, execution order is `<cmd> [params...] <filename>`. Dispatch context provides project root for checker runtime execution. All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-256). Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
 - @param args Parsed CLI namespace; here-only project scan (`--here` implied; `--base` rejected).
 - @return Exit code: 0 if all checked files pass (or none are checked), 1 if any fail.
 - @throws ReqError If no source files are found.
 - @see SRS-256, SRS-257, SRS-336, SRS-341
 
-### fn `def _resolve_project_base(args: Namespace) -> Path` `priv` (L5200-5220)
+### fn `def _resolve_project_base(args: Namespace) -> Path` `priv` (L4085-4105)
 - @brief Resolve project base path for project-level commands.
 - @details Implements the _resolve_project_base function behavior with deterministic control flow.
 - @param args Parsed CLI arguments namespace.
 - @return Absolute path of project base.
 - @throws ReqError If --base/--here is missing or the resolved path does not exist.
 
-### fn `def _resolve_project_src_dirs(args: Namespace) -> tuple[Path, list[str]]` `priv` (L5221-5273)
+### fn `def _resolve_project_src_dirs(args: Namespace) -> tuple[Path, list[str]]` `priv` (L4106-4135)
 - @brief Resolve project base and src-dirs for project source commands.
-- @details Implements the _resolve_project_src_dirs function behavior with deterministic control flow.
+- @details Loads the `src-dir` list from the user-global configuration file (`~/.config/usereq/config.json`) and resolves it against the project base derived from `--base` or the current working directory.
 - @param args Input parameter `args`.
-- @return {tuple[Path, list[str]]} Function return value.
+- @return {tuple[Path, list[str]]} Tuple `(project_base, src_dirs)`.
+- @throws ReqError If the global configuration file is missing or `src-dir` is invalid.
 
-### fn `def main(argv: Optional[list[str]] = None) -> int` (L5274-5385)
+### fn `def main(argv: Optional[list[str]] = None) -> int` (L4136-4247)
 - @brief CLI entry point for console_scripts and `-m` execution.
 - @details Returns an exit code (0 success, non-zero on error).
 - @param argv Input parameter `argv`.
 - @return {int} Function return value.
 
-- var `FORCE_ONLINE_RELEASE_CHECK = force_online_release_check` (L5288)
+- var `FORCE_ONLINE_RELEASE_CHECK = force_online_release_check` (L4150)
 - @brief CLI entry point for console_scripts and `-m` execution.
 - @details Returns an exit code (0 success, non-zero on error).
 - @param argv Input parameter `argv`.
 - @return {int} Function return value.
-- var `FORCE_ONLINE_RELEASE_CHECK = previous_force_online_release_check` (L5292)
-- var `VERBOSE = getattr(args, "verbose", False)` (L5305)
-- var `DEBUG = getattr(args, "debug", False)` (L5306)
+- var `FORCE_ONLINE_RELEASE_CHECK = previous_force_online_release_check` (L4154)
+- var `VERBOSE = getattr(args, "verbose", False)` (L4167)
+- var `DEBUG = getattr(args, "debug", False)` (L4168)
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
@@ -1132,167 +1018,153 @@ Borders are emitted with Unicode line-drawing characters and bright-red ANSI sty
 |`VERBOSE`|var|pub|36||
 |`DEBUG`|var|pub|39||
 |`REQUIREMENTS_TEMPLATE_NAME`|var|pub|42||
-|`PERSISTED_UPDATE_FLAG_KEYS`|var|pub|45||
-|`DEFAULT_DOCS_DIR`|var|pub|48||
-|`DEFAULT_GUIDELINES_DIR`|var|pub|51||
-|`DEFAULT_TESTS_DIR`|var|pub|54||
-|`DEFAULT_SRC_DIRS`|var|pub|57||
-|`VALID_PROVIDERS`|var|pub|60||
-|`VALID_ARTIFACTS`|var|pub|65||
-|`VALID_ARTIFACT_OPTIONS`|var|pub|68||
-|`VALID_PROVIDER_OPTIONS`|var|pub|71||
-|`INVALID_WT_NAME_RE`|var|pub|91||
-|`_parse_provider_artifact_item`|fn|priv|95-135|def _parse_provider_artifact_item(spec: str, artifact_ite...|
-|`_parse_provider_options`|fn|priv|136-163|def _parse_provider_options(spec: str, raw_options: str) ...|
-|`parse_provider_spec`|fn|pub|164-203|def parse_provider_spec(spec: str) -> tuple[str, list[tup...|
-|`artifact_option_enabled`|fn|pub|204-205|def artifact_option_enabled(|
-|`resolve_provider_configs`|fn|pub|226-227|def resolve_provider_configs(|
-|`ANSI_BRIGHT_RED`|var|pub|270||
-|`ANSI_BRIGHT_GREEN`|var|pub|273||
-|`ANSI_RESET`|var|pub|276||
-|`RELEASE_CHECK_TIMEOUT_SECONDS`|var|pub|279||
-|`RELEASE_CHECK_IDLE_DELAY_SECONDS`|var|pub|282||
-|`RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS`|var|pub|285||
-|`TOOL_PROGRAM_NAME`|var|pub|288||
-|`RELEASE_CHECK_PROGRAM_NAME`|var|pub|291||
-|`GITHUB_REPOSITORY_OWNER`|var|pub|294||
-|`GITHUB_REPOSITORY_NAME`|var|pub|297||
-|`RELEASE_CHECK_IDLE_CACHE_ROOT_DIRNAME`|var|pub|300||
-|`RELEASE_CHECK_IDLE_FILENAME`|var|pub|303||
-|`GITHUB_RELEASES_LATEST_URL`|var|pub|306||
-|`GITHUB_UPGRADE_SOURCE`|var|pub|312||
-|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|317||
-|`ReqError`|class|pub|321-338|class ReqError(Exception)|
-|`ReqError.__init__`|fn|priv|326-338|def __init__(self, message: str, code: int = 1) -> None|
-|`log`|fn|pub|339-348|def log(msg: str) -> None|
-|`dlog`|fn|pub|349-359|def dlog(msg: str) -> None|
-|`vlog`|fn|pub|360-370|def vlog(msg: str) -> None|
-|`_get_available_tags_help`|fn|priv|371-383|def _get_available_tags_help() -> str|
-|`build_parser`|fn|pub|384-583|def build_parser() -> argparse.ArgumentParser|
-|`parse_args`|fn|pub|674-683|def parse_args(argv: Optional[list[str]] = None) -> Names...|
-|`load_package_version`|fn|pub|684-698|def load_package_version() -> str|
-|`maybe_print_version`|fn|pub|699-711|def maybe_print_version(argv: list[str]) -> bool|
-|`run_upgrade`|fn|pub|712-746|def run_upgrade() -> None|
-|`run_uninstall`|fn|pub|747-779|def run_uninstall() -> None|
-|`normalize_release_tag`|fn|pub|780-792|def normalize_release_tag(tag: str) -> str|
-|`parse_version_tuple`|fn|pub|793-817|def parse_version_tuple(version: str) -> tuple[int, ...] ...|
-|`is_newer_version`|fn|pub|818-836|def is_newer_version(current: str, latest: str) -> bool|
-|`parse_github_owner_repository`|fn|pub|837-863|def parse_github_owner_repository(remote_url: str) -> tup...|
-|`read_git_remote_verbose`|fn|pub|864-883|def read_git_remote_verbose(cwd: str | None = None) -> str|
-|`resolve_github_owner_repository_from_active_remotes`|fn|pub|884-944|def resolve_github_owner_repository_from_active_remotes()...|
-|`resolve_latest_release_api_url`|fn|pub|945-953|def resolve_latest_release_api_url() -> str|
-|`format_unix_timestamp_utc`|fn|pub|954-966|def format_unix_timestamp_utc(timestamp_seconds: int) -> str|
-|`get_release_check_idle_file_path`|fn|pub|967-968|def get_release_check_idle_file_path(|
-|`cleanup_release_check_idle_state_cache`|fn|pub|985-986|def cleanup_release_check_idle_state_cache(|
-|`read_release_check_idle_state`|fn|pub|1009-1073|def read_release_check_idle_state(file_path: Path) -> dic...|
-|`should_execute_release_check`|fn|pub|1074-1076|def should_execute_release_check(|
-|`parse_retry_after_seconds`|fn|pub|1095-1097|def parse_retry_after_seconds(|
-|`write_release_check_idle_state_payload`|fn|pub|1127-1130|def write_release_check_idle_state_payload(|
-|`write_release_check_idle_state`|fn|pub|1157-1160|def write_release_check_idle_state(|
-|`write_failed_release_check_idle_state`|fn|pub|1179-1183|def write_failed_release_check_idle_state(|
-|`persist_failed_release_check_idle_state`|fn|pub|1211-1215|def persist_failed_release_check_idle_state(|
-|`maybe_notify_newer_version`|fn|pub|1241-1242|def maybe_notify_newer_version(|
-|`ensure_guidelines_directory`|fn|pub|1395-1396|def ensure_guidelines_directory(|
-|`ensure_doc_directory`|fn|pub|1427-1428|def ensure_doc_directory(|
-|`ensure_test_directory`|fn|pub|1457-1458|def ensure_test_directory(|
-|`ensure_src_directory`|fn|pub|1487-1488|def ensure_src_directory(|
-|`make_relative_if_contains_project`|fn|pub|1517-1558|def make_relative_if_contains_project(path_value: str, pr...|
-|`resolve_absolute`|fn|pub|1559-1574|def resolve_absolute(normalized: str, project_base: Path)...|
-|`resolve_git_root`|fn|pub|1575-1602|def resolve_git_root(target_path: Path) -> Path|
-|`is_inside_git_repo`|fn|pub|1603-1622|def is_inside_git_repo(target_path: Path) -> bool|
-|`sanitize_branch_name`|fn|pub|1623-1632|def sanitize_branch_name(branch: str) -> str|
-|`validate_wt_name`|fn|pub|1633-1644|def validate_wt_name(wt_name: str) -> bool|
-|`load_full_config`|fn|pub|1645-1664|def load_full_config(project_base: Path) -> dict|
-|`save_config`|fn|pub|1665-1675|def save_config(|
-|`load_config`|fn|pub|1719-1769|def load_config(project_base: Path) -> dict[str, str | li...|
-|`load_static_check_from_config`|fn|pub|1770-1801|def load_static_check_from_config(project_base: Path) -> ...|
-|`_static_check_entry_identity`|fn|priv|1802-1803|def _static_check_entry_identity(|
-|`build_persisted_update_flags`|fn|pub|1826-1839|def build_persisted_update_flags(args: Namespace) -> dict...|
-|`load_persisted_update_flags`|fn|pub|1840-1881|def load_persisted_update_flags(project_base: Path) -> di...|
-|`load_persisted_provider_specs`|fn|pub|1882-1903|def load_persisted_provider_specs(project_base: Path) -> ...|
-|`generate_guidelines_file_list`|fn|pub|1904-1936|def generate_guidelines_file_list(guidelines_dir: Path, p...|
-|`generate_guidelines_file_items`|fn|pub|1937-1938|def generate_guidelines_file_items(|
-|`upgrade_guidelines_templates`|fn|pub|1972-2006|def upgrade_guidelines_templates(guidelines_dest: Path, o...|
-|`ensure_relative`|fn|pub|2007-2022|def ensure_relative(value: str, name: str, code: int) -> ...|
-|`apply_replacements`|fn|pub|2023-2035|def apply_replacements(text: str, replacements: Mapping[s...|
-|`write_text_file`|fn|pub|2036-2047|def write_text_file(dst: Path, text: str) -> None|
-|`copy_with_replacements`|fn|pub|2048-2049|def copy_with_replacements(|
-|`normalize_description`|fn|pub|2064-2078|def normalize_description(value: str) -> str|
-|`md_to_toml`|fn|pub|2079-2113|def md_to_toml(md_path: Path, toml_path: Path, force: boo...|
-|`extract_frontmatter`|fn|pub|2114-2127|def extract_frontmatter(content: str) -> tuple[str, str]|
-|`extract_description`|fn|pub|2128-2140|def extract_description(frontmatter: str) -> str|
-|`extract_argument_hint`|fn|pub|2141-2153|def extract_argument_hint(frontmatter: str) -> str|
-|`extract_purpose_first_bullet`|fn|pub|2154-2178|def extract_purpose_first_bullet(body: str) -> str|
-|`_extract_section_text`|fn|priv|2179-2206|def _extract_section_text(body: str, section_name: str) -...|
-|`extract_skill_description`|fn|pub|2207-2225|def extract_skill_description(frontmatter: str) -> str|
-|`json_escape`|fn|pub|2226-2235|def json_escape(value: str) -> str|
-|`generate_kiro_resources`|fn|pub|2236-2239|def generate_kiro_resources(|
-|`render_kiro_agent`|fn|pub|2265-2274|def render_kiro_agent(|
-|`replace_tokens`|fn|pub|2320-2333|def replace_tokens(path: Path, replacements: Mapping[str,...|
-|`yaml_double_quote_escape`|fn|pub|2334-2343|def yaml_double_quote_escape(value: str) -> str|
-|`list_docs_templates`|fn|pub|2344-2363|def list_docs_templates() -> list[Path]|
-|`find_requirements_template`|fn|pub|2364-2380|def find_requirements_template(docs_templates: list[Path]...|
-|`load_kiro_template`|fn|pub|2381-2420|def load_kiro_template() -> tuple[str, dict[str, Any]]|
-|`strip_json_comments`|fn|pub|2421-2445|def strip_json_comments(text: str) -> str|
-|`load_settings`|fn|pub|2446-2461|def load_settings(path: Path) -> dict[str, Any]|
-|`load_centralized_models`|fn|pub|2462-2465|def load_centralized_models(|
-|`get_model_tools_for_prompt`|fn|pub|2536-2537|def get_model_tools_for_prompt(|
-|`get_raw_tools_for_prompt`|fn|pub|2577-2598|def get_raw_tools_for_prompt(config: dict[str, Any] | Non...|
-|`format_tools_inline_list`|fn|pub|2599-2612|def format_tools_inline_list(tools: list[str]) -> str|
-|`format_tools_space_separated_string`|fn|pub|2613-2625|def format_tools_space_separated_string(tools: Sequence[s...|
-|`deep_merge_dict`|fn|pub|2626-2641|def deep_merge_dict(base: dict[str, Any], incoming: dict[...|
-|`find_vscode_settings_source`|fn|pub|2642-2653|def find_vscode_settings_source() -> Optional[Path]|
-|`build_prompt_recommendations`|fn|pub|2654-2668|def build_prompt_recommendations(prompts_dir: Path) -> di...|
-|`ensure_wrapped`|fn|pub|2669-2684|def ensure_wrapped(target: Path, project_base: Path, code...|
-|`save_vscode_backup`|fn|pub|2685-2699|def save_vscode_backup(req_root: Path, settings_path: Pat...|
-|`restore_vscode_settings`|fn|pub|2700-2715|def restore_vscode_settings(project_base: Path) -> None|
-|`prune_empty_dirs`|fn|pub|2716-2733|def prune_empty_dirs(root: Path) -> None|
-|`remove_generated_resources`|fn|pub|2734-2786|def remove_generated_resources(project_base: Path) -> None|
-|`run_remove`|fn|pub|2787-2837|def run_remove(args: Namespace) -> None|
-|`_validate_enable_static_check_command_executables`|fn|priv|2838-2841|def _validate_enable_static_check_command_executables(|
-|`run`|fn|pub|2870-3069|def run(args: Namespace) -> None|
-|`VERBOSE`|var|pub|2879||
-|`DEBUG`|var|pub|2880||
-|`PROMPT`|var|pub|3377||
-|`_format_install_table`|fn|priv|4068-4070|def _format_install_table(|
-|`_wrap_cell`|fn|priv|4107-4129|def _wrap_cell(value: str, width: int, allow_wrap: bool) ...|
-|`_render_row`|fn|priv|4130-4156|def _render_row(provider: str, prompts: str, modules: str...|
-|`_build_provider_modules_map`|fn|priv|4171-4229|def _build_provider_modules_map(provider_specs: list[str]...|
-|`_colorize_table_border`|fn|priv|4230-4242|def _colorize_table_border(line: str) -> str|
-|`SUPPORTED_EXTENSIONS`|var|pub|4257||
-|`_collect_source_files`|fn|priv|4285-4342|def _collect_source_files(src_dirs: list[str], project_ba...|
-|`_build_ascii_tree`|fn|priv|4343-4388|def _build_ascii_tree(paths: list[str]) -> str|
-|`_emit`|fn|priv|4367-4369|def _emit(|
-|`_format_files_structure_markdown`|fn|priv|4389-4403|def _format_files_structure_markdown(files: list[str], pr...|
-|`_is_standalone_command`|fn|priv|4404-4422|def _is_standalone_command(args: Namespace) -> bool|
-|`_is_project_scan_command`|fn|priv|4423-4447|def _is_project_scan_command(args: Namespace) -> bool|
-|`_is_here_only_project_scan_command`|fn|priv|4448-4473|def _is_here_only_project_scan_command(args: Namespace) -...|
-|`run_git_check`|fn|pub|4474-4505|def run_git_check(args: Namespace) -> None|
-|`run_docs_check`|fn|pub|4506-4535|def run_docs_check(args: Namespace) -> None|
-|`run_git_wt_name`|fn|pub|4536-4564|def run_git_wt_name(args: Namespace) -> None|
-|`_worktree_path_exists_exact`|fn|priv|4565-4594|def _worktree_path_exists_exact(git_path: Path, target_pa...|
-|`_rollback_worktree_create`|fn|priv|4595-4631|def _rollback_worktree_create(git_path: Path, wt_path: Pa...|
-|`run_git_wt_create`|fn|pub|4632-4731|def run_git_wt_create(args: Namespace) -> None|
-|`run_git_wt_delete`|fn|pub|4732-4809|def run_git_wt_delete(args: Namespace) -> None|
-|`run_git_path`|fn|pub|4810-4822|def run_git_path(args: Namespace) -> None|
-|`run_get_base_path`|fn|pub|4823-4835|def run_get_base_path(args: Namespace) -> None|
-|`run_files_tokens`|fn|pub|4836-4858|def run_files_tokens(files: list[str]) -> None|
-|`run_files_references`|fn|pub|4859-4875|def run_files_references(files: list[str]) -> None|
-|`run_files_compress`|fn|pub|4876-4894|def run_files_compress(files: list[str], enable_line_numb...|
-|`run_files_find`|fn|pub|4895-4923|def run_files_find(args_list: list[str], enable_line_numb...|
-|`run_references`|fn|pub|4924-4941|def run_references(args: Namespace) -> None|
-|`run_compress_cmd`|fn|pub|4942-4963|def run_compress_cmd(args: Namespace) -> None|
-|`run_find`|fn|pub|4964-4993|def run_find(args: Namespace) -> None|
-|`run_tokens`|fn|pub|4994-5021|def run_tokens(args: Namespace) -> None|
-|`run_files_static_check_cmd`|fn|pub|5022-5099|def run_files_static_check_cmd(files: list[str], args: Na...|
-|`run_project_static_check_cmd`|fn|pub|5100-5199|def run_project_static_check_cmd(args: Namespace) -> int|
-|`_resolve_project_base`|fn|priv|5200-5220|def _resolve_project_base(args: Namespace) -> Path|
-|`_resolve_project_src_dirs`|fn|priv|5221-5273|def _resolve_project_src_dirs(args: Namespace) -> tuple[P...|
-|`main`|fn|pub|5274-5385|def main(argv: Optional[list[str]] = None) -> int|
-|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|5288||
-|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|5292||
-|`VERBOSE`|var|pub|5305||
-|`DEBUG`|var|pub|5306||
+|`PERSISTED_CONFIG_KEYS`|var|pub|45||
+|`DEFAULT_DOCS_DIR`|var|pub|55||
+|`DEFAULT_GUIDELINES_DIR`|var|pub|58||
+|`DEFAULT_TESTS_DIR`|var|pub|61||
+|`DEFAULT_SRC_DIRS`|var|pub|64||
+|`VALID_PROVIDERS`|var|pub|67||
+|`VALID_ARTIFACTS`|var|pub|72||
+|`VALID_PROVIDER_OPTIONS`|var|pub|75||
+|`GLOBAL_CONFIG_DIRNAME`|var|pub|83||
+|`GLOBAL_CONFIG_APP_DIRNAME`|var|pub|86||
+|`GLOBAL_CONFIG_FILENAME`|var|pub|89||
+|`home_dir`|fn|pub|93-103|def home_dir() -> Path|
+|`get_global_config_path`|fn|pub|104-119|def get_global_config_path() -> Path|
+|`provider_artifact_root`|fn|pub|120-172|def provider_artifact_root(provider: str, artifact: str) ...|
+|`INVALID_WT_NAME_RE`|var|pub|173||
+|`_parse_provider_artifact_item`|fn|priv|177-201|def _parse_provider_artifact_item(spec: str, artifact_ite...|
+|`_parse_provider_options`|fn|priv|202-224|def _parse_provider_options(spec: str, raw_options: str) ...|
+|`parse_provider_spec`|fn|pub|225-264|def parse_provider_spec(spec: str) -> tuple[str, list[tup...|
+|`resolve_provider_configs`|fn|pub|265-266|def resolve_provider_configs(|
+|`ANSI_BRIGHT_RED`|var|pub|298||
+|`ANSI_BRIGHT_GREEN`|var|pub|301||
+|`ANSI_RESET`|var|pub|304||
+|`RELEASE_CHECK_TIMEOUT_SECONDS`|var|pub|307||
+|`RELEASE_CHECK_IDLE_DELAY_SECONDS`|var|pub|310||
+|`RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS`|var|pub|313||
+|`TOOL_PROGRAM_NAME`|var|pub|316||
+|`RELEASE_CHECK_PROGRAM_NAME`|var|pub|319||
+|`GITHUB_REPOSITORY_OWNER`|var|pub|322||
+|`GITHUB_REPOSITORY_NAME`|var|pub|325||
+|`RELEASE_CHECK_IDLE_CACHE_ROOT_DIRNAME`|var|pub|328||
+|`RELEASE_CHECK_IDLE_FILENAME`|var|pub|331||
+|`GITHUB_RELEASES_LATEST_URL`|var|pub|334||
+|`GITHUB_UPGRADE_SOURCE`|var|pub|340||
+|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|345||
+|`ReqError`|class|pub|349-366|class ReqError(Exception)|
+|`ReqError.__init__`|fn|priv|354-366|def __init__(self, message: str, code: int = 1) -> None|
+|`log`|fn|pub|367-376|def log(msg: str) -> None|
+|`dlog`|fn|pub|377-387|def dlog(msg: str) -> None|
+|`vlog`|fn|pub|388-398|def vlog(msg: str) -> None|
+|`_get_available_tags_help`|fn|priv|399-411|def _get_available_tags_help() -> str|
+|`build_parser`|fn|pub|412-611|def build_parser() -> argparse.ArgumentParser|
+|`parse_args`|fn|pub|696-705|def parse_args(argv: Optional[list[str]] = None) -> Names...|
+|`load_package_version`|fn|pub|706-720|def load_package_version() -> str|
+|`maybe_print_version`|fn|pub|721-733|def maybe_print_version(argv: list[str]) -> bool|
+|`run_upgrade`|fn|pub|734-768|def run_upgrade() -> None|
+|`run_uninstall`|fn|pub|769-801|def run_uninstall() -> None|
+|`normalize_release_tag`|fn|pub|802-814|def normalize_release_tag(tag: str) -> str|
+|`parse_version_tuple`|fn|pub|815-839|def parse_version_tuple(version: str) -> tuple[int, ...] ...|
+|`is_newer_version`|fn|pub|840-858|def is_newer_version(current: str, latest: str) -> bool|
+|`parse_github_owner_repository`|fn|pub|859-885|def parse_github_owner_repository(remote_url: str) -> tup...|
+|`read_git_remote_verbose`|fn|pub|886-905|def read_git_remote_verbose(cwd: str | None = None) -> str|
+|`resolve_github_owner_repository_from_active_remotes`|fn|pub|906-966|def resolve_github_owner_repository_from_active_remotes()...|
+|`resolve_latest_release_api_url`|fn|pub|967-975|def resolve_latest_release_api_url() -> str|
+|`format_unix_timestamp_utc`|fn|pub|976-988|def format_unix_timestamp_utc(timestamp_seconds: int) -> str|
+|`get_release_check_idle_file_path`|fn|pub|989-990|def get_release_check_idle_file_path(|
+|`cleanup_release_check_idle_state_cache`|fn|pub|1007-1008|def cleanup_release_check_idle_state_cache(|
+|`read_release_check_idle_state`|fn|pub|1031-1095|def read_release_check_idle_state(file_path: Path) -> dic...|
+|`should_execute_release_check`|fn|pub|1096-1098|def should_execute_release_check(|
+|`parse_retry_after_seconds`|fn|pub|1117-1119|def parse_retry_after_seconds(|
+|`write_release_check_idle_state_payload`|fn|pub|1149-1152|def write_release_check_idle_state_payload(|
+|`write_release_check_idle_state`|fn|pub|1179-1182|def write_release_check_idle_state(|
+|`write_failed_release_check_idle_state`|fn|pub|1201-1205|def write_failed_release_check_idle_state(|
+|`persist_failed_release_check_idle_state`|fn|pub|1233-1237|def persist_failed_release_check_idle_state(|
+|`maybe_notify_newer_version`|fn|pub|1263-1264|def maybe_notify_newer_version(|
+|`ensure_guidelines_directory`|fn|pub|1417-1418|def ensure_guidelines_directory(|
+|`ensure_doc_directory`|fn|pub|1449-1450|def ensure_doc_directory(|
+|`ensure_test_directory`|fn|pub|1479-1480|def ensure_test_directory(|
+|`ensure_src_directory`|fn|pub|1509-1510|def ensure_src_directory(|
+|`make_relative_if_contains_project`|fn|pub|1539-1580|def make_relative_if_contains_project(path_value: str, pr...|
+|`resolve_absolute`|fn|pub|1581-1596|def resolve_absolute(normalized: str, project_base: Path)...|
+|`resolve_git_root`|fn|pub|1597-1624|def resolve_git_root(target_path: Path) -> Path|
+|`sanitize_branch_name`|fn|pub|1625-1634|def sanitize_branch_name(branch: str) -> str|
+|`validate_wt_name`|fn|pub|1635-1646|def validate_wt_name(wt_name: str) -> bool|
+|`load_full_config`|fn|pub|1647-1667|def load_full_config() -> dict|
+|`save_config`|fn|pub|1668-1674|def save_config(|
+|`load_config`|fn|pub|1709-1765|def load_config() -> dict[str, str | list[str]]|
+|`load_static_check_from_config`|fn|pub|1766-1796|def load_static_check_from_config() -> dict|
+|`_static_check_entry_identity`|fn|priv|1797-1798|def _static_check_entry_identity(|
+|`load_persisted_provider_specs`|fn|pub|1821-1841|def load_persisted_provider_specs() -> list[str]|
+|`generate_guidelines_file_list`|fn|pub|1842-1874|def generate_guidelines_file_list(guidelines_dir: Path, p...|
+|`generate_guidelines_file_items`|fn|pub|1875-1876|def generate_guidelines_file_items(|
+|`upgrade_guidelines_templates`|fn|pub|1910-1944|def upgrade_guidelines_templates(guidelines_dest: Path, o...|
+|`ensure_relative`|fn|pub|1945-1960|def ensure_relative(value: str, name: str, code: int) -> ...|
+|`apply_replacements`|fn|pub|1961-1973|def apply_replacements(text: str, replacements: Mapping[s...|
+|`write_text_file`|fn|pub|1974-1985|def write_text_file(dst: Path, text: str) -> None|
+|`copy_with_replacements`|fn|pub|1986-1987|def copy_with_replacements(|
+|`normalize_description`|fn|pub|2002-2016|def normalize_description(value: str) -> str|
+|`md_to_toml`|fn|pub|2017-2051|def md_to_toml(md_path: Path, toml_path: Path, force: boo...|
+|`extract_frontmatter`|fn|pub|2052-2065|def extract_frontmatter(content: str) -> tuple[str, str]|
+|`extract_description`|fn|pub|2066-2078|def extract_description(frontmatter: str) -> str|
+|`extract_argument_hint`|fn|pub|2079-2091|def extract_argument_hint(frontmatter: str) -> str|
+|`extract_purpose_first_bullet`|fn|pub|2092-2116|def extract_purpose_first_bullet(body: str) -> str|
+|`_extract_section_text`|fn|priv|2117-2144|def _extract_section_text(body: str, section_name: str) -...|
+|`extract_skill_description`|fn|pub|2145-2163|def extract_skill_description(frontmatter: str) -> str|
+|`replace_tokens`|fn|pub|2164-2177|def replace_tokens(path: Path, replacements: Mapping[str,...|
+|`yaml_double_quote_escape`|fn|pub|2178-2187|def yaml_double_quote_escape(value: str) -> str|
+|`list_docs_templates`|fn|pub|2188-2207|def list_docs_templates() -> list[Path]|
+|`find_requirements_template`|fn|pub|2208-2224|def find_requirements_template(docs_templates: list[Path]...|
+|`ensure_wrapped`|fn|pub|2225-2240|def ensure_wrapped(target: Path, project_base: Path, code...|
+|`prune_empty_dirs`|fn|pub|2241-2257|def prune_empty_dirs(root: Path) -> None|
+|`remove_generated_resources`|fn|pub|2258-2305|def remove_generated_resources() -> None|
+|`run_remove`|fn|pub|2306-2338|def run_remove(args: Namespace) -> None|
+|`_validate_enable_static_check_command_executables`|fn|priv|2339-2342|def _validate_enable_static_check_command_executables(|
+|`run`|fn|pub|2371-2570|def run(args: Namespace) -> None|
+|`VERBOSE`|var|pub|2380||
+|`DEBUG`|var|pub|2381||
+|`PROMPT`|var|pub|2721||
+|`_format_install_table`|fn|priv|3005-3007|def _format_install_table(|
+|`_wrap_cell`|fn|priv|3044-3066|def _wrap_cell(value: str, width: int, allow_wrap: bool) ...|
+|`_render_row`|fn|priv|3067-3093|def _render_row(provider: str, prompts: str, modules: str...|
+|`_build_provider_modules_map`|fn|priv|3108-3166|def _build_provider_modules_map(provider_specs: list[str]...|
+|`_colorize_table_border`|fn|priv|3167-3179|def _colorize_table_border(line: str) -> str|
+|`SUPPORTED_EXTENSIONS`|var|pub|3194||
+|`_collect_source_files`|fn|priv|3222-3279|def _collect_source_files(src_dirs: list[str], project_ba...|
+|`_build_ascii_tree`|fn|priv|3280-3325|def _build_ascii_tree(paths: list[str]) -> str|
+|`_emit`|fn|priv|3304-3306|def _emit(|
+|`_format_files_structure_markdown`|fn|priv|3326-3340|def _format_files_structure_markdown(files: list[str], pr...|
+|`_is_standalone_command`|fn|priv|3341-3359|def _is_standalone_command(args: Namespace) -> bool|
+|`_is_project_scan_command`|fn|priv|3360-3384|def _is_project_scan_command(args: Namespace) -> bool|
+|`_is_here_only_project_scan_command`|fn|priv|3385-3410|def _is_here_only_project_scan_command(args: Namespace) -...|
+|`_resolve_runtime_git_root`|fn|priv|3411-3421|def _resolve_runtime_git_root() -> Path|
+|`run_git_check`|fn|pub|3422-3449|def run_git_check(args: Namespace) -> None|
+|`run_docs_check`|fn|pub|3450-3479|def run_docs_check(args: Namespace) -> None|
+|`run_git_wt_name`|fn|pub|3480-3504|def run_git_wt_name(args: Namespace) -> None|
+|`_worktree_path_exists_exact`|fn|priv|3505-3534|def _worktree_path_exists_exact(git_path: Path, target_pa...|
+|`_rollback_worktree_create`|fn|priv|3535-3571|def _rollback_worktree_create(git_path: Path, wt_path: Pa...|
+|`run_git_wt_create`|fn|pub|3572-3633|def run_git_wt_create(args: Namespace) -> None|
+|`run_git_wt_delete`|fn|pub|3634-3702|def run_git_wt_delete(args: Namespace) -> None|
+|`run_git_path`|fn|pub|3703-3714|def run_git_path(args: Namespace) -> None|
+|`run_get_base_path`|fn|pub|3715-3724|def run_get_base_path(args: Namespace) -> None|
+|`run_files_tokens`|fn|pub|3725-3747|def run_files_tokens(files: list[str]) -> None|
+|`run_files_references`|fn|pub|3748-3764|def run_files_references(files: list[str]) -> None|
+|`run_files_compress`|fn|pub|3765-3783|def run_files_compress(files: list[str], enable_line_numb...|
+|`run_files_find`|fn|pub|3784-3812|def run_files_find(args_list: list[str], enable_line_numb...|
+|`run_references`|fn|pub|3813-3830|def run_references(args: Namespace) -> None|
+|`run_compress_cmd`|fn|pub|3831-3852|def run_compress_cmd(args: Namespace) -> None|
+|`run_find`|fn|pub|3853-3882|def run_find(args: Namespace) -> None|
+|`run_tokens`|fn|pub|3883-3911|def run_tokens(args: Namespace) -> None|
+|`run_files_static_check_cmd`|fn|pub|3912-3984|def run_files_static_check_cmd(files: list[str], args: Na...|
+|`run_project_static_check_cmd`|fn|pub|3985-4084|def run_project_static_check_cmd(args: Namespace) -> int|
+|`_resolve_project_base`|fn|priv|4085-4105|def _resolve_project_base(args: Namespace) -> Path|
+|`_resolve_project_src_dirs`|fn|priv|4106-4135|def _resolve_project_src_dirs(args: Namespace) -> tuple[P...|
+|`main`|fn|pub|4136-4247|def main(argv: Optional[list[str]] = None) -> int|
+|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|4150||
+|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|4154||
+|`VERBOSE`|var|pub|4167||
+|`DEBUG`|var|pub|4168||
 
 
 ---

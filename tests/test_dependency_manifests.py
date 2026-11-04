@@ -29,11 +29,8 @@ REQ_SCRIPT_PATH = REPO_ROOT / "scripts" / "req.sh"
 README_PATH = REPO_ROOT / "README.md"
 RESOURCES_DIR = REPO_ROOT / "src" / "usereq" / "resources"
 REQUIRED_OPERATIONAL_RESOURCE_SUBDIRS = {
-    "common",
     "prompts",
-    "guidelines",
     "docs",
-    "vscode",
 }
 
 
@@ -163,13 +160,13 @@ def test_req_sh_executes_cli_with_uv_run() -> None:
 
 def test_req_sh_preserves_invocation_cwd_for_here_commands(tmp_path: Path) -> None:
     """@brief Verify req.sh does not force CLI here-mode commands to repository root.
-    @details Executes req.sh from an isolated directory without `.req/config.json`
-    and calls `--git-check`; expected behavior is failure in caller context with
-    missing-config diagnostic from here-only command execution.
+    @details Executes req.sh from an isolated non-git directory and calls
+    `--git-check`; expected behavior is failure with the runtime git-resolution
+    diagnostic because the caller context is not inside a git repository.
     @param tmp_path {Path} Pytest-provided isolated temporary directory.
     @return {None} No return value.
     @satisfies SRS-056
-    @satisfies SRS-311
+    @satisfies SRS-311, SRS-391
     """
 
     target_cwd = tmp_path / "external-project"
@@ -183,7 +180,7 @@ def test_req_sh_preserves_invocation_cwd_for_here_commands(tmp_path: Path) -> No
     )
 
     assert result.returncode != 0
-    assert ".req/config.json not found in the project root" in result.stderr
+    assert "is not inside a git repository" in result.stderr
 
 
 def test_python_module_cli_entrypoint_emits_no_runpy_runtimewarning() -> None:
@@ -311,8 +308,16 @@ def test_package_data_patterns_reference_existing_directories() -> None:
     referenced_dirs: set[str] = set()
     for pattern in patterns:
         parts = pattern.split("/")
-        if len(parts) >= 2 and parts[0] == "resources":
+        if len(parts) >= 3 and parts[0] == "resources":
+            # resources/<dir>/<glob>: the second segment is a directory prefix.
             referenced_dirs.add(parts[1])
+        elif (
+            len(parts) == 2
+            and parts[0] == "resources"
+            and any(ch in parts[1] for ch in "*?[")
+        ):
+            # resources/<glob-at-root>: the segment itself is a glob, not a directory.
+            continue
 
     nonexistent = referenced_dirs - existing_dirs
     assert not nonexistent, (

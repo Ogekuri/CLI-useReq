@@ -25,7 +25,7 @@ import urllib.request
 import yaml
 from argparse import Namespace
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 """! @brief The absolute path to the repository root."""
@@ -42,8 +42,15 @@ DEBUG = False
 REQUIREMENTS_TEMPLATE_NAME = "Requirements_Template.md"
 """! @brief Name of the packaged requirements template file."""
 
-PERSISTED_UPDATE_FLAG_KEYS = ("preserve-models",)
-"""! @brief Config keys persisted for install/update boolean flags (SRS-288)."""
+PERSISTED_CONFIG_KEYS = (
+    "guidelines-dir",
+    "docs-dir",
+    "tests-dir",
+    "src-dir",
+    "providers",
+    "static-check",
+)
+"""! @brief Canonical keys persisted in the user-global configuration file (SRS-288)."""
 
 DEFAULT_DOCS_DIR = "req/docs"
 """! @brief Default docs-dir value for fresh installation when --docs-dir is omitted."""
@@ -58,35 +65,110 @@ DEFAULT_SRC_DIRS = ("src/",)
 """! @brief Default src-dir entries for fresh installation when --src-dir is omitted."""
 
 VALID_PROVIDERS = frozenset(
-    {"codex", "claude", "gemini", "github", "kiro", "opencode", "pi"}
+    {"antigravity", "claude", "codex", "opencode", "pi"}
 )
-"""! @brief Valid provider names accepted by ``--provider`` specs (SRS-275, SRS-353, SRS-354)."""
+"""! @brief Valid provider names accepted by ``--provider`` specs (SRS-275, SRS-364)."""
 
 VALID_ARTIFACTS = frozenset({"prompts", "agents", "skills"})
 """! @brief Valid artifact type tokens accepted in ``--provider`` specs (SRS-275, SRS-364)."""
 
-VALID_ARTIFACT_OPTIONS = frozenset({"enable-models", "enable-tools"})
-"""! @brief Valid artifact-local option tokens accepted inside ``ARTIFACT_ITEM`` values (SRS-364)."""
-
-VALID_PROVIDER_OPTIONS = frozenset({"prompts-use-agents", "legacy"})
+VALID_PROVIDER_OPTIONS = frozenset({"prompts-use-agents"})
 """! @brief Valid provider-scoped option tokens accepted in ``PROVIDER_OPTIONS`` (SRS-365)."""
 
 PROVIDER_OPTION_APPLICABILITY: dict[str, frozenset[str]] = {
     "prompts-use-agents": frozenset({"prompts"}),
-    "legacy": frozenset(VALID_ARTIFACTS),
 }
 """! @brief Artifact applicability map for provider-scoped options during installation-table rendering."""
 
-PROVIDER_DIR_MAP: dict[str, list[str]] = {
-    "claude": [".claude/commands", ".claude/agents", ".claude/skills"],
-    "gemini": [".gemini/commands", ".gemini/skills"],
-    "github": [".github/prompts", ".github/agents", ".github/skills"],
-    "codex": [".codex/prompts", ".codex/skills"],
-    "kiro": [".kiro/prompts", ".kiro/agents", ".kiro/skills"],
-    "opencode": [".opencode/agent", ".opencode/command", ".opencode/skill"],
-    "pi": [".pi/prompts", ".pi/skills"],
-}
-"""! @brief Provider-to-directory mapping for worktree copy operations (SRS-325, SRS-353, SRS-354)."""
+GLOBAL_CONFIG_DIRNAME = ".config"
+"""! @brief Root configuration directory name located under the user HOME (SRS-387)."""
+
+GLOBAL_CONFIG_APP_DIRNAME = "usereq"
+"""! @brief Application subdirectory name under ``~/.config`` (SRS-387)."""
+
+GLOBAL_CONFIG_FILENAME = "config.json"
+"""! @brief Canonical user-global configuration JSON filename (SRS-387)."""
+
+
+def home_dir() -> Path:
+    """!
+    @brief Resolve the user HOME directory used for user-level CLI configuration.
+    @details Single indirection point over ``Path.home()`` so tests and embedders can
+    redirect all user-level provider and configuration paths deterministically.
+    @return {Path} Absolute user HOME directory path.
+    @satisfies SRS-381
+    """
+    return Path.home()
+
+
+def get_global_config_path() -> Path:
+    """!
+    @brief Resolve the single user-global configuration file path.
+    @details Builds ``~/.config/usereq/config.json`` from the effective home directory
+    returned by :func:`home_dir`.
+    @return {Path} Absolute path of the user-global configuration file.
+    @satisfies SRS-387
+    """
+    return (
+        home_dir()
+        / GLOBAL_CONFIG_DIRNAME
+        / GLOBAL_CONFIG_APP_DIRNAME
+        / GLOBAL_CONFIG_FILENAME
+    )
+
+
+def provider_artifact_root(provider: str, artifact: str) -> Path:
+    """!
+    @brief Resolve the user-level installation root for one provider artifact.
+    @details Maps ``provider`` and ``artifact`` selectors to user-level CLI configuration
+    directories under the user HOME (claude -> ``~/.claude``, codex -> ``~/.codex``,
+    antigravity -> ``~/.antigravity``, opencode -> ``~/.config/opencode``,
+    pi -> ``~/.pi/agent``). Paths are computed lazily from :func:`home_dir` so HOME
+    redirection stays consistent across a single process run.
+    @param provider {str} Provider selector from ``{antigravity, claude, codex, opencode, pi}``.
+    @param artifact {str} Artifact selector from ``{prompts, agents, skills}``.
+    @return {Path} Absolute user-level target directory for the artifact.
+    @throws {ReqError} Raised when the provider/artifact pair has no user-level target.
+    @satisfies SRS-381, SRS-382, SRS-383, SRS-384, SRS-385, SRS-386
+    """
+    home = home_dir()
+    roots: dict[str, dict[str, Path]] = {
+        "antigravity": {
+            "prompts": home / ".antigravity" / "commands" / "req",
+            "skills": home / ".antigravity" / "skills",
+        },
+        "claude": {
+            "prompts": home / ".claude" / "commands" / "req",
+            "agents": home / ".claude" / "agents",
+            "skills": home / ".claude" / "skills",
+        },
+        "codex": {
+            "prompts": home / ".codex" / "prompts",
+            "skills": home / ".codex" / "skills",
+        },
+        "opencode": {
+            "prompts": home / ".config" / "opencode" / "command",
+            "agents": home / ".config" / "opencode" / "agent",
+            "skills": home / ".config" / "opencode" / "skill",
+        },
+        "pi": {
+            "prompts": home / ".pi" / "agent" / "prompts",
+            "skills": home / ".pi" / "agent" / "skills",
+        },
+    }
+    provider_roots = roots.get(provider)
+    if not provider_roots:
+        raise ReqError(
+            f"Error: provider '{provider}' does not define a user-level artifact root",
+            1,
+        )
+    root = provider_roots.get(artifact)
+    if root is None:
+        raise ReqError(
+            f"Error: artifact '{artifact}' is not supported for provider '{provider}'",
+            1,
+        )
+    return root
 
 INVALID_WT_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]')
 """! @brief Regex matching characters invalid in both Linux and Windows directory names."""
@@ -102,41 +184,25 @@ def _parse_provider_artifact_item(spec: str, artifact_item: str) -> tuple[str, l
     @throws {ReqError} Raised when the artifact token is missing, unknown, or contains invalid option placement.
     @satisfies SRS-275, SRS-278, SRS-364, SRS-365
     """
-    parts = [token.strip().lower() for token in artifact_item.split("+") if token.strip()]
-    if not parts:
+    artifact = artifact_item.strip().lower()
+    if not artifact:
         raise ReqError(
             f"Error: invalid artifact item '{artifact_item}' in --provider spec '{spec}'",
             1,
         )
-    artifact = parts[0]
     if artifact not in VALID_ARTIFACTS:
         raise ReqError(
             f"Error: unknown artifact '{artifact}' in --provider spec '{spec}'; "
             f"valid artifacts: {', '.join(sorted(VALID_ARTIFACTS))}",
             1,
         )
-    ordered_options: list[str] = []
-    for option in parts[1:]:
-        if option in VALID_PROVIDER_OPTIONS:
-            raise ReqError(
-                f"Error: invalid option placement '{option}' in --provider spec '{spec}'",
-                1,
-            )
-        if option not in VALID_ARTIFACT_OPTIONS:
-            raise ReqError(
-                f"Error: unknown option '{option}' in --provider spec '{spec}'; "
-                f"valid options: {', '.join(sorted(VALID_ARTIFACT_OPTIONS | VALID_PROVIDER_OPTIONS))}",
-                1,
-            )
-        if option not in ordered_options:
-            ordered_options.append(option)
-    return artifact, ordered_options
+    return artifact, []
 
 
 def _parse_provider_options(spec: str, raw_options: str) -> list[str]:
     """!
     @brief Parse provider-scoped options from a ``--provider`` SPEC.
-    @details Splits `PROVIDER_OPTIONS` on commas, preserves first-seen option order, accepts only provider-scoped tokens, and rejects artifact-local `enable-models` or `enable-tools` as invalid option placement. Complexity: O(N) in provider-option token count. No side effects.
+    @details Splits `PROVIDER_OPTIONS` on commas, preserves first-seen option order, and accepts only the provider-scoped `prompts-use-agents` token (SRS-365). Complexity: O(N) in provider-option token count. No side effects.
     @param spec {str} Full raw ``--provider`` SPEC used for diagnostics.
     @param raw_options {str} Raw provider-options field from `SPEC` without leading separators.
     @return {list[str]} Ordered provider-scoped option tokens.
@@ -145,15 +211,10 @@ def _parse_provider_options(spec: str, raw_options: str) -> list[str]:
     """
     ordered_options: list[str] = []
     for option in [token.strip().lower() for token in raw_options.split(",") if token.strip()]:
-        if option in VALID_ARTIFACT_OPTIONS:
-            raise ReqError(
-                f"Error: invalid option placement '{option}' in --provider spec '{spec}'",
-                1,
-            )
         if option not in VALID_PROVIDER_OPTIONS:
             raise ReqError(
                 f"Error: unknown option '{option}' in --provider spec '{spec}'; "
-                f"valid options: {', '.join(sorted(VALID_ARTIFACT_OPTIONS | VALID_PROVIDER_OPTIONS))}",
+                f"valid options: {', '.join(sorted(VALID_PROVIDER_OPTIONS))}",
                 1,
             )
         if option not in ordered_options:
@@ -164,7 +225,7 @@ def _parse_provider_options(spec: str, raw_options: str) -> list[str]:
 def parse_provider_spec(spec: str) -> tuple[str, list[tuple[str, list[str]]], list[str]]:
     """!
     @brief Parse a single ``--provider`` SPEC into ordered provider, artifact-item, and provider-option components.
-    @details Splits `SPEC` on `:`, validates provider token membership, parses each comma-delimited `ARTIFACT_ITEM` with artifact-local `+` options, parses optional provider-scoped options, preserves first-seen artifact order and option order, and rejects legacy provider-scoped placement of `enable-models` or `enable-tools`. Complexity: O(A + O) where A is artifact-item token count and O is provider-option token count. No side effects.
+    @details Splits `SPEC` on `:`, validates provider token membership, parses each comma-delimited bare `ARTIFACT` item (SRS-364), parses optional provider-scoped options, preserves first-seen artifact order and option order, and rejects unknown tokens. Complexity: O(A + O) where A is artifact-item token count and O is provider-option token count. No side effects.
     @param spec {str} Raw ``--provider`` SPEC in format `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`.
     @return {tuple[str, list[tuple[str, list[str]]], list[str]]} Tuple `(provider_name, ordered_artifact_items, ordered_provider_options)`.
     @throws {ReqError} Raised when provider, artifact, option, or option placement validation fails.
@@ -201,34 +262,12 @@ def parse_provider_spec(spec: str) -> tuple[str, list[tuple[str, list[str]]], li
     return provider, ordered_artifact_items, provider_options
 
 
-def artifact_option_enabled(
-    provider_config: Mapping[str, Any], artifact_name: str, option_name: str
-) -> bool:
-    """!
-    @brief Read one artifact-local option flag from a resolved provider configuration.
-    @details Accesses the `artifact-options` sub-map emitted by `resolve_provider_configs`, validates the artifact and option key shape defensively, and returns `False` for absent or malformed internal state. Complexity: O(1). No side effects.
-    @param provider_config {Mapping[str, Any]} Resolved provider configuration entry.
-    @param artifact_name {str} Artifact selector from `{prompts, agents, skills}`.
-    @param option_name {str} Artifact-local option selector from `{enable-models, enable-tools}`.
-    @return {bool} True when the artifact-local option is active; otherwise False.
-    @satisfies SRS-276
-    @see resolve_provider_configs
-    """
-    artifact_options = provider_config.get("artifact-options")
-    if not isinstance(artifact_options, dict):
-        return False
-    artifact_config = artifact_options.get(artifact_name)
-    if not isinstance(artifact_config, dict):
-        return False
-    return bool(artifact_config.get(option_name))
-
-
 def resolve_provider_configs(
     provider_specs: list[str],
 ) -> dict[str, dict[str, Any]]:
     """!
     @brief Resolve per-provider configurations from ``--provider`` specs only.
-    @details Initializes every provider as disabled, then merges parsed `ARTIFACT_ITEM` and `PROVIDER_OPTIONS` data across all raw specs for that provider. Artifact enablement is tracked in top-level `prompts`/`agents`/`skills` booleans. Artifact-local `enable-models` and `enable-tools` are stored under `artifact-options[artifact]`. Provider-scoped `prompts-use-agents` and `legacy` remain top-level booleans. Complexity: O(P * (A + O)) where P is spec count. No external side effects.
+    @details Initializes every provider as disabled, then merges parsed `ARTIFACT_ITEM` and `PROVIDER_OPTIONS` data across all raw specs for that provider. Artifact enablement is tracked in top-level `prompts`/`agents`/`skills` booleans. Provider-scoped `prompts-use-agents` remains a top-level boolean. Complexity: O(P * (A + O)) where P is spec count. No external side effects.
     @param provider_specs {list[str]} Raw ``--provider`` SPEC strings.
     @return {dict[str, dict[str, Any]]} Mapping provider -> configuration dict with keys `enabled`, `prompts`, `agents`, `skills`, `artifact-options`, `prompts-use-agents`, and `legacy`.
     @satisfies SRS-275, SRS-276, SRS-364, SRS-365
@@ -241,26 +280,15 @@ def resolve_provider_configs(
             "prompts": False,
             "agents": False,
             "skills": False,
-            "artifact-options": {
-                artifact_name: {
-                    "enable-models": False,
-                    "enable-tools": False,
-                }
-                for artifact_name in sorted(VALID_ARTIFACTS)
-            },
             "prompts-use-agents": False,
-            "legacy": False,
         }
 
     for spec_str in provider_specs:
         provider, artifact_items, provider_options = parse_provider_spec(spec_str)
         cfg = configs[provider]
         cfg["enabled"] = True
-        for artifact_name, artifact_options in artifact_items:
+        for artifact_name, _artifact_options in artifact_items:
             cfg[artifact_name] = True
-            option_state = cfg["artifact-options"][artifact_name]
-            for option_name in artifact_options:
-                option_state[option_name] = True
         for option_name in provider_options:
             cfg[option_name] = True
 
@@ -393,7 +421,7 @@ def build_parser() -> argparse.ArgumentParser:
         "req -c [-h] [--upgrade] [--uninstall] [--remove] [--update] (--base BASE | --here) "
         "[--docs-dir DOCS_DIR] [--guidelines-dir GUIDELINES_DIR] [--tests-dir TESTS_DIR] [--src-dir SRC_DIR] [--verbose] [--debug] "
         "[--provider PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]] "
-        "[--preserve-models] [--add-guidelines | --upgrade-guidelines] "
+        "[--add-guidelines | --upgrade-guidelines] "
         "[--files-tokens FILE ...] [--files-references FILE ...] [--files-compress FILE ...] [--files-find TAG PATTERN FILE ...] "
         "[--references] [--compress] [--find TAG PATTERN] [--enable-line-numbers] [--tokens] "
         "[--test-static-check {dummy,pylance,ruff,command} [FILES...]] "
@@ -452,7 +480,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--update",
         action="store_true",
-        help="Re-run the command using .req/config.json.",
+        help="Re-run the command using ~/.config/usereq/config.json.",
     )
     parser.add_argument(
         "--remove", action="store_true", help="Remove resources created by the tool."
@@ -464,11 +492,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug", action="store_true", help="Show debug logs for diagnostics."
     )
     parser.add_argument(
-        "--preserve-models",
-        action="store_true",
-        help="When set with --update, preserve existing .req/models.json.",
-    )
-    parser.add_argument(
         "--provider",
         action="append",
         metavar="SPEC",
@@ -476,11 +499,10 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Per-provider artifact and option configuration (repeatable). "
             "Format: PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]. "
-            "PROVIDER: codex|claude|gemini|github|kiro|opencode|pi. "
-            "ARTIFACT_ITEM: ARTIFACT or ARTIFACT+ARTIFACT_OPTIONS where "
-            "ARTIFACT is prompts|agents|skills and ARTIFACT_OPTIONS is "
-            "enable-models|enable-tools joined by '+'. "
-            "PROVIDER_OPTIONS: comma-separated from {prompts-use-agents,legacy}."
+            "PROVIDER: antigravity|claude|codex|opencode|pi. "
+            "ARTIFACT_ITEM: one of prompts|agents|skills. "
+            "PROVIDER_OPTIONS: comma-separated from {prompts-use-agents}. "
+            "Artifacts are installed into user-level CLI directories under the user HOME."
         ),
     )
     guidelines_group = parser.add_mutually_exclusive_group()
@@ -581,7 +603,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         dest="files_static_check",
         help=(
-            "Run static analysis on explicit files using tools configured in .req/config.json. "
+            "Run static analysis on explicit files using tools configured in ~/.config/usereq/config.json. "
             "Detects language from file extension; skips files with no configured tool. "
             "Standalone (no --base/--here required; uses --here/--base if provided, else CWD). "
             "Example: --files-static-check src/main.c src/utils.py"
@@ -595,7 +617,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Run static analysis on all source files in configured src-dir directories "
             "(here-only project scan; --here implied; --base forbidden). Uses the same file-collection logic as --references "
-            "and --compress. Tools are loaded from the 'static-check' section of .req/config.json."
+            "and --compress. Tools are loaded from the 'static-check' section of ~/.config/usereq/config.json."
         ),
     )
     parser.add_argument(
@@ -634,7 +656,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         dest="git_wt_create",
         help=(
-            "Create a git worktree and branch with the given name, copying .req and provider dirs "
+            "Create a git worktree and branch with the given name, copying .venv when present "
             "(here-only; --here implied; --base forbidden)."
         ),
     )
@@ -654,7 +676,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         dest="git_path_cmd",
         help=(
-            "Print configured git-path from .req/config.json "
+            "Print the git repository root resolved at runtime from the current working directory "
             "(here-only; --here implied; --base forbidden)."
         ),
     )
@@ -664,7 +686,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         dest="get_base_path_cmd",
         help=(
-            "Print configured base-path from .req/config.json "
+            "Print the absolute current working directory path "
             "(here-only; --here implied; --base forbidden)."
         ),
     )
@@ -1600,26 +1622,6 @@ def resolve_git_root(target_path: Path) -> Path:
         raise ReqError("Error: git command timed out.", 3)
 
 
-def is_inside_git_repo(target_path: Path) -> bool:
-    """!
-    @brief Check whether a given path is inside a git work tree.
-    @param target_path Absolute path to check.
-    @return True if inside a git work tree, False otherwise.
-    @satisfies SRS-305
-    """
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-            cwd=str(target_path),
-            timeout=10,
-        )
-        return result.returncode == 0 and result.stdout.strip() == "true"
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return False
-
-
 def sanitize_branch_name(branch: str) -> str:
     """!
     @brief Replace characters incompatible with Linux or Windows paths in a branch name.
@@ -1642,58 +1644,52 @@ def validate_wt_name(wt_name: str) -> bool:
     return INVALID_WT_NAME_RE.search(wt_name) is None
 
 
-def load_full_config(project_base: Path) -> dict:
+def load_full_config() -> dict:
     """!
-    @brief Load ALL parameters from `.req/config.json` as a raw dictionary.
-    @param project_base The project root path.
-    @return Full dictionary of all config.json key-value pairs.
-    @throws ReqError If config file is missing or invalid JSON.
-    @satisfies SRS-310
+    @brief Load ALL parameters from the user-global configuration file as a raw dictionary.
+    @return Full dictionary of all config key-value pairs.
+    @throws ReqError If the global config file is missing or invalid JSON.
+    @satisfies SRS-310, SRS-387
     """
-    config_path = project_base / ".req" / "config.json"
+    config_path = get_global_config_path()
     if not config_path.is_file():
         raise ReqError(
-            "Error: .req/config.json not found in the project root",
+            f"Error: global configuration file not found at {config_path}",
             11,
         )
     try:
         return json.loads(config_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ReqError("Error: .req/config.json is not valid", 11) from exc
+        raise ReqError(
+            f"Error: global configuration file {config_path} is not valid", 11
+        ) from exc
 
 
 def save_config(
-    project_base: Path,
     guidelines_dir_value: str,
     doc_dir_value: str,
     test_dir_value: str,
     src_dir_values: list[str],
     static_check_config: Optional[dict] = None,
-    persisted_flags: Optional[dict[str, bool]] = None,
     provider_specs: Optional[list[str]] = None,
-    base_path_abs: Optional[str] = None,
-    git_path_abs: Optional[str] = None,
 ) -> None:
     """!
-    @brief Saves normalized parameters to .req/config.json.
-    @param project_base The project root path.
+    @brief Saves normalized parameters to the user-global configuration file.
     @param guidelines_dir_value Relative path to guidelines directory.
     @param doc_dir_value Relative path to docs directory.
     @param test_dir_value Relative path to tests directory.
     @param src_dir_values List of relative paths to source directories.
     @param static_check_config Optional dict of static-check config to persist under key
       `"static-check"`; omitted from JSON when None or empty.
-    @param persisted_flags Optional dict with persisted boolean flags used by `--update`.
     @param provider_specs Optional list of raw ``--provider`` SPEC strings to persist
       under the `"providers"` key (SRS-279).
-    @param base_path_abs Optional absolute path string for `"base-path"` (SRS-302).
-    @param git_path_abs Optional absolute path string for `"git-path"` (SRS-306).
-    @details Writes full config payload to `.req/config.json`. Includes `"base-path"` and
-    `"git-path"` when provided (SRS-302, SRS-306).
+    @details Writes the configuration payload to `~/.config/usereq/config.json`, creating
+    missing parent directories on first write. Only canonical keys from
+    `PERSISTED_CONFIG_KEYS` are written (SRS-288, SRS-387).
     @return {None} Function return value.
-    @satisfies SRS-302, SRS-306
+    @satisfies SRS-279, SRS-288, SRS-387
     """
-    config_path = project_base / ".req" / "config.json"
+    config_path = get_global_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict = {
         "guidelines-dir": guidelines_dir_value,
@@ -1701,55 +1697,54 @@ def save_config(
         "tests-dir": test_dir_value,
         "src-dir": src_dir_values,
     }
-    if base_path_abs is not None:
-        payload["base-path"] = base_path_abs
-    if git_path_abs is not None:
-        payload["git-path"] = git_path_abs
     if static_check_config:
         payload["static-check"] = static_check_config
     if provider_specs:
         payload["providers"] = provider_specs
-    if persisted_flags:
-        payload.update(persisted_flags)
     config_path.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
 
-def load_config(project_base: Path) -> dict[str, str | list[str]]:
+def load_config() -> dict[str, str | list[str]]:
     """!
-    @brief Loads parameters saved in .req/config.json.
-        @param project_base The project root path.
+    @brief Loads directory parameters from the user-global configuration file.
         @return Dictionary containing configuration values.
-        @throws ReqError If config file is missing or invalid.
-    @details Implements the load_config function behavior with deterministic control flow.
+        @throws ReqError If the global config file is missing or invalid.
+    @details Reads `~/.config/usereq/config.json` and validates the canonical directory
+    keys used by install, update, and project-scan flows.
+    @satisfies SRS-310, SRS-387
     """
-    config_path = project_base / ".req" / "config.json"
+    config_path = get_global_config_path()
     if not config_path.is_file():
         raise ReqError(
-            "Error: .req/config.json not found in the project root",
+            f"Error: global configuration file not found at {config_path}",
             11,
         )
     try:
         payload = json.loads(config_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ReqError("Error: .req/config.json is not valid", 11) from exc
+        raise ReqError(
+            f"Error: global configuration file {config_path} is not valid", 11
+        ) from exc
     guidelines_dir_value = payload.get("guidelines-dir")
-    # Fallback to legacy key names from pre-v0.59 config files.
-    doc_dir_value = payload.get("docs-dir") or payload.get("doc-dir")
-    test_dir_value = payload.get("tests-dir") or payload.get("test-dir")
+    doc_dir_value = payload.get("docs-dir")
+    test_dir_value = payload.get("tests-dir")
     src_dir_value = payload.get("src-dir")
     if not isinstance(guidelines_dir_value, str) or not guidelines_dir_value.strip():
         raise ReqError(
-            "Error: missing or invalid 'guidelines-dir' field in .req/config.json", 11
+            "Error: missing or invalid 'guidelines-dir' field in the global configuration file",
+            11,
         )
     if not isinstance(doc_dir_value, str) or not doc_dir_value.strip():
         raise ReqError(
-            "Error: missing or invalid 'docs-dir' field in .req/config.json", 11
+            "Error: missing or invalid 'docs-dir' field in the global configuration file",
+            11,
         )
     if not isinstance(test_dir_value, str) or not test_dir_value.strip():
         raise ReqError(
-            "Error: missing or invalid 'tests-dir' field in .req/config.json", 11
+            "Error: missing or invalid 'tests-dir' field in the global configuration file",
+            11,
         )
     if (
         not isinstance(src_dir_value, list)
@@ -1757,7 +1752,8 @@ def load_config(project_base: Path) -> dict[str, str | list[str]]:
         or not all(isinstance(item, str) and item.strip() for item in src_dir_value)
     ):
         raise ReqError(
-            "Error: missing or invalid 'src-dir' field in .req/config.json", 11
+            "Error: missing or invalid 'src-dir' field in the global configuration file",
+            11,
         )
     return {
         "guidelines-dir": guidelines_dir_value,
@@ -1767,17 +1763,16 @@ def load_config(project_base: Path) -> dict[str, str | list[str]]:
     }
 
 
-def load_static_check_from_config(project_base: Path) -> dict:
+def load_static_check_from_config() -> dict:
     """!
-    @brief Load the `"static-check"` section from `.req/config.json` without validation errors.
-    @param project_base The project root path.
+    @brief Load the `"static-check"` section from the user-global configuration file without validation errors.
     @return Dict of static-check config (canonical-lang -> list[config-dict]); empty dict if absent or
-      if config.json is missing/invalid.
-    @details Reads config.json silently; returns `{}` on any read or parse error.
-      Does NOT raise `ReqError`; caller decides whether absence is an error.
+      if the global config file is missing/invalid.
+    @details Reads `~/.config/usereq/config.json` silently; returns `{}` on any read or
+    parse error. Does NOT raise `ReqError`; caller decides whether absence is an error.
     @see SRS-252, SRS-253, SRS-256
     """
-    config_path = project_base / ".req" / "config.json"
+    config_path = get_global_config_path()
     if not config_path.is_file():
         return {}
     try:
@@ -1823,72 +1818,15 @@ def _static_check_entry_identity(
     return (canonical_lang, module, cmd, params)
 
 
-def build_persisted_update_flags(args: Namespace) -> dict[str, bool]:
+def load_persisted_provider_specs() -> list[str]:
     """!
-    @brief Build persistent update flags from parsed CLI arguments.
-        @param args Parsed CLI namespace.
-        @return Mapping of config key -> boolean value for install/update persistence.
-    @details Only ``preserve-models`` is persisted as a boolean flag (SRS-288).
-    Provider/artifact/option configuration is persisted via ``--provider`` specs under
-    the ``providers`` key in ``config.json`` (SRS-279).
-    """
-    return {
-        "preserve-models": bool(args.preserve_models),
-    }
-
-
-def load_persisted_update_flags(project_base: Path) -> dict[str, bool]:
-    """!
-    @brief Load persisted install/update boolean flags from `.req/config.json`.
-        @param project_base The project root path.
-        @return Mapping of persisted config key -> boolean value.
-        @throws ReqError If config file is missing, invalid, or required flag fields are missing/invalid.
-    @details Only ``preserve-models`` is loaded as a boolean flag (SRS-288).
-    Provider/artifact activation is validated via the persisted ``providers`` array (SRS-280).
-    """
-    config_path = project_base / ".req" / "config.json"
-    if not config_path.is_file():
-        raise ReqError(
-            "Error: .req/config.json not found in the project root",
-            11,
-        )
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ReqError("Error: .req/config.json is not valid", 11) from exc
-    flags: dict[str, bool] = {}
-    for key in PERSISTED_UPDATE_FLAG_KEYS:
-        value = payload.get(key)
-        if not isinstance(value, bool):
-            raise ReqError(
-                f"Error: missing or invalid '{key}' field in .req/config.json", 11
-            )
-        flags[key] = value
-
-    # Validate that persisted --provider specs provide adequate activation (SRS-280).
-    persisted_providers = payload.get("providers", [])
-    has_provider_specs = (
-        isinstance(persisted_providers, list) and len(persisted_providers) > 0
-    )
-
-    if not has_provider_specs:
-        raise ReqError(
-            "Error: .req/config.json has an invalid provider/artifact update configuration",
-            11,
-        )
-    return flags
-
-
-def load_persisted_provider_specs(project_base: Path) -> list[str]:
-    """!
-    @brief Load persisted ``--provider`` SPEC strings from `.req/config.json`.
-    @param project_base The project root path.
+    @brief Load persisted ``--provider`` SPEC strings from the user-global configuration file.
     @return List of raw SPEC strings; empty list if key is missing or config is unreadable.
-    @details Reads the ``"providers"`` key from config.json (SRS-280). Returns ``[]``
-    on any read or parse error rather than raising.
+    @details Reads the ``"providers"`` key from `~/.config/usereq/config.json` (SRS-280).
+    Returns ``[]`` on any read or parse error rather than raising.
     @see SRS-279, SRS-280
     """
-    config_path = project_base / ".req" / "config.json"
+    config_path = get_global_config_path()
     if not config_path.is_file():
         return []
     try:
@@ -2223,100 +2161,6 @@ def extract_skill_description(frontmatter: str) -> str:
     return " ".join(str(usage).split())
 
 
-def json_escape(value: str) -> str:
-    """!
-    @brief Escapes a string for JSON without external delimiters.
-    @details Implements the json_escape function behavior with deterministic control flow.
-    @param value Input parameter `value`.
-    @return {str} Function return value.
-    """
-    return json.dumps(value)[1:-1]
-
-
-def generate_kiro_resources(
-    req_dir: Path,
-    project_base: Path,
-    prompt_rel_path: str,
-) -> list[str]:
-    """!
-    @brief Generates the resource list for the Kiro agent.
-    @details Implements the generate_kiro_resources function behavior with deterministic control flow.
-    @param req_dir Input parameter `req_dir`.
-    @param project_base Input parameter `project_base`.
-    @param prompt_rel_path Input parameter `prompt_rel_path`.
-    @return {list[str]} Function return value.
-    """
-    resources = [f"file://{prompt_rel_path}"]
-    if not req_dir.is_dir():
-        return resources
-
-    for file_path in sorted(req_dir.iterdir()):
-        if file_path.is_file():
-            try:
-                rel_path = file_path.relative_to(project_base)
-                rel_str = str(rel_path).replace(os.sep, "/")
-                resources.append(f"file://{rel_str}")
-            except ValueError:
-                continue
-
-    return resources
-
-
-def render_kiro_agent(
-    template: str,
-    name: str,
-    description: str,
-    prompt: str,
-    resources: list[str],
-    tools: list[str] | None = None,
-    model: Optional[str] = None,
-    include_tools: bool = False,
-    include_model: bool = False,
-) -> str:
-    """!
-    @brief Renders the Kiro agent JSON and populates main fields.
-    @details Implements the render_kiro_agent function behavior with deterministic control flow.
-    @param template Input parameter `template`.
-    @param name Input parameter `name`.
-    @param description Input parameter `description`.
-    @param prompt Input parameter `prompt`.
-    @param resources Input parameter `resources`.
-    @param tools Input parameter `tools`.
-    @param model Input parameter `model`.
-    @param include_tools Input parameter `include_tools`.
-    @param include_model Input parameter `include_model`.
-    @return {str} Function return value.
-    """
-    replacements = {
-        "%%NAME%%": json_escape(name),
-        "%%DESCRIPTION%%": json_escape(description),
-        "%%PROMPT%%": json_escape(prompt),
-    }
-    if "%%RESOURCES%%" in template:
-        resources_block = ",\n".join(f'    "{json_escape(item)}"' for item in resources)
-        replacements["%%RESOURCES%%"] = resources_block
-    for token, replacement in replacements.items():
-        template = template.replace(token, replacement)
-    try:
-        parsed = json.loads(template)
-        parsed["resources"] = resources
-        if include_model and model is not None:
-            parsed["model"] = model
-        else:
-            parsed.pop("model", None)
-        if include_tools:
-            parsed_tools = tools if isinstance(tools, list) else []
-            parsed["tools"] = parsed_tools
-            parsed["allowedTools"] = parsed_tools
-        else:
-            parsed.pop("tools", None)
-            parsed.pop("allowedTools", None)
-        return json.dumps(parsed, indent=2, ensure_ascii=False) + "\n"
-    except Exception:
-        # If parsing fails, return raw template to preserve previous behavior
-        return template
-
-
 def replace_tokens(path: Path, replacements: Mapping[str, str]) -> None:
     """!
     @brief Replaces tokens in the specified file.
@@ -2378,294 +2222,6 @@ def find_requirements_template(docs_templates: list[Path]) -> Path:
     )
 
 
-def load_kiro_template() -> tuple[str, dict[str, Any]]:
-    """!
-    @brief Loads the Kiro template from centralized models configuration.
-    @details Implements the load_kiro_template function behavior with deterministic control flow.
-    @return {tuple[str, dict[str, Any]]} Function return value.
-    """
-    common_dir = RESOURCE_ROOT / "common"
-
-    # Try models.json first (this function is called during generation, not with legacy flag check)
-    for config_name in ["models.json", "models-legacy.json"]:
-        config_file = common_dir / config_name
-        if config_file.is_file():
-            try:
-                all_models = load_settings(config_file)
-                if isinstance(all_models, dict):
-                    kiro_cfg = all_models.get("kiro")
-                    if isinstance(kiro_cfg, dict):
-                        agent_template = kiro_cfg.get("agent_template")
-                        if isinstance(agent_template, str) and agent_template.strip():
-                            return agent_template, kiro_cfg
-                        if isinstance(agent_template, dict):
-                            try:
-                                return (
-                                    json.dumps(
-                                        agent_template, indent=2, ensure_ascii=False
-                                    ),
-                                    kiro_cfg,
-                                )
-                            except Exception:
-                                pass
-            except Exception as exc:
-                dlog(f"Failed parsing {config_file}: {exc}")
-                continue
-
-    raise ReqError(
-        "Error: no Kiro config with 'agent_template' found in centralized models",
-        9,
-    )
-
-
-def strip_json_comments(text: str) -> str:
-    """!
-    @brief Removes // and /* */ comments to allow JSONC parsing.
-    @details Implements the strip_json_comments function behavior with deterministic control flow.
-    @param text Input parameter `text`.
-    @return {str} Function return value.
-    """
-    cleaned: list[str] = []
-    in_block = False
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if in_block:
-            if "*/" in stripped:
-                in_block = False
-            continue
-        if stripped.startswith("/*"):
-            if "*/" not in stripped:
-                in_block = True
-            continue
-        if stripped.startswith("//"):
-            continue
-        cleaned.append(line)
-    return "\n".join(cleaned)
-
-
-def load_settings(path: Path) -> dict[str, Any]:
-    """!
-    @brief Loads JSON/JSONC settings, removing comments when necessary.
-    @details Implements the load_settings function behavior with deterministic control flow.
-    @param path Input parameter `path`.
-    @return {dict[str, Any]} Function return value.
-    """
-    raw = path.read_text(encoding="utf-8")
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        cleaned = strip_json_comments(raw)
-        dlog(f"Parsed {path} after removing comments")
-        return json.loads(cleaned)
-
-
-def load_centralized_models(
-    resource_root: Path,
-    legacy_mode: bool = False,
-    preserve_models_path: Optional[Path] = None,
-) -> dict[str, dict[str, Any] | None]:
-    """!
-    @brief Loads centralized models configuration from common/models.json.
-        @details Returns a map cli_name -> parsed_json or None if not present. When preserve_models_path is provided and exists, loads from that file, ignoring legacy_mode. Otherwise, when legacy_mode is True, attempts to load models-legacy.json first, falling back to models.json if not found.
-    @param resource_root Input parameter `resource_root`.
-    @param legacy_mode Input parameter `legacy_mode`.
-    @param preserve_models_path Input parameter `preserve_models_path`.
-    @return {dict[str, dict[str, Any] | None]} Function return value.
-    """
-    common_dir = resource_root / "common"
-    config_file = None
-
-    # Priority 1: preserve_models_path if provided and exists
-    if preserve_models_path and preserve_models_path.is_file():
-        config_file = preserve_models_path
-        dlog(f"Using preserved models config: {preserve_models_path}")
-    # Priority 2: legacy mode
-    elif legacy_mode:
-        legacy_candidate = common_dir / "models-legacy.json"
-        if legacy_candidate.is_file():
-            config_file = legacy_candidate
-            dlog(f"Using legacy models config: {legacy_candidate}")
-
-    # Fallback: standard models.json
-    if config_file is None:
-        config_file = common_dir / "models.json"
-        if not config_file.is_file():
-            dlog(f"Models config not found: {config_file}")
-            return {
-                name: None
-                for name in (
-                    "claude",
-                    "copilot",
-                    "opencode",
-                    "kiro",
-                    "gemini",
-                    "codex",
-                    "pi",
-                )
-            }
-
-    # Load the centralized configuration
-    try:
-        all_models = load_settings(config_file)
-        dlog(f"Loaded centralized models from: {config_file}")
-    except Exception as exc:
-        dlog(f"Failed loading centralized models from {config_file}: {exc}")
-        return {
-            name: None
-            for name in (
-                "claude",
-                "copilot",
-                "opencode",
-                "kiro",
-                "gemini",
-                "codex",
-                "pi",
-            )
-        }
-
-    # Extract individual CLI configs
-    result: dict[str, dict[str, Any] | None] = {}
-    for name in ("claude", "copilot", "opencode", "kiro", "gemini", "codex", "pi"):
-        result[name] = all_models.get(name) if isinstance(all_models, dict) else None
-        if result[name]:
-            dlog(f"Extracted config for {name}")
-
-    return result
-
-
-def get_model_tools_for_prompt(
-    config: dict[str, Any] | None, prompt_name: str, source_name: Optional[str] = None
-) -> tuple[Optional[str], Optional[list[str]]]:
-    """!
-    @brief Extracts model and tools for the prompt from the CLI config.
-        @details Returns (model, tools) where each value can be None if not available.
-    @param config Input parameter `config`.
-    @param prompt_name Input parameter `prompt_name`.
-    @param source_name Input parameter `source_name`.
-    @return {tuple[Optional[str], Optional[list[str]]]} Function return value.
-    """
-    if not config:
-        return None, None
-    prompts = config.get("prompts") or {}
-    entry = prompts.get(prompt_name) if isinstance(prompts, dict) else None
-    model = None
-    tools: Optional[list[str]] = None
-    if isinstance(entry, dict):
-        model = entry.get("model")
-        mode = entry.get("mode")
-        if mode:
-            usage = config.get("usage_modes") or {}
-            mode_entry = usage.get(mode) if isinstance(usage, dict) else None
-            if isinstance(mode_entry, dict):
-                # Use the unified key name 'tools' across all CLI configs.
-                # Accept either a list of strings or a CSV string in the config.json.
-                key_name = "tools"
-                raw = mode_entry.get(key_name)
-                if raw is None:
-                    tools = None
-                elif isinstance(raw, list):
-                    tools = [str(t) for t in raw]
-                elif isinstance(raw, str):
-                    # Parse comma-separated string into list
-                    items = [p.strip() for p in raw.split(",") if p.strip()]
-                    tools = items if items else None
-                else:
-                    tools = None
-    return model, tools
-
-
-def get_raw_tools_for_prompt(config: dict[str, Any] | None, prompt_name: str) -> Any:
-    """!
-    @brief Returns the raw value of `usage_modes[mode]['tools']` for the prompt.
-        @details Can return a list of strings, a string, or None depending on how it is defined in `config.json`. Does not perform CSV parsing: returns the value exactly as present in the configuration file.
-    @param config Input parameter `config`.
-    @param prompt_name Input parameter `prompt_name`.
-    @return {Any} Function return value.
-    """
-    if not config:
-        return None
-    prompts = config.get("prompts") or {}
-    entry = prompts.get(prompt_name) if isinstance(prompts, dict) else None
-    if isinstance(entry, dict):
-        mode = entry.get("mode")
-        if mode:
-            usage = config.get("usage_modes") or {}
-            mode_entry = usage.get(mode) if isinstance(usage, dict) else None
-            if isinstance(mode_entry, dict):
-                return mode_entry.get("tools")
-    return None
-
-
-def format_tools_inline_list(tools: list[str]) -> str:
-    """!
-    @brief Formats the tools list as an inline YAML sequence.
-    @details Preserves input order, escapes embedded single quotes, and emits a
-    deterministic inline list literal suitable for `tools:` front-matter fields.
-    Complexity: O(N) in tool count. No side effects.
-    @param tools {list[str]} Ordered tool identifiers.
-    @return {str} Inline YAML sequence literal.
-    """
-    safe = [t.replace("'", "\\'") for t in tools]
-    quoted = ", ".join(f"'{s}'" for s in safe)
-    return f"[{quoted}]"
-
-
-def format_tools_space_separated_string(tools: Sequence[str]) -> str:
-    """!
-    @brief Formats the tools list as one space-delimited YAML scalar.
-    @details Preserves input order, coerces each tool identifier to `str`, and
-    emits a scalar payload for providers that require `allowed-tools` instead of
-    `tools`. Complexity: O(N) in tool count. No side effects.
-    @param tools {Sequence[str]} Ordered tool identifiers resolved from provider configuration.
-    @return {str} Space-delimited tool identifiers.
-    @satisfies SRS-369, SRS-370
-    """
-    return " ".join(str(tool) for tool in tools)
-
-
-def deep_merge_dict(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
-    """!
-    @brief Recursively merges dictionaries, prioritizing incoming values.
-    @details Implements the deep_merge_dict function behavior with deterministic control flow.
-    @param base Input parameter `base`.
-    @param incoming Input parameter `incoming`.
-    @return {dict[str, Any]} Function return value.
-    """
-    for key, value in incoming.items():
-        if isinstance(value, dict) and isinstance(base.get(key), dict):
-            deep_merge_dict(base[key], value)
-        else:
-            base[key] = value
-    return base
-
-
-def find_vscode_settings_source() -> Optional[Path]:
-    """!
-    @brief Finds the VS Code settings template if available.
-    @details Implements the find_vscode_settings_source function behavior with deterministic control flow.
-    @return {Optional[Path]} Function return value.
-    """
-    candidate = RESOURCE_ROOT / "vscode" / "settings.json"
-    if candidate.is_file():
-        return candidate
-    return None
-
-
-def build_prompt_recommendations(prompts_dir: Path) -> dict[str, bool]:
-    """!
-    @brief Generates chat.promptFilesRecommendations from available prompts.
-    @details Implements the build_prompt_recommendations function behavior with deterministic control flow.
-    @param prompts_dir Input parameter `prompts_dir`.
-    @return {dict[str, bool]} Function return value.
-    """
-    recommendations: dict[str, bool] = {}
-    if not prompts_dir.is_dir():
-        return recommendations
-    for prompt_path in sorted(prompts_dir.glob("*.md")):
-        recommendations[f"req-{prompt_path.stem}"] = True
-    return recommendations
-
-
 def ensure_wrapped(target: Path, project_base: Path, code: int) -> None:
     """!
     @brief Verifies that the path is under the project root.
@@ -2680,37 +2236,6 @@ def ensure_wrapped(target: Path, project_base: Path, code: int) -> None:
             f"Error: safe removal of {target} refused (not under PROJECT_BASE)",
             code,
         )
-
-
-def save_vscode_backup(req_root: Path, settings_path: Path) -> None:
-    """!
-    @brief Saves a backup of VS Code settings if the file exists.
-    @details Implements the save_vscode_backup function behavior with deterministic control flow.
-    @param req_root Input parameter `req_root`.
-    @param settings_path Input parameter `settings_path`.
-    @return {None} Function return value.
-    """
-    backup_path = req_root / "settings.json.backup"
-    # Never create an absence marker. Backup only if the file exists.
-    if settings_path.exists():
-        req_root.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(settings_path, backup_path)
-
-
-def restore_vscode_settings(project_base: Path) -> None:
-    """!
-    @brief Restores VS Code settings from backup, if present.
-    @details Implements the restore_vscode_settings function behavior with deterministic control flow.
-    @param project_base Input parameter `project_base`.
-    @return {None} Function return value.
-    """
-    req_root = project_base / ".req"
-    backup_path = req_root / "settings.json.backup"
-    target_settings = project_base / ".vscode" / "settings.json"
-    if backup_path.exists():
-        target_settings.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(backup_path, target_settings)
-    # Do not remove the target file if no backup exists: restore behavior disabled otherwise.
 
 
 def prune_empty_dirs(root: Path) -> None:
@@ -2730,66 +2255,63 @@ def prune_empty_dirs(root: Path) -> None:
         except OSError:
             continue
 
-
-def remove_generated_resources(project_base: Path) -> None:
+def remove_generated_resources() -> None:
     """!
-    @brief Removes resources generated by the tool in the project root.
-    @details Implements the remove_generated_resources function behavior with deterministic control flow.
-    @param project_base Input parameter `project_base`.
+    @brief Removes `req-*` artifacts generated by the tool from user-level provider directories.
+    @details Loads the persisted `providers` array from the user-global configuration file,
+    resolves each enabled provider/artifact user-level root via :func:`provider_artifact_root`,
+    and deletes only `req-*` files and `req-*` skill directories. Empty user-level provider
+    subdirectories are pruned afterwards; unrelated user content is never touched.
     @return {None} Function return value.
+    @satisfies SRS-390
     """
-    remove_dirs = [
-        project_base / ".gemini" / "commands" / "req",
-        project_base / ".gemini" / "skills",
-        project_base / ".claude" / "commands" / "req",
-        project_base / ".claude" / "skills",
-        project_base / ".codex" / "skills",
-        project_base / ".github" / "skills",
-        project_base / ".pi" / "skills",
-        project_base / ".kiro" / "skills",
-        project_base / ".opencode" / "skill",
-        project_base / ".req" / "docs",
-    ]
-    remove_globs = [
-        project_base / ".codex" / "prompts",
-        project_base / ".github" / "agents",
-        project_base / ".github" / "prompts",
-        project_base / ".pi" / "prompts",
-        project_base / ".kiro" / "agents",
-        project_base / ".kiro" / "prompts",
-        project_base / ".claude" / "agents",
-        project_base / ".claude" / "commands",
-        project_base / ".opencode" / "agent",
-        project_base / ".opencode" / "command",
-    ]
-    for target in remove_dirs:
-        if target.exists():
-            ensure_wrapped(target, project_base, 10)
-            shutil.rmtree(target)
-    for folder in remove_globs:
-        if not folder.is_dir():
+    specs = load_persisted_provider_specs()
+    configs = resolve_provider_configs(specs)
+    for provider, cfg in configs.items():
+        if not cfg.get("enabled"):
             continue
-        ensure_wrapped(folder, project_base, 10)
-        for pattern in ("req-*", "req-*"):
-            for path in folder.glob(pattern):
-                if path.is_file():
+        for artifact in sorted(VALID_ARTIFACTS):
+            if not cfg.get(artifact):
+                continue
+            root = provider_artifact_root(provider, artifact)
+            if not root.is_dir():
+                continue
+            if root.name == "req":
+                # usereq-owned namespace directory (e.g. ~/.claude/commands/req):
+                # all content inside is generated by this tool, so remove it entirely.
+                for path in sorted(root.iterdir()):
+                    if path.is_dir():
+                        shutil.rmtree(path)
+                    elif path.is_file():
+                        path.unlink()
+                continue
+            for path in sorted(root.iterdir()):
+                if not path.name.startswith("req-"):
+                    continue
+                if path.is_dir():
+                    shutil.rmtree(path)
+                elif path.is_file():
                     path.unlink()
-    config_path = project_base / ".req" / "config.json"
-    if config_path.exists():
-        ensure_wrapped(config_path, project_base, 10)
-        config_path.unlink()
-    req_root = project_base / ".req"
-    if req_root.exists():
-        ensure_wrapped(req_root, project_base, 10)
-        shutil.rmtree(req_root)
-
+    for provider in sorted(VALID_PROVIDERS):
+        cfg = configs[provider]
+        if not cfg.get("enabled"):
+            continue
+        for artifact in sorted(VALID_ARTIFACTS):
+            if not cfg.get(artifact):
+                continue
+            root = provider_artifact_root(provider, artifact)
+            if root.is_dir():
+                prune_empty_dirs(root)
 
 def run_remove(args: Namespace) -> None:
     """!
-    @brief Handles the removal of generated resources.
-    @details Implements the run_remove function behavior with deterministic control flow.
+    @brief Handles the removal of generated user-level resources.
+    @details Validates that `--update` and directory flags are not combined with
+    `--remove`, verifies that the user-global configuration file exists, and removes
+    `req-*` artifacts from user-level provider directories (SRS-390).
     @param args Input parameter `args`.
     @return {None} Function return value.
+    @satisfies SRS-390
     """
     guidelines_dir = getattr(args, "guidelines_dir", None)
     doc_dir = getattr(args, "docs_dir", None)
@@ -2807,33 +2329,12 @@ def run_remove(args: Namespace) -> None:
             "Error: --remove does not accept --guidelines-dir, --docs-dir, --tests-dir, or --src-dir without --here",
             4,
         )
-    if args.base:
-        project_base = args.base.resolve()
-    else:
-        project_base = Path.cwd().resolve()
-    if not project_base.exists():
-        raise ReqError(f"Error: PROJECT_BASE '{project_base}' does not exist", 2)
-    config_path = project_base / ".req" / "config.json"
-    if not config_path.is_file():
+    if not get_global_config_path().is_file():
         raise ReqError(
-            "Error: .req/config.json not found in the project root",
+            f"Error: global configuration file not found at {get_global_config_path()}",
             11,
         )
-
-    # Do not perform any restore or removal of .vscode/settings.json during removal.
-    remove_generated_resources(project_base)
-    for root_name in (
-        ".gemini",
-        ".codex",
-        ".kiro",
-        ".github",
-        ".pi",
-        ".vscode",
-        ".opencode",
-        ".claude",
-    ):
-        prune_empty_dirs(project_base / root_name)
-
+    remove_generated_resources()
 
 def _validate_enable_static_check_command_executables(
     static_check_config: Mapping[str, list[dict[str, Any]]],
@@ -2870,16 +2371,16 @@ def _validate_enable_static_check_command_executables(
 def run(args: Namespace) -> None:
     """!
     @brief Handles the main initialization flow.
-        @details Validates input arguments, resolves install/update path sources, applies fresh-install defaults for omitted directory flags, creates configured directory trees during installation, and orchestrates provider artifact generation. Requires at least one ``--provider`` spec (SRS-035). Deduplicates ``--enable-static-check`` entries (SRS-251, SRS-301).
-        @param args Parsed CLI namespace; must contain ``provider_specs`` list and ``preserve_models`` boolean.
+        @details Validates input arguments, resolves install/update path sources, applies fresh-install defaults for omitted directory flags, creates configured directory trees during installation, persists the user-global configuration, and orchestrates user-level provider artifact generation. Requires at least one ``--provider`` spec (SRS-035). Deduplicates ``--enable-static-check`` entries (SRS-251, SRS-301).
+        @param args Parsed CLI namespace; must contain ``provider_specs`` list.
     @return {None} Function return value.
-    @satisfies SRS-035, SRS-064, SRS-251, SRS-301, SRS-359, SRS-360, SRS-361, SRS-362, SRS-363
+    @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-280, SRS-301, SRS-359, SRS-360, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388
     """
     global VERBOSE, DEBUG
     VERBOSE = args.verbose
     DEBUG = args.debug
 
-    # Main flow: validates input, calculates paths, generates resources.
+    # Main flow: validates input, calculates paths, generates user-level resources.
     if args.remove:
         run_remove(args)
         return
@@ -2890,17 +2391,6 @@ def run(args: Namespace) -> None:
         project_base = Path.cwd().resolve()
     if not project_base.exists():
         raise ReqError(f"Error: PROJECT_BASE '{project_base}' does not exist", 2)
-
-    # SRS-305: Verify project_base is inside a git repository during installation.
-    if not is_inside_git_repo(project_base):
-        raise ReqError(
-            f"Error: '{project_base}' is not inside a git repository.",
-            3,
-        )
-    # SRS-306: Determine git root.
-    git_root = resolve_git_root(project_base)
-    base_path_abs = str(project_base)
-    git_path_abs = str(git_root)
 
     guidelines_dir = getattr(args, "guidelines_dir", None)
     doc_dir = getattr(args, "docs_dir", None)
@@ -2918,7 +2408,7 @@ def run(args: Namespace) -> None:
             4,
         )
     if use_here_config or args.update:
-        config = load_config(project_base)
+        config = load_config()
         guidelines_dir_value = config["guidelines-dir"]
         doc_dir_value = config["docs-dir"]
         test_dir_value = config["tests-dir"]
@@ -2930,12 +2420,6 @@ def run(args: Namespace) -> None:
         doc_dir_value = doc_dir if doc_dir is not None else DEFAULT_DOCS_DIR
         test_dir_value = test_dir if test_dir is not None else DEFAULT_TESTS_DIR
         src_dir_values = src_dir if src_dir is not None else list(DEFAULT_SRC_DIRS)
-
-    if args.update:
-        persisted_flags = load_persisted_update_flags(project_base)
-        args.preserve_models = (
-            bool(args.preserve_models) or persisted_flags["preserve-models"]
-        )
 
     if not isinstance(guidelines_dir_value, str) or not isinstance(doc_dir_value, str):
         raise ReqError("Error: invalid docs configuration values", 11)
@@ -3057,7 +2541,7 @@ def run(args: Namespace) -> None:
     cli_provider_specs: list[str] = getattr(args, "provider_specs", None) or []
     persisted_provider_specs: list[str] = []
     if use_here_config or args.update:
-        persisted_provider_specs = load_persisted_provider_specs(project_base)
+        persisted_provider_specs = load_persisted_provider_specs()
     # CLI --provider replaces persisted specs when at least one is given (SRS-280).
     effective_provider_specs = (
         cli_provider_specs if cli_provider_specs else persisted_provider_specs
@@ -3069,11 +2553,9 @@ def run(args: Namespace) -> None:
     provider_configs = resolve_provider_configs(effective_provider_specs)
 
     # Derive flat enable_* variables from per-provider configs (spec-driven only).
+    enable_antigravity = provider_configs["antigravity"]["enabled"]
     enable_claude = provider_configs["claude"]["enabled"]
     enable_codex = provider_configs["codex"]["enabled"]
-    enable_gemini = provider_configs["gemini"]["enabled"]
-    enable_github = provider_configs["github"]["enabled"]
-    enable_kiro = provider_configs["kiro"]["enabled"]
     enable_opencode = provider_configs["opencode"]["enabled"]
     enable_pi = provider_configs["pi"]["enabled"]
 
@@ -3084,18 +2566,16 @@ def run(args: Namespace) -> None:
 
     if not any(
         (
+            enable_antigravity,
             enable_claude,
             enable_codex,
-            enable_gemini,
-            enable_github,
-            enable_kiro,
             enable_opencode,
             enable_pi,
         )
     ):
         if args.update:
             raise ReqError(
-                "Error: .req/config.json has an invalid provider/artifact update configuration",
+                "Error: the global configuration has an invalid provider/artifact update configuration",
                 11,
             )
         parser = build_parser()
@@ -3107,7 +2587,7 @@ def run(args: Namespace) -> None:
     if not any((enable_prompts, enable_agents, enable_skills)):
         if args.update:
             raise ReqError(
-                "Error: .req/config.json has an invalid provider/artifact update configuration",
+                "Error: the global configuration has an invalid provider/artifact update configuration",
                 11,
             )
         parser = build_parser()
@@ -3140,16 +2620,15 @@ def run(args: Namespace) -> None:
     )
 
     # Compute merged static-check: existing config + new non-duplicate entries (SRS-252, SRS-301).
-    # Preserve pre-existing static-check entries whenever config.json already exists and
-    # the invocation includes at least one --enable-static-check spec.
-    config_path = project_base / ".req" / "config.json"
+    # Preserve pre-existing static-check entries whenever the global configuration file
+    # already exists and the invocation includes at least one --enable-static-check spec.
     should_merge_existing = (
         use_here_config
         or args.update
-        or (bool(enable_static_check_specs) and config_path.is_file())
+        or (bool(enable_static_check_specs) and get_global_config_path().is_file())
     )
     if should_merge_existing:
-        existing_sc = load_static_check_from_config(project_base)
+        existing_sc = load_static_check_from_config()
         merged_static_check: dict = {k: list(v) for k, v in existing_sc.items()}
         for lang, entries in new_static_check.items():
             existing_for_lang = merged_static_check.get(lang, [])
@@ -3167,70 +2646,17 @@ def run(args: Namespace) -> None:
     else:
         merged_static_check = new_static_check
 
-    if not args.update:
-        save_config(
-            project_base,
-            config_guidelines,
-            config_doc,
-            config_test,
-            config_src_dirs,
-            static_check_config=merged_static_check if merged_static_check else None,
-            persisted_flags=build_persisted_update_flags(args),
-            provider_specs=effective_provider_specs
-            if effective_provider_specs
-            else None,
-            base_path_abs=base_path_abs,
-            git_path_abs=git_path_abs,
-        )
-    else:
-        # --update path: always re-save config.json to update base-path/git-path (SRS-303, SRS-307)
-        # and merge static-check entries (SRS-252, SRS-301) and provider specs (SRS-279).
-        existing_full_config = load_config(project_base)
-        persisted_flags = load_persisted_update_flags(project_base)
-        save_config(
-            project_base,
-            str(existing_full_config["guidelines-dir"]),
-            str(existing_full_config["docs-dir"]),
-            str(existing_full_config["tests-dir"]),
-            list(existing_full_config["src-dir"]),  # type: ignore[arg-type]
-            static_check_config=merged_static_check if merged_static_check else None,
-            persisted_flags=persisted_flags,
-            provider_specs=effective_provider_specs
-            if effective_provider_specs
-            else None,
-            base_path_abs=base_path_abs,
-            git_path_abs=git_path_abs,
-        )
-
-    req_root = project_base / ".req"
-    req_root.mkdir(parents=True, exist_ok=True)
-    if VERBOSE:
-        log(f"OK: ensured directory {req_root}")
-
-    # Copy models configuration to .req/models.json based on per-provider legacy mode (SRS-066)
-    # Skip if --preserve-models is active
-    any_legacy = any(pc["legacy"] for pc in provider_configs.values() if pc["enabled"])
-    if not args.preserve_models:
-        models_target = req_root / "models.json"
-        if any_legacy:
-            legacy_candidate = RESOURCE_ROOT / "common" / "models-legacy.json"
-            if legacy_candidate.is_file():
-                models_src = legacy_candidate
-            else:
-                models_src = RESOURCE_ROOT / "common" / "models.json"
-        else:
-            models_src = RESOURCE_ROOT / "common" / "models.json"
-
-        if models_src.is_file():
-            shutil.copyfile(models_src, models_target)
-            if VERBOSE:
-                log(f"OK: copied {models_src} to {models_target}")
-    else:
-        if VERBOSE:
-            log("OK: preserved existing .req/models.json (--preserve-models active)")
-
-    docs_templates = list_docs_templates()
-    find_requirements_template(docs_templates)
+    # Persist the single user-global configuration file (SRS-279, SRS-287).
+    save_config(
+        config_guidelines,
+        config_doc,
+        config_test,
+        config_src_dirs,
+        static_check_config=merged_static_check if merged_static_check else None,
+        provider_specs=effective_provider_specs
+        if effective_provider_specs
+        else None,
+    )
 
     # Generate the file list for the %%GUIDELINES_FILES%% token.
     guidelines_file_list = generate_guidelines_file_list(
@@ -3244,81 +2670,31 @@ def run(args: Namespace) -> None:
     dlog(f"SRC_DIRS={normalized_src_dirs}")
     dlog(f"GUIDELINES_FILE_LIST={guidelines_file_list}")
 
-    codex_skills_root = None
-    claude_skills_root = None
-    gemini_skills_root = None
-    opencode_skills_root = None
-    pi_skills_root = None
-    github_skills_root = None
-    kiro_skills_root = None
+    # Resolve user-level provider artifact roots under the user HOME (SRS-381..SRS-386).
+    skills_roots: dict[str, Path] = {}
     target_folders: list[Path] = []
-    # Use per-provider configs to determine which directories to create (SRS-276).
-    pc_codex = provider_configs["codex"]
-    pc_github = provider_configs["github"]
-    pc_gemini = provider_configs["gemini"]
-    pc_kiro = provider_configs["kiro"]
-    pc_claude = provider_configs["claude"]
-    pc_opencode = provider_configs["opencode"]
-    pc_pi = provider_configs["pi"]
-    if pc_codex["enabled"] and pc_codex["prompts"]:
-        target_folders.append(project_base / ".codex" / "prompts")
-    if pc_codex["enabled"] and pc_codex["skills"]:
-        codex_skills_root = project_base / ".codex" / "skills"
-        target_folders.append(codex_skills_root)
-    if pc_github["enabled"] and pc_github["agents"]:
-        target_folders.append(project_base / ".github" / "agents")
-    if pc_github["enabled"] and pc_github["prompts"]:
-        target_folders.append(project_base / ".github" / "prompts")
-    if pc_github["enabled"] and pc_github["skills"]:
-        github_skills_root = project_base / ".github" / "skills"
-        target_folders.append(github_skills_root)
-    if pc_gemini["enabled"] and pc_gemini["prompts"]:
-        target_folders.extend(
-            [
-                project_base / ".gemini" / "commands",
-                project_base / ".gemini" / "commands" / "req",
-            ]
-        )
-    if pc_gemini["enabled"] and pc_gemini["skills"]:
-        gemini_skills_root = project_base / ".gemini" / "skills"
-        target_folders.append(gemini_skills_root)
-    if pc_kiro["enabled"] and pc_kiro["agents"]:
-        target_folders.append(project_base / ".kiro" / "agents")
-    if pc_kiro["enabled"] and pc_kiro["prompts"]:
-        target_folders.append(project_base / ".kiro" / "prompts")
-    if pc_kiro["enabled"] and pc_kiro["skills"]:
-        kiro_skills_root = project_base / ".kiro" / "skills"
-        target_folders.append(kiro_skills_root)
-    if pc_claude["enabled"] and pc_claude["agents"]:
-        target_folders.append(project_base / ".claude" / "agents")
-    if pc_claude["enabled"] and pc_claude["prompts"]:
-        target_folders.extend(
-            [
-                project_base / ".claude" / "commands",
-                project_base / ".claude" / "commands" / "req",
-            ]
-        )
-    if pc_claude["enabled"] and pc_claude["skills"]:
-        claude_skills_root = project_base / ".claude" / "skills"
-        target_folders.append(claude_skills_root)
-    if pc_opencode["enabled"] and pc_opencode["agents"]:
-        target_folders.append(project_base / ".opencode" / "agent")
-    if pc_opencode["enabled"] and pc_opencode["prompts"]:
-        target_folders.append(project_base / ".opencode" / "command")
-    if pc_opencode["enabled"] and pc_opencode["skills"]:
-        opencode_skills_root = project_base / ".opencode" / "skill"
-        target_folders.append(opencode_skills_root)
-    if pc_pi["enabled"] and pc_pi["prompts"]:
-        target_folders.append(project_base / ".pi" / "prompts")
-    if pc_pi["enabled"] and pc_pi["skills"]:
-        pi_skills_root = project_base / ".pi" / "skills"
-        target_folders.append(pi_skills_root)
+    for provider_name, provider_cfg in provider_configs.items():
+        if not provider_cfg["enabled"]:
+            continue
+        for artifact_name in sorted(VALID_ARTIFACTS):
+            if not provider_cfg[artifact_name]:
+                continue
+            try:
+                root = provider_artifact_root(provider_name, artifact_name)
+            except ReqError:
+                continue
+            if artifact_name == "skills":
+                skills_roots[provider_name] = root
+            else:
+                target_folders.append(root)
     for folder in target_folders:
         folder.mkdir(parents=True, exist_ok=True)
+    for skills_root in skills_roots.values():
+        skills_root.mkdir(parents=True, exist_ok=True)
     if VERBOSE:
         log(
-            "OK: ensured provider folders for the requested target CLIs under "
-            f"{project_base}"
+            "OK: ensured user-level provider folders for the requested target CLIs under "
+            f"{home_dir()}"
         )
 
     prompts_dir = RESOURCE_ROOT / "prompts"
@@ -3327,42 +2703,10 @@ def run(args: Namespace) -> None:
             f"Error: prompts directory not found at {prompts_dir} (RESOURCE_ROOT/prompts required)",
             9,
         )
-    kiro_template, kiro_config = load_kiro_template()
-    # Load CLI configs only if ANY enabled artifact requests model/tools metadata.
-    configs: dict[str, dict[str, Any] | None] = {}
-    include_models = any(
-        artifact_option_enabled(provider_cfg, artifact_name, "enable-models")
-        for provider_cfg in provider_configs.values()
-        if provider_cfg["enabled"]
-        for artifact_name in sorted(VALID_ARTIFACTS)
-        if provider_cfg[artifact_name]
-    )
-    include_tools = any(
-        artifact_option_enabled(provider_cfg, artifact_name, "enable-tools")
-        for provider_cfg in provider_configs.values()
-        if provider_cfg["enabled"]
-        for artifact_name in sorted(VALID_ARTIFACTS)
-        if provider_cfg[artifact_name]
-    )
-    if include_models or include_tools:
-        # Determine preserve_models_path (REQ-082)
-        preserve_models_path = None
-        if args.preserve_models and args.update:
-            candidate_path = project_base / ".req" / "models.json"
-            if candidate_path.is_file():
-                preserve_models_path = candidate_path
-
-        configs = load_centralized_models(
-            RESOURCE_ROOT,
-            legacy_mode=any_legacy,
-            preserve_models_path=preserve_models_path,
-        )
     prompts_installed: dict[str, set[str]] = {
+        "antigravity": set(),
         "claude": set(),
         "codex": set(),
-        "github": set(),
-        "gemini": set(),
-        "kiro": set(),
         "opencode": set(),
         "pi": set(),
     }
@@ -3381,8 +2725,6 @@ def run(args: Namespace) -> None:
         argument_hint = extract_argument_hint(frontmatter)
         prompt_body = prompt_body if prompt_body.endswith("\n") else prompt_body + "\n"
 
-        # (Removed: bootstrap file inlining and YOLO stop/approval substitution)
-
         base_replacements = {
             "%%GUIDELINES_FILES%%": guidelines_file_list,
             "%%GUIDELINES_PATH%%": normalized_guidelines,
@@ -3394,21 +2736,21 @@ def run(args: Namespace) -> None:
         prompt_with_replacements = apply_replacements(content, prompt_replacements)
         prompt_body_replaced = apply_replacements(prompt_body, prompt_replacements)
 
-        # Precompute description and Claude metadata so provider blocks can reuse them safely.
+        # Precompute description metadata so provider blocks can reuse them safely.
         desc_yaml = yaml_double_quote_escape(description)
         skill_desc_yaml = yaml_double_quote_escape(
             extract_skill_description(frontmatter)
         )
-        claude_model = None
-        claude_tools = None
-        if configs:
-            claude_model, claude_tools = get_model_tools_for_prompt(
-                configs.get("claude"), PROMPT, "claude"
-            )
+
+        pc_antigravity = provider_configs["antigravity"]
+        pc_claude = provider_configs["claude"]
+        pc_codex = provider_configs["codex"]
+        pc_opencode = provider_configs["opencode"]
+        pc_pi = provider_configs["pi"]
 
         if is_prompt_source and pc_codex["enabled"] and pc_codex["prompts"]:
-            # .codex/prompts
-            dst_codex_prompt = project_base / ".codex" / "prompts" / f"req-{PROMPT}.md"
+            # ~/.codex/prompts
+            dst_codex_prompt = provider_artifact_root("codex", "prompts") / f"req-{PROMPT}.md"
             existed = dst_codex_prompt.exists()
             write_text_file(dst_codex_prompt, prompt_with_replacements)
             if VERBOSE:
@@ -3416,29 +2758,15 @@ def run(args: Namespace) -> None:
             prompts_installed["codex"].add(PROMPT)
             modules_installed["codex"].add("prompts")
 
-        if pc_codex["enabled"] and pc_codex["skills"] and codex_skills_root is not None:
-            # .codex/skills/req-<prompt>/SKILL.md
-            codex_skill_dir = codex_skills_root / f"req-{PROMPT}"
+        if pc_codex["enabled"] and pc_codex["skills"]:
+            # ~/.codex/skills/req-<prompt>/SKILL.md
+            codex_skill_dir = skills_roots["codex"] / f"req-{PROMPT}"
             codex_skill_dir.mkdir(parents=True, exist_ok=True)
-            codex_model = None
-            codex_tools = None
-            if configs:
-                codex_model, codex_tools = get_model_tools_for_prompt(
-                    configs.get("codex"), PROMPT, "codex"
-                )
-            codex_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{skill_desc_yaml}"',
-            ]
-            if artifact_option_enabled(pc_codex, "skills", "enable-models") and codex_model:
-                codex_header_lines.append(f"model: {codex_model}")
-            if artifact_option_enabled(pc_codex, "skills", "enable-tools") and codex_tools:
-                codex_header_lines.append(
-                    f"tools: {format_tools_inline_list(codex_tools)}"
-                )
             codex_skill_text = (
-                "\n".join(codex_header_lines) + "\n---\n\n" + prompt_body_replaced
+                "---\n"
+                f"name: req-{PROMPT}\n"
+                f'description: "{skill_desc_yaml}"\n'
+                "---\n\n" + prompt_body_replaced
             )
             if not codex_skill_text.endswith("\n"):
                 codex_skill_text += "\n"
@@ -3446,9 +2774,11 @@ def run(args: Namespace) -> None:
             prompts_installed["codex"].add(PROMPT)
             modules_installed["codex"].add("skills")
 
-        if is_prompt_source and pc_gemini["enabled"] and pc_gemini["prompts"]:
-            # Gemini TOML
-            dst_toml = project_base / ".gemini" / "commands" / "req" / f"{PROMPT}.toml"
+        if is_prompt_source and pc_antigravity["enabled"] and pc_antigravity["prompts"]:
+            # ~/.antigravity/commands/req/<PROMPT>.toml (Antigravity TOML command)
+            dst_toml = (
+                provider_artifact_root("antigravity", "prompts") / f"{PROMPT}.toml"
+            )
             existed = dst_toml.exists()
             md_to_toml(prompt_path, dst_toml, force=existed)
             toml_replacements = {
@@ -3457,60 +2787,20 @@ def run(args: Namespace) -> None:
                 "%%ARGS%%": "{{args}}",
             }
             replace_tokens(dst_toml, toml_replacements)
-            if configs and (
-                artifact_option_enabled(pc_gemini, "prompts", "enable-models")
-                or artifact_option_enabled(pc_gemini, "prompts", "enable-tools")
-            ):
-                gem_model, gem_tools = get_model_tools_for_prompt(
-                    configs.get("gemini"), PROMPT, "gemini"
-                )
-                if gem_model or gem_tools:
-                    content = dst_toml.read_text(encoding="utf-8")
-                    parts = content.split("\n", 1)
-                    if len(parts) == 2:
-                        first, rest = parts
-                        inject_lines: list[str] = []
-                        if artifact_option_enabled(pc_gemini, "prompts", "enable-models") and gem_model:
-                            inject_lines.append(f'model = "{gem_model}"')
-                        if artifact_option_enabled(pc_gemini, "prompts", "enable-tools") and gem_tools:
-                            inject_lines.append(
-                                f"tools = {format_tools_inline_list(gem_tools)}"
-                            )
-                        if inject_lines:
-                            content = (
-                                first + "\n" + "\n".join(inject_lines) + "\n" + rest
-                            )
-                            dst_toml.write_text(content, encoding="utf-8")
             if VERBOSE:
                 log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_toml}")
-            prompts_installed["gemini"].add(PROMPT)
-            modules_installed["gemini"].add("commands")
-
-        if is_prompt_source and pc_kiro["enabled"] and pc_kiro["prompts"]:
-            # .kiro/prompts
-            dst_kiro_prompt = project_base / ".kiro" / "prompts" / f"req-{PROMPT}.md"
-            existed = dst_kiro_prompt.exists()
-            write_text_file(dst_kiro_prompt, prompt_with_replacements)
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_kiro_prompt}")
-            prompts_installed["kiro"].add(PROMPT)
-            modules_installed["kiro"].add("prompts")
+            prompts_installed["antigravity"].add(PROMPT)
+            modules_installed["antigravity"].add("commands")
 
         if is_prompt_source and pc_claude["enabled"] and pc_claude["agents"]:
-            # .claude/agents
-            dst_claude_agent = project_base / ".claude" / "agents" / f"req-{PROMPT}.md"
+            # ~/.claude/agents
+            dst_claude_agent = provider_artifact_root("claude", "agents") / f"req-{PROMPT}.md"
             existed = dst_claude_agent.exists()
             claude_header_lines = [
                 "---",
                 f"name: req-{PROMPT}",
                 f'description: "{desc_yaml}"',
             ]
-            if artifact_option_enabled(pc_claude, "agents", "enable-models") and claude_model:
-                claude_header_lines.append(f"model: {claude_model}")
-            if artifact_option_enabled(pc_claude, "agents", "enable-tools") and claude_tools:
-                claude_header_lines.append(
-                    f"tools: {format_tools_inline_list(claude_tools)}"
-                )
             claude_text = (
                 "\n".join(claude_header_lines) + "\n---\n\n" + prompt_body_replaced
             )
@@ -3523,76 +2813,11 @@ def run(args: Namespace) -> None:
             prompts_installed["claude"].add(PROMPT)
             modules_installed["claude"].add("agents")
 
-        if is_prompt_source and pc_github["enabled"] and pc_github["agents"]:
-            # .github/agents
-            dst_gh_agent = (
-                project_base / ".github" / "agents" / f"req-{PROMPT}.agent.md"
-            )
-            existed = dst_gh_agent.exists()
-            gh_model = None
-            gh_tools = None
-            if configs:
-                gh_model, gh_tools = get_model_tools_for_prompt(
-                    configs.get("copilot"), PROMPT, "copilot"
-                )
-            gh_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{desc_yaml}"',
-            ]
-            if artifact_option_enabled(pc_github, "agents", "enable-models") and gh_model:
-                gh_header_lines.append(f"model: {gh_model}")
-            if artifact_option_enabled(pc_github, "agents", "enable-tools") and gh_tools:
-                gh_header_lines.append(f"tools: {format_tools_inline_list(gh_tools)}")
-            gh_text = "\n".join(gh_header_lines) + "\n---\n\n" + prompt_body_replaced
-            dst_gh_agent.parent.mkdir(parents=True, exist_ok=True)
-            if not gh_text.endswith("\n"):
-                gh_text += "\n"
-            dst_gh_agent.write_text(gh_text, encoding="utf-8")
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_gh_agent}")
-            prompts_installed["github"].add(PROMPT)
-            modules_installed["github"].add("agents")
-
-        if is_prompt_source and pc_github["enabled"] and pc_github["prompts"]:
-            # .github/prompts
-            dst_gh_prompt = (
-                project_base / ".github" / "prompts" / f"req-{PROMPT}.prompt.md"
-            )
-            existed = dst_gh_prompt.exists()
-            if pc_github["prompts-use-agents"]:
-                gh_prompt_text = f"---\nagent: req-{PROMPT}\n---\n"
-            else:
-                gh_header_lines = [
-                    "---",
-                    f"description: {frontmatter.splitlines()[0].split(':', 1)[1].strip() if 'description:' in frontmatter else description}",
-                ]
-                if argument_hint:
-                    gh_header_lines.append(f"argument-hint: {argument_hint}")
-                gh_model = None
-                gh_tools = None
-                if configs:
-                    gh_model, gh_tools = get_model_tools_for_prompt(
-                        configs.get("copilot"), PROMPT, "copilot"
-                    )
-                if artifact_option_enabled(pc_github, "prompts", "enable-models") and gh_model:
-                    gh_header_lines.append(f"model: {gh_model}")
-                if artifact_option_enabled(pc_github, "prompts", "enable-tools") and gh_tools:
-                    gh_header_lines.append(
-                        f"tools: {format_tools_inline_list(gh_tools)}"
-                    )
-                gh_header = "\n".join(gh_header_lines) + "\n---\n\n"
-                gh_prompt_text = gh_header + prompt_body_replaced
-            dst_gh_prompt.parent.mkdir(parents=True, exist_ok=True)
-            dst_gh_prompt.write_text(gh_prompt_text, encoding="utf-8")
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_gh_prompt}")
-            prompts_installed["github"].add(PROMPT)
-            modules_installed["github"].add("prompts")
-
         if is_prompt_source and pc_pi["enabled"] and pc_pi["prompts"]:
-            # .pi/prompts (GitHub-equivalent prompt procedure)
-            dst_pi_prompt = project_base / ".pi" / "prompts" / f"req-{PROMPT}.prompt.md"
+            # ~/.pi/agent/prompts/req-<PROMPT>.prompt.md
+            dst_pi_prompt = (
+                provider_artifact_root("pi", "prompts") / f"req-{PROMPT}.prompt.md"
+            )
             existed = dst_pi_prompt.exists()
             if pc_pi["prompts-use-agents"]:
                 pi_prompt_text = f"---\nagent: req-{PROMPT}\n---\n"
@@ -3603,18 +2828,6 @@ def run(args: Namespace) -> None:
                 ]
                 if argument_hint:
                     pi_header_lines.append(f"argument-hint: {argument_hint}")
-                pi_model = None
-                pi_tools = None
-                if configs:
-                    pi_model, pi_tools = get_model_tools_for_prompt(
-                        configs.get("pi"), PROMPT, "pi"
-                    )
-                if artifact_option_enabled(pc_pi, "prompts", "enable-models") and pi_model:
-                    pi_header_lines.append(f"model: {pi_model}")
-                if artifact_option_enabled(pc_pi, "prompts", "enable-tools") and pi_tools:
-                    pi_header_lines.append(
-                        f"tools: {format_tools_inline_list(pi_tools)}"
-                    )
                 pi_header = "\n".join(pi_header_lines) + "\n---\n\n"
                 pi_prompt_text = pi_header + prompt_body_replaced
             dst_pi_prompt.parent.mkdir(parents=True, exist_ok=True)
@@ -3624,65 +2837,13 @@ def run(args: Namespace) -> None:
             prompts_installed["pi"].add(PROMPT)
             modules_installed["pi"].add("prompts")
 
-        if is_prompt_source and pc_kiro["enabled"] and pc_kiro["agents"]:
-            # .kiro/agents
-            dst_kiro_agent = project_base / ".kiro" / "agents" / f"req-{PROMPT}.json"
-            existed = dst_kiro_agent.exists()
-            kiro_prompt_rel = f".kiro/prompts/req-{PROMPT}.md"
-            kiro_resources = generate_kiro_resources(
-                project_base / normalized_doc,
-                project_base,
-                kiro_prompt_rel,
-            )
-            kiro_model, kiro_tools = get_model_tools_for_prompt(
-                kiro_config, PROMPT, "kiro"
-            )
-            kiro_tools_list = (
-                list(kiro_tools)
-                if artifact_option_enabled(pc_kiro, "agents", "enable-tools")
-                and isinstance(kiro_tools, list)
-                else None
-            )
-            agent_content = render_kiro_agent(
-                kiro_template,
-                name=f"req-{PROMPT}",
-                description=description,
-                prompt=prompt_body_replaced,
-                resources=kiro_resources,
-                tools=kiro_tools_list,
-                model=kiro_model,
-                include_tools=artifact_option_enabled(pc_kiro, "agents", "enable-tools"),
-                include_model=artifact_option_enabled(pc_kiro, "agents", "enable-models"),
-            )
-            dst_kiro_agent.write_text(agent_content, encoding="utf-8")
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_kiro_agent}")
-            prompts_installed["kiro"].add(PROMPT)
-            modules_installed["kiro"].add("agents")
-
         if is_prompt_source and pc_opencode["enabled"] and pc_opencode["agents"]:
-            # .opencode/agent
+            # ~/.config/opencode/agent
             dst_opencode_agent = (
-                project_base / ".opencode" / "agent" / f"req-{PROMPT}.md"
+                provider_artifact_root("opencode", "agents") / f"req-{PROMPT}.md"
             )
             existed = dst_opencode_agent.exists()
             opencode_header_lines = ["---", f'description: "{desc_yaml}"', "mode: all"]
-            if configs:
-                oc_model, _ = get_model_tools_for_prompt(
-                    configs.get("opencode"), PROMPT, "opencode"
-                )
-                oc_tools_raw = get_raw_tools_for_prompt(configs.get("opencode"), PROMPT)
-                if artifact_option_enabled(pc_opencode, "agents", "enable-models") and oc_model:
-                    opencode_header_lines.append(f"model: {oc_model}")
-                if artifact_option_enabled(pc_opencode, "agents", "enable-tools") and oc_tools_raw is not None:
-                    if isinstance(oc_tools_raw, list):
-                        opencode_header_lines.append(
-                            f"tools: {format_tools_inline_list(oc_tools_raw)}"
-                        )
-                    elif isinstance(oc_tools_raw, str):
-                        opencode_header_lines.append(
-                            f'tools: "{yaml_double_quote_escape(oc_tools_raw)}"'
-                        )
             opencode_text = (
                 "\n".join(opencode_header_lines) + "\n---\n\n" + prompt_body_replaced
             )
@@ -3696,9 +2857,9 @@ def run(args: Namespace) -> None:
             modules_installed["opencode"].add("agent")
 
         if is_prompt_source and pc_opencode["enabled"] and pc_opencode["prompts"]:
-            # .opencode/command
+            # ~/.config/opencode/command
             dst_opencode_command = (
-                project_base / ".opencode" / "command" / f"req-{PROMPT}.md"
+                provider_artifact_root("opencode", "prompts") / f"req-{PROMPT}.md"
             )
             existed = dst_opencode_command.exists()
             if pc_opencode["prompts-use-agents"]:
@@ -3712,24 +2873,6 @@ def run(args: Namespace) -> None:
                     command_header_lines.append(
                         f'argument-hint: "{yaml_double_quote_escape(argument_hint)}"'
                     )
-                if configs:
-                    oc_model, _ = get_model_tools_for_prompt(
-                        configs.get("opencode"), PROMPT, "opencode"
-                    )
-                    oc_tools_raw = get_raw_tools_for_prompt(
-                        configs.get("opencode"), PROMPT
-                    )
-                    if artifact_option_enabled(pc_opencode, "prompts", "enable-models") and oc_model:
-                        command_header_lines.append(f"model: {oc_model}")
-                    if artifact_option_enabled(pc_opencode, "prompts", "enable-tools") and oc_tools_raw is not None:
-                        if isinstance(oc_tools_raw, list):
-                            command_header_lines.append(
-                                f"tools: {format_tools_inline_list(oc_tools_raw)}"
-                            )
-                        elif isinstance(oc_tools_raw, str):
-                            command_header_lines.append(
-                                f'tools: "{yaml_double_quote_escape(oc_tools_raw)}"'
-                            )
                 command_text = (
                     "\n".join(command_header_lines) + "\n---\n\n" + prompt_body_replaced
                 )
@@ -3743,9 +2886,9 @@ def run(args: Namespace) -> None:
             modules_installed["opencode"].add("command")
 
         if is_prompt_source and pc_claude["enabled"] and pc_claude["prompts"]:
-            # .claude/commands/req
+            # ~/.claude/commands/req
             dst_claude_command = (
-                project_base / ".claude" / "commands" / "req" / f"{PROMPT}.md"
+                provider_artifact_root("claude", "prompts") / f"{PROMPT}.md"
             )
             existed = dst_claude_command.exists()
             if pc_claude["prompts-use-agents"]:
@@ -3759,18 +2902,6 @@ def run(args: Namespace) -> None:
                     command_header_lines.append(
                         f'argument-hint: "{yaml_double_quote_escape(argument_hint)}"'
                     )
-                if artifact_option_enabled(pc_claude, "prompts", "enable-models") and claude_model:
-                    command_header_lines.append(
-                        f'model: "{yaml_double_quote_escape(str(claude_model))}"'
-                    )
-                if artifact_option_enabled(pc_claude, "prompts", "enable-tools") and claude_tools:
-                    try:
-                        allowed_csv = ", ".join(str(t) for t in claude_tools)
-                    except Exception:
-                        allowed_csv = str(claude_tools)
-                    command_header_lines.append(
-                        f'allowed-tools: "{yaml_double_quote_escape(allowed_csv)}"'
-                    )
                 claude_command_text = (
                     "\n".join(command_header_lines) + "\n---\n\n" + prompt_body_replaced
                 )
@@ -3783,29 +2914,15 @@ def run(args: Namespace) -> None:
             prompts_installed["claude"].add(PROMPT)
             modules_installed["claude"].add("commands")
 
-        if (
-            pc_claude["enabled"]
-            and pc_claude["skills"]
-            and claude_skills_root is not None
-        ):
-            # .claude/skills/req-<prompt>/SKILL.md
-            claude_skill_dir = claude_skills_root / f"req-{PROMPT}"
+        if pc_claude["enabled"] and pc_claude["skills"]:
+            # ~/.claude/skills/req-<prompt>/SKILL.md
+            claude_skill_dir = skills_roots["claude"] / f"req-{PROMPT}"
             claude_skill_dir.mkdir(parents=True, exist_ok=True)
-            claude_skill_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{skill_desc_yaml}"',
-            ]
-            if artifact_option_enabled(pc_claude, "skills", "enable-models") and claude_model:
-                claude_skill_header_lines.append(f"model: {claude_model}")
-            if artifact_option_enabled(pc_claude, "skills", "enable-tools") and claude_tools:
-                claude_skill_header_lines.append(
-                    f"tools: {format_tools_inline_list(claude_tools)}"
-                )
             claude_skill_text = (
-                "\n".join(claude_skill_header_lines)
-                + "\n---\n\n"
-                + prompt_body_replaced
+                "---\n"
+                f"name: req-{PROMPT}\n"
+                f'description: "{skill_desc_yaml}"\n'
+                "---\n\n" + prompt_body_replaced
             )
             if not claude_skill_text.endswith("\n"):
                 claude_skill_text += "\n"
@@ -3813,102 +2930,33 @@ def run(args: Namespace) -> None:
             prompts_installed["claude"].add(PROMPT)
             modules_installed["claude"].add("skills")
 
-        if (
-            pc_gemini["enabled"]
-            and pc_gemini["skills"]
-            and gemini_skills_root is not None
-        ):
-            # .gemini/skills/req-<prompt>/SKILL.md
-            gemini_skill_dir = gemini_skills_root / f"req-{PROMPT}"
-            gemini_skill_dir.mkdir(parents=True, exist_ok=True)
-            gemini_skill_model = None
-            gemini_skill_tools = None
-            if configs:
-                gemini_skill_model, gemini_skill_tools = get_model_tools_for_prompt(
-                    configs.get("gemini"), PROMPT, "gemini"
-                )
-            gemini_skill_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{skill_desc_yaml}"',
-            ]
-            if artifact_option_enabled(pc_gemini, "skills", "enable-models") and gemini_skill_model:
-                gemini_skill_header_lines.append(f"model: {gemini_skill_model}")
-            if artifact_option_enabled(pc_gemini, "skills", "enable-tools") and gemini_skill_tools:
-                gemini_skill_header_lines.append(
-                    f"tools: {format_tools_inline_list(gemini_skill_tools)}"
-                )
-            gemini_skill_text = (
-                "\n".join(gemini_skill_header_lines)
-                + "\n---\n\n"
-                + prompt_body_replaced
+        if pc_antigravity["enabled"] and pc_antigravity["skills"]:
+            # ~/.antigravity/skills/req-<prompt>/SKILL.md
+            antigravity_skill_dir = skills_roots["antigravity"] / f"req-{PROMPT}"
+            antigravity_skill_dir.mkdir(parents=True, exist_ok=True)
+            antigravity_skill_text = (
+                "---\n"
+                f"name: req-{PROMPT}\n"
+                f'description: "{skill_desc_yaml}"\n'
+                "---\n\n" + prompt_body_replaced
             )
-            if not gemini_skill_text.endswith("\n"):
-                gemini_skill_text += "\n"
-            write_text_file(gemini_skill_dir / "SKILL.md", gemini_skill_text)
-            prompts_installed["gemini"].add(PROMPT)
-            modules_installed["gemini"].add("skills")
-
-        if (
-            pc_github["enabled"]
-            and pc_github["skills"]
-            and github_skills_root is not None
-        ):
-            # .github/skills/req-<prompt>/SKILL.md
-            github_skill_dir = github_skills_root / f"req-{PROMPT}"
-            github_skill_dir.mkdir(parents=True, exist_ok=True)
-            github_skill_model = None
-            github_skill_tools = None
-            if configs:
-                github_skill_model, github_skill_tools = get_model_tools_for_prompt(
-                    configs.get("copilot"), PROMPT, "copilot"
-                )
-            github_skill_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{skill_desc_yaml}"',
-            ]
-            if artifact_option_enabled(pc_github, "skills", "enable-models") and github_skill_model:
-                github_skill_header_lines.append(f"model: {github_skill_model}")
-            if artifact_option_enabled(pc_github, "skills", "enable-tools") and github_skill_tools:
-                github_skill_header_lines.append(
-                    f"tools: {format_tools_inline_list(github_skill_tools)}"
-                )
-            github_skill_text = (
-                "\n".join(github_skill_header_lines)
-                + "\n---\n\n"
-                + prompt_body_replaced
+            if not antigravity_skill_text.endswith("\n"):
+                antigravity_skill_text += "\n"
+            write_text_file(
+                antigravity_skill_dir / "SKILL.md", antigravity_skill_text
             )
-            if not github_skill_text.endswith("\n"):
-                github_skill_text += "\n"
-            write_text_file(github_skill_dir / "SKILL.md", github_skill_text)
-            prompts_installed["github"].add(PROMPT)
-            modules_installed["github"].add("skills")
+            prompts_installed["antigravity"].add(PROMPT)
+            modules_installed["antigravity"].add("skills")
 
-        if pc_pi["enabled"] and pc_pi["skills"] and pi_skills_root is not None:
-            # .pi/skills/req-<prompt>/SKILL.md (GitHub-equivalent skill procedure)
-            pi_skill_dir = pi_skills_root / f"req-{PROMPT}"
+        if pc_pi["enabled"] and pc_pi["skills"]:
+            # ~/.pi/agent/skills/req-<prompt>/SKILL.md
+            pi_skill_dir = skills_roots["pi"] / f"req-{PROMPT}"
             pi_skill_dir.mkdir(parents=True, exist_ok=True)
-            pi_skill_model = None
-            pi_skill_tools = None
-            if configs:
-                pi_skill_model, pi_skill_tools = get_model_tools_for_prompt(
-                    configs.get("pi"), PROMPT, "pi"
-                )
-            pi_skill_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{skill_desc_yaml}"',
-            ]
-            if artifact_option_enabled(pc_pi, "skills", "enable-models") and pi_skill_model:
-                pi_skill_header_lines.append(f"model: {pi_skill_model}")
-            if artifact_option_enabled(pc_pi, "skills", "enable-tools") and pi_skill_tools:
-                pi_skill_header_lines.append(
-                    "allowed-tools: "
-                    f"{format_tools_space_separated_string(pi_skill_tools)}"
-                )
             pi_skill_text = (
-                "\n".join(pi_skill_header_lines) + "\n---\n\n" + prompt_body_replaced
+                "---\n"
+                f"name: req-{PROMPT}\n"
+                f'description: "{skill_desc_yaml}"\n'
+                "---\n\n" + prompt_body_replaced
             )
             if not pi_skill_text.endswith("\n"):
                 pi_skill_text += "\n"
@@ -3916,72 +2964,15 @@ def run(args: Namespace) -> None:
             prompts_installed["pi"].add(PROMPT)
             modules_installed["pi"].add("skills")
 
-        if pc_kiro["enabled"] and pc_kiro["skills"] and kiro_skills_root is not None:
-            # .kiro/skills/req-<prompt>/SKILL.md
-            kiro_skill_dir = kiro_skills_root / f"req-{PROMPT}"
-            kiro_skill_dir.mkdir(parents=True, exist_ok=True)
-            kiro_skill_model, kiro_skill_tools = get_model_tools_for_prompt(
-                kiro_config, PROMPT, "kiro"
-            )
-            kiro_skill_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{skill_desc_yaml}"',
-            ]
-            if artifact_option_enabled(pc_kiro, "skills", "enable-models") and kiro_skill_model:
-                kiro_skill_header_lines.append(f"model: {kiro_skill_model}")
-            if (
-                artifact_option_enabled(pc_kiro, "skills", "enable-tools")
-                and isinstance(kiro_skill_tools, list)
-                and kiro_skill_tools
-            ):
-                kiro_skill_header_lines.append(
-                    f"tools: {format_tools_inline_list(kiro_skill_tools)}"
-                )
-            kiro_skill_text = (
-                "\n".join(kiro_skill_header_lines) + "\n---\n\n" + prompt_body_replaced
-            )
-            if not kiro_skill_text.endswith("\n"):
-                kiro_skill_text += "\n"
-            write_text_file(kiro_skill_dir / "SKILL.md", kiro_skill_text)
-            prompts_installed["kiro"].add(PROMPT)
-            modules_installed["kiro"].add("skills")
-
-        if (
-            pc_opencode["enabled"]
-            and pc_opencode["skills"]
-            and opencode_skills_root is not None
-        ):
-            # .opencode/skill/req-<prompt>/SKILL.md
-            opencode_skill_dir = opencode_skills_root / f"req-{PROMPT}"
+        if pc_opencode["enabled"] and pc_opencode["skills"]:
+            # ~/.config/opencode/skill/req-<prompt>/SKILL.md
+            opencode_skill_dir = skills_roots["opencode"] / f"req-{PROMPT}"
             opencode_skill_dir.mkdir(parents=True, exist_ok=True)
-            opencode_skill_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{skill_desc_yaml}"',
-            ]
-            if configs:
-                oc_skill_model, _ = get_model_tools_for_prompt(
-                    configs.get("opencode"), PROMPT, "opencode"
-                )
-                oc_skill_tools_raw = get_raw_tools_for_prompt(
-                    configs.get("opencode"), PROMPT
-                )
-                if artifact_option_enabled(pc_opencode, "skills", "enable-models") and oc_skill_model:
-                    opencode_skill_header_lines.append(f"model: {oc_skill_model}")
-                if artifact_option_enabled(pc_opencode, "skills", "enable-tools") and oc_skill_tools_raw is not None:
-                    if isinstance(oc_skill_tools_raw, list):
-                        opencode_skill_header_lines.append(
-                            f"tools: {format_tools_inline_list(oc_skill_tools_raw)}"
-                        )
-                    elif isinstance(oc_skill_tools_raw, str):
-                        opencode_skill_header_lines.append(
-                            f'tools: "{yaml_double_quote_escape(oc_skill_tools_raw)}"'
-                        )
             opencode_skill_text = (
-                "\n".join(opencode_skill_header_lines)
-                + "\n---\n\n"
-                + prompt_body_replaced
+                "---\n"
+                f"name: req-{PROMPT}\n"
+                f'description: "{skill_desc_yaml}"\n'
+                "---\n\n" + prompt_body_replaced
             )
             if not opencode_skill_text.endswith("\n"):
                 opencode_skill_text += "\n"
@@ -3989,68 +2980,13 @@ def run(args: Namespace) -> None:
             prompts_installed["opencode"].add(PROMPT)
             modules_installed["opencode"].add("skills")
 
-    templates_target = req_root / "docs"
-    if templates_target.exists():
-        ensure_wrapped(templates_target, project_base, 10)
-        shutil.rmtree(templates_target)
-    templates_target.mkdir(parents=True, exist_ok=True)
-    for template_file in docs_templates:
-        shutil.copyfile(template_file, templates_target / template_file.name)
-    if VERBOSE:
-        log(
-            f"OK: recreated {templates_target} from resources/docs ({len(docs_templates)} files)"
-        )
-
-    vscode_settings_src = find_vscode_settings_source()
-    if vscode_settings_src:
-        vscode_dir = project_base / ".vscode"
-        vscode_dir.mkdir(parents=True, exist_ok=True)
-        target_settings = vscode_dir / "settings.json"
-
-        # Load existing settings (if present) and those from the template.
-        existing_settings: dict[str, Any] = {}
-        if target_settings.exists():
-            try:
-                existing_settings = load_settings(target_settings)
-            except Exception:
-                # If checking/loading fails, consider it empty
-                existing_settings = {}
-
-        src_settings = load_settings(vscode_settings_src)
-
-        # Merge without modifying original until sure.
-        import copy
-
-        final_settings = copy.deepcopy(existing_settings)
-        final_settings = deep_merge_dict(final_settings, src_settings)
-
-        prompt_recs = build_prompt_recommendations(prompts_dir)
-        if prompt_recs:
-            final_settings["chat.promptFilesRecommendations"] = prompt_recs
-
-        # If final result is identical to existing, do not rewrite nor backup.
-        if existing_settings == final_settings:
-            if VERBOSE:
-                log(f"OK: settings.json already up-to-date in {target_settings}")
-        else:
-            # If changes are expected, create backup only if file exists.
-            if target_settings.exists():
-                save_vscode_backup(req_root, target_settings)
-            # Write final settings.
-            target_settings.write_text(
-                json.dumps(final_settings, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            if VERBOSE:
-                log(f"OK: merged settings.json in {target_settings}")
-
     # Final success notification: printed only when the command completed all
     # intended filesystem modifications without raising an exception.
     try:
-        resolved_base = str(project_base.resolve())
+        resolved_home = str(home_dir().resolve())
     except Exception:
-        resolved_base = str(project_base)
-    print(f"Installation completed successfully in {resolved_base}")
+        resolved_home = str(home_dir())
+    print(f"Installation completed successfully in {resolved_home}")
 
     # Print the discovered directories used for token substitutions
     # as required by REQ-078: one item per line prefixed with '- '.
@@ -4063,6 +2999,7 @@ def run(args: Namespace) -> None:
             print(f"- {entry}")
     else:
         print("The folder %%GUIDELINES_FILES%% does not contain any files")
+
 
     # Build and print installation report table with provider artifact/options details.
     def _format_install_table(
@@ -4471,19 +3408,26 @@ def _is_here_only_project_scan_command(args: Namespace) -> bool:
     )
 
 
+def _resolve_runtime_git_root() -> Path:
+    """!
+    @brief Resolve the git repository root at runtime from the current working directory.
+    @details Executes `git rev-parse --show-toplevel` from the CWD (SRS-391) and returns
+    the absolute repository root path. Project-local configuration is never consulted.
+    @return {Path} Absolute git repository root path.
+    @throws ReqError If the CWD is not inside a git work tree or git is unavailable.
+    @satisfies SRS-391
+    """
+    return resolve_git_root(Path.cwd().resolve())
+
 def run_git_check(args: Namespace) -> None:
     """!
     @brief Execute --git-check: verify clean git status and valid HEAD.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError On git status unclear or config load failure.
-    @satisfies SRS-311, SRS-312
+    @throws ReqError On git status unclear or when CWD is outside a git repository.
+    @satisfies SRS-311, SRS-312, SRS-391
     """
-    project_base = _resolve_project_base(args)
-    full_cfg = load_full_config(project_base)
-    git_path = full_cfg.get("git-path")
-    if not git_path or not Path(git_path).is_dir():
-        raise ReqError("Error: git-path not configured or does not exist.", 11)
+    git_path = _resolve_runtime_git_root()
     cmd = (
         "git rev-parse --is-inside-work-tree "
         "&& ! git status --porcelain | grep -q . "
@@ -4494,7 +3438,7 @@ def run_git_check(args: Namespace) -> None:
             ["bash", "-c", cmd],
             capture_output=True,
             text=True,
-            cwd=git_path,
+            cwd=str(git_path),
             timeout=30,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -4512,8 +3456,8 @@ def run_docs_check(args: Namespace) -> None:
     @satisfies SRS-313, SRS-314, SRS-315, SRS-316, SRS-317
     """
     project_base = _resolve_project_base(args)
-    full_cfg = load_full_config(project_base)
-    base_path = full_cfg.get("base-path", str(project_base))
+    full_cfg = load_full_config()
+    base_path = project_base
     docs_dir = full_cfg.get("docs-dir", "docs")
     if isinstance(docs_dir, str):
         docs_dir = docs_dir.rstrip("/\\")
@@ -4538,20 +3482,16 @@ def run_git_wt_name(args: Namespace) -> None:
     @brief Execute --git-wt-name: print standardized worktree name.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @satisfies SRS-318, SRS-319
+    @satisfies SRS-318, SRS-319, SRS-391
     """
-    project_base = _resolve_project_base(args)
-    full_cfg = load_full_config(project_base)
-    git_path = full_cfg.get("git-path")
-    if not git_path or not Path(git_path).is_dir():
-        raise ReqError("Error: git-path not configured or does not exist.", 11)
-    project_name = Path(git_path).name
+    git_path = _resolve_runtime_git_root()
+    project_name = git_path.name
     try:
         branch_result = subprocess.run(
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
-            cwd=git_path,
+            cwd=str(git_path),
             timeout=10,
         )
         branch = branch_result.stdout.strip()
@@ -4631,40 +3571,20 @@ def _rollback_worktree_create(git_path: Path, wt_path: Path, wt_name: str) -> No
 
 def run_git_wt_create(args: Namespace) -> None:
     """!
-    @brief Execute --git-wt-create: create a git worktree and copy .req/provider dirs.
+    @brief Execute --git-wt-create: create a git worktree, branch, and optional .venv copy.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError On invalid name, git command failure, or config errors.
-    @satisfies SRS-320, SRS-321, SRS-322, SRS-323, SRS-324, SRS-325, SRS-331, SRS-335
+    @throws ReqError On invalid name, git command failure, or when CWD is outside a git repository.
+    @satisfies SRS-320, SRS-321, SRS-322, SRS-331, SRS-335, SRS-391
     """
     wt_name: str = args.git_wt_create
     if not validate_wt_name(wt_name):
         msg = f"ERROR: Invalid worktree/branch name: {wt_name}."
         print(msg)
         raise ReqError(msg, 1)
-    project_base = _resolve_project_base(args)
-    full_cfg = load_full_config(project_base)
-    git_path_str = full_cfg.get("git-path")
-    base_path_str = full_cfg.get("base-path", str(project_base))
-    if not git_path_str:
-        raise ReqError("Error: git-path not configured or does not exist.", 11)
-    git_path = Path(git_path_str)
-    if not git_path.is_absolute():
-        git_path = project_base / git_path
-    if not git_path.is_dir():
-        raise ReqError("Error: git-path not configured or does not exist.", 11)
-    git_path = git_path.resolve()
-
-    base_path = Path(base_path_str)
-    if not base_path.is_absolute():
-        base_path = project_base / base_path
-    base_path = base_path.resolve()
+    base_path = Path.cwd().resolve()
+    git_path = _resolve_runtime_git_root()
     parent_path = git_path.parent
-    # SRS-309: base-dir = relative path from git-path to base-path.
-    try:
-        base_dir = base_path.relative_to(git_path)
-    except ValueError:
-        base_dir = Path(".")
     # SRS-322: create worktree + branch.
     wt_dest = parent_path / wt_name
     try:
@@ -4683,36 +3603,18 @@ def run_git_wt_create(args: Namespace) -> None:
         raise ReqError("Error: git is not available on PATH.", 3)
     except subprocess.TimeoutExpired:
         raise ReqError("Error: git worktree add timed out.", 3)
-    wt_base_dir = wt_dest / base_dir
     try:
-        # SRS-323: copy .req if not present in new worktree.
-        wt_req = wt_base_dir / ".req"
-        src_req = base_path / ".req"
-        if src_req.is_dir() and not wt_req.is_dir():
-            shutil.copytree(str(src_req), str(wt_req))
-        # SRS-324, SRS-325: copy active provider directories.
-        providers_specs = full_cfg.get("providers", [])
-        active_providers: set[str] = set()
-        if isinstance(providers_specs, list):
-            for spec in providers_specs:
-                if isinstance(spec, str) and ":" in spec:
-                    active_providers.add(spec.split(":")[0].lower())
-        for provider, dirs in PROVIDER_DIR_MAP.items():
-            if provider not in active_providers:
-                continue
-            for rel_dir in dirs:
-                src_dir = base_path / rel_dir
-                dst_dir = wt_base_dir / rel_dir
-                if src_dir.is_dir() and not dst_dir.is_dir():
-                    shutil.copytree(str(src_dir), str(dst_dir))
-        # SRS-335: copy .venv from base-path first, then git-path, preserving path from git-path.
+        # SRS-335: copy .venv from CWD first, then git root, preserving path from git root.
         src_venv: Optional[Path] = None
         base_venv = base_path / ".venv"
         git_venv = git_path / ".venv"
         rel_venv = Path(".venv")
         if base_venv.is_dir():
             src_venv = base_venv
-            rel_venv = base_dir / ".venv"
+            try:
+                rel_venv = base_path.relative_to(git_path) / ".venv"
+            except ValueError:
+                rel_venv = Path(".venv")
         elif git_venv.is_dir():
             src_venv = git_venv
             rel_venv = Path(".venv")
@@ -4735,15 +3637,11 @@ def run_git_wt_delete(args: Namespace) -> None:
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @throws ReqError On invalid name or git removal failure.
-    @satisfies SRS-326, SRS-327, SRS-328, SRS-332
+    @satisfies SRS-326, SRS-327, SRS-328, SRS-332, SRS-391
     """
     wt_name: str = args.git_wt_delete
-    project_base = _resolve_project_base(args)
-    full_cfg = load_full_config(project_base)
-    git_path_str = full_cfg.get("git-path")
-    if not git_path_str or not Path(git_path_str).is_dir():
-        raise ReqError("Error: git-path not configured or does not exist.", 11)
-    git_path = Path(git_path_str)
+    base_path = Path.cwd().resolve()
+    git_path = _resolve_runtime_git_root()
     parent_path = git_path.parent
     # SRS-327: validate branch or worktree exists.
     branch_exists = False
@@ -4770,11 +3668,6 @@ def run_git_wt_delete(args: Namespace) -> None:
         raise ReqError(msg, 1)
     # SRS-328: remove worktree and branch.
     error_occurred = False
-    base_path_str = full_cfg.get("base-path", str(project_base))
-    base_path = Path(base_path_str)
-    if not base_path.is_dir():
-        raise ReqError("Error: base-path not configured or does not exist.", 11)
-    os.chdir(base_path)
     if wt_exists:
         try:
             r1 = subprocess.run(
@@ -4809,28 +3702,24 @@ def run_git_wt_delete(args: Namespace) -> None:
 
 def run_git_path(args: Namespace) -> None:
     """!
-    @brief Execute --git-path: print configured git-path from `.req/config.json`.
+    @brief Execute --git-path: print the runtime-resolved git repository root.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError If `.req/config.json` is not present.
-    @satisfies SRS-333, SRS-334
+    @throws ReqError If the current working directory is not inside a git repository.
+    @satisfies SRS-333, SRS-334, SRS-391
     """
-    project_base = _resolve_project_base(args)
-    full_cfg = load_full_config(project_base)
-    print(str(full_cfg.get("git-path", "")))
+    git_path = _resolve_runtime_git_root()
+    print(str(git_path))
 
 
 def run_get_base_path(args: Namespace) -> None:
     """!
-    @brief Execute --get-base-path: print configured base-path from `.req/config.json`.
+    @brief Execute --get-base-path: print the absolute current working directory.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError If `.req/config.json` is not present.
     @satisfies SRS-333, SRS-347
     """
-    project_base = _resolve_project_base(args)
-    full_cfg = load_full_config(project_base)
-    print(str(full_cfg.get("base-path", "")))
+    print(str(Path.cwd().resolve()))
 
 
 def run_files_tokens(files: list[str]) -> None:
@@ -4996,12 +3885,13 @@ def run_tokens(args: Namespace) -> None:
     @param args Parsed CLI arguments namespace.
     @return None.
     @exception ReqError Raised when no canonical documentation file exists in configured docs-dir.
-    @details Uses docs-dir from .req/config.json in here-only mode, ignores explicit --docs-dir,
-      selects only REQUIREMENTS.md/WORKFLOW.md/REFERENCES.md as direct regular files in fixed order,
-      and delegates summary rendering to run_files_tokens.
+    @details Uses docs-dir from ~/.config/usereq/config.json in here-only mode, ignores
+      explicit --docs-dir, selects only REQUIREMENTS.md/WORKFLOW.md/REFERENCES.md as direct
+      regular files in fixed order, and delegates summary rendering to run_files_tokens.
+    @satisfies SRS-310, SRS-387
     """
     project_base = _resolve_project_base(args)
-    config = load_config(project_base)
+    config = load_config()
     docs_dir_value = config["docs-dir"]
     ensure_doc_directory(str(docs_dir_value), project_base)
     normalized_docs_dir = make_relative_if_contains_project(
@@ -5023,15 +3913,15 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
     """!
     @brief Execute `--files-static-check`: run static analysis on an explicit file list.
     @param files List of raw file paths supplied by the user.
-    @param args Parsed CLI namespace; `--here`/`--base` are used to locate config.json.
+    @param args Parsed CLI namespace; `--here`/`--base` are used to resolve dispatch context.
     @return Exit code: 0 if all checked files pass (or none are checked), 1 if any fail.
     @details
-      Project-base resolution order:
+      Static-check configuration is loaded from `~/.config/usereq/config.json`.
+      When the global configuration file cannot be located, emits a warning to stderr and
+      returns 0 (SRS-254).
+      Project-base resolution order for dispatch context:
       1. `--base PATH` -> use PATH.
-      2. `--here` -> use CWD.
-      3. Fallback -> use CWD.
-      If `.req/config.json` is not found at the resolved project base, emits a warning to
-      stderr and returns 0 (SRS-254).
+      2. `--here` or fallback -> use CWD.
       For each file:
       - Resolves absolute path; skips with warning if not a regular file.
       - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on the lowercase extension.
@@ -5046,25 +3936,20 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
     """
     from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
 
-    # Resolve project base for config.json lookup
+    # Resolve project base for dispatch context
     base_arg = getattr(args, "base", None)
-    here_arg = getattr(args, "here", False)
     if base_arg:
         project_base: Path = Path(base_arg).resolve()
-    elif here_arg:
-        project_base = Path.cwd().resolve()
     else:
         project_base = Path.cwd().resolve()
 
-    sc_config = load_static_check_from_config(project_base)
-    if not sc_config:
-        config_path = project_base / ".req" / "config.json"
-        if not config_path.is_file():
-            print(
-                "  Warning: .req/config.json not found; no static-check tools configured.",
-                file=sys.stderr,
-            )
-            return 0
+    sc_config = load_static_check_from_config()
+    if not sc_config and not get_global_config_path().is_file():
+        print(
+            "  Warning: global configuration file not found; no static-check tools configured.",
+            file=sys.stderr,
+        )
+        return 0
 
     overall = 0
     for raw_path in files:
@@ -5105,14 +3990,14 @@ def run_project_static_check_cmd(args: Namespace) -> int:
     @details
       Collects files from configured `src-dir` directories and the `tests-dir` directory
       (SRS-256, SRS-336), applies `EXCLUDED_DIRS` filtering and `SUPPORTED_EXTENSIONS` matching.
-      If `tests-dir` is missing or invalid in `.req/config.json`, test directory inclusion is
-      skipped silently without error (SRS-336).
+      If `tests-dir` is missing or invalid in the global configuration file, test directory
+      inclusion is skipped silently without error (SRS-336).
       Files under `<tests-dir>/fixtures/` are excluded from static-check selection because they
       are fixture corpus inputs for parser/static-check tests and can intentionally contain
       diagnostics unrelated to project code quality gates.
       For each collected file:
       - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on lowercase extension.
-      - Looks up language in the `"static-check"` section of `.req/config.json`.
+      - Looks up language in the `"static-check"` section of `~/.config/usereq/config.json`.
       - Skips silently when no tool is configured for the file's language.
       - Executes each configured language entry sequentially via
         `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`.
@@ -5126,14 +4011,14 @@ def run_project_static_check_cmd(args: Namespace) -> int:
     from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
 
     project_base, src_dirs = _resolve_project_src_dirs(args)
-    sc_config = load_static_check_from_config(project_base)
+    sc_config = load_static_check_from_config()
     selection_dirs = list(src_dirs)
     tests_dir_rel: Optional[str] = None
 
     # SRS-336: append tests-dir to file selection; skip silently if missing/invalid
     try:
-        full_cfg = load_full_config(project_base)
-        tests_dir_val = full_cfg.get("tests-dir") or full_cfg.get("test-dir")
+        full_cfg = load_full_config()
+        tests_dir_val = full_cfg.get("tests-dir")
         if isinstance(tests_dir_val, str) and tests_dir_val.strip():
             selection_dirs.append(tests_dir_val)
             tests_dir_rel = (
@@ -5221,49 +4106,26 @@ def _resolve_project_base(args: Namespace) -> Path:
 def _resolve_project_src_dirs(args: Namespace) -> tuple[Path, list[str]]:
     """!
     @brief Resolve project base and src-dirs for project source commands.
-    @details Implements the _resolve_project_src_dirs function behavior with deterministic control flow.
+    @details Loads the `src-dir` list from the user-global configuration file
+    (`~/.config/usereq/config.json`) and resolves it against the project base derived
+    from `--base` or the current working directory.
     @param args Input parameter `args`.
-    @return {tuple[Path, list[str]]} Function return value.
+    @return {tuple[Path, list[str]]} Tuple `(project_base, src_dirs)`.
+    @throws ReqError If the global configuration file is missing or `src-dir` is invalid.
     """
     project_base = _resolve_project_base(args)
 
     src_dirs: list[str]
-    if getattr(args, "here", False):
-        config = load_config(project_base)
-        raw_src_dirs = config.get("src-dir", [])
-        if not isinstance(raw_src_dirs, list) or not all(
-            isinstance(item, str) for item in raw_src_dirs
-        ):
-            raise ReqError(
-                "Error: missing or invalid 'src-dir' field in .req/config.json", 11
-            )
-        src_dirs = raw_src_dirs
-    else:
-        # Source dirs can come from args or from config
-        src_dirs_arg = getattr(args, "src_dir", None)
-        if src_dirs_arg:
-            if not isinstance(src_dirs_arg, list) or not all(
-                isinstance(item, str) for item in src_dirs_arg
-            ):
-                raise ReqError("Error: invalid --src-dir value.", 1)
-            src_dirs = src_dirs_arg
-        else:
-            config_path = project_base / ".req" / "config.json"
-            if config_path.is_file():
-                config = load_config(project_base)
-                raw_src_dirs = config.get("src-dir", [])
-                if not isinstance(raw_src_dirs, list) or not all(
-                    isinstance(item, str) for item in raw_src_dirs
-                ):
-                    raise ReqError(
-                        "Error: missing or invalid 'src-dir' field in .req/config.json",
-                        11,
-                    )
-                src_dirs = raw_src_dirs
-            else:
-                raise ReqError(
-                    "Error: --src-dir is required or .req/config.json must exist.", 1
-                )
+    config = load_config()
+    raw_src_dirs = config.get("src-dir", [])
+    if not isinstance(raw_src_dirs, list) or not all(
+        isinstance(item, str) for item in raw_src_dirs
+    ):
+        raise ReqError(
+            "Error: missing or invalid 'src-dir' field in the global configuration file",
+            11,
+        )
+    src_dirs = raw_src_dirs
 
     if not src_dirs:
         raise ReqError("Error: no source directories configured.", 1)
