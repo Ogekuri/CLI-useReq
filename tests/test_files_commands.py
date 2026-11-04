@@ -750,7 +750,7 @@ class TestFilesTokensCommand:
             os.unlink(path)
 
     def test_files_tokens_no_base_required(self, capsys):
-        """CMD-002: Must work without --base or --here."""
+        """CMD-002: Must work without --prj-base."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
                                          delete=False) as f:
             f.write("x = 1\n")
@@ -810,7 +810,7 @@ class TestFilesReferencesCommand:
             os.unlink(path)
 
     def test_files_references_no_base_required(self, capsys):
-        """CMD-005: Must work without --base or --here."""
+        """CMD-005: Must work without --prj-base."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
                                          delete=False) as f:
             f.write("x = 1\n")
@@ -958,7 +958,7 @@ class TestFilesCompressCommand:
             os.unlink(path)
 
     def test_files_compress_no_base_required(self, capsys):
-        """CMD-007: Must work without --base or --here."""
+        """CMD-007: Must work without --prj-base."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
                                          delete=False) as f:
             f.write("x = 1\n")
@@ -1063,24 +1063,24 @@ class TestCollectSourceFiles:
 class TestReferencesCommand:
     """CMD-008, CMD-009, CMD-014, CMD-015: --references tests."""
 
-    def test_rejects_base(self, capsys, repo_temp_dir):
-        """CMD-008: --references must reject --base."""
-        rc = main(["--base", str(repo_temp_dir), "--references"])
-        assert rc != 0
+    def test_requires_prj_base(self, capsys, repo_temp_dir):
+        """CMD-008: --references must require --prj-base."""
+        rc = main(["--references"])
+        assert rc == 1
         captured = capsys.readouterr()
-        assert "do not allow --base" in captured.err
+        assert "--prj-base" in captured.err
 
     def test_references_with_here(self, capsys, repo_temp_dir, monkeypatch):
-        """CMD-009: With --here must load src-dir from config and ignore --src-dir."""
+        """CMD-009: Must load src-dir from the global configuration."""
         src = repo_temp_dir / "cfg_lib"
         src.mkdir()
         (src / "main.py").write_text("def hello():\n    pass\n")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_lib"]}
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_lib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--references", "--src-dir", "mylib"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
         assert rc == 0
         captured = capsys.readouterr()
         assert len(captured.out) > 0
@@ -1100,10 +1100,10 @@ class TestReferencesCommand:
         (excluded / "cached.py").write_text("x = 1\n")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--references", "--src-dir", "src"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
         assert rc == 0
         captured = capsys.readouterr()
         assert captured.out.startswith("# Files Structure\n```")
@@ -1113,17 +1113,17 @@ class TestReferencesCommand:
         assert "__pycache__/cached.py" not in captured.out
 
     def test_references_from_config(self, capsys, repo_temp_dir, monkeypatch):
-        """CMD-014: Must load src-dir from config.json with implicit --here."""
+        """CMD-014: Must load src-dir from config.json under --prj-base."""
         src = repo_temp_dir / "lib"
         src.mkdir()
         (src / "code.py").write_text("x = 42\n")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "docs/",
+        config = {"docs-dir": "docs/",
                   "tests-dir": "tests/", "src-dir": ["lib"]}
         (req_dir / "config.json").write_text(json.dumps(config))
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--references"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
         assert rc == 0
 
     @pytest.mark.parametrize(
@@ -1148,7 +1148,6 @@ class TestReferencesCommand:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -1158,7 +1157,7 @@ class TestReferencesCommand:
         source_counts = _count_effective_exportable_doxygen_tags(copied_fixture)
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--references"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1196,7 +1195,6 @@ class TestReferencesCommand:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -1204,7 +1202,7 @@ class TestReferencesCommand:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--references"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1231,7 +1229,6 @@ class TestReferencesCommand:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -1239,7 +1236,7 @@ class TestReferencesCommand:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--references"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_reference_definition_block_by_signature(
@@ -1255,24 +1252,24 @@ class TestReferencesCommand:
 class TestCompressCommand:
     """CMD-010, CMD-011, CMD-017: --compress tests."""
 
-    def test_rejects_base(self, capsys, repo_temp_dir):
-        """CMD-010: --compress must reject --base."""
-        rc = main(["--base", str(repo_temp_dir), "--compress"])
-        assert rc != 0
+    def test_requires_prj_base(self, capsys, repo_temp_dir):
+        """CMD-010: --compress must require --prj-base."""
+        rc = main(["--compress"])
+        assert rc == 1
         captured = capsys.readouterr()
-        assert "do not allow --base" in captured.err
+        assert "--prj-base" in captured.err
 
     def test_compress_with_here(self, capsys, repo_temp_dir, monkeypatch):
-        """CMD-011: With implicit --here must load src-dir from config and ignore --src-dir."""
+        """CMD-011: Must load src-dir from the global configuration."""
         src = repo_temp_dir / "cfg_mylib"
         src.mkdir()
         (src / "main.py").write_text("# comment\nx = 1\n\ny = 2\n")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--compress", "--src-dir", "mylib"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--compress"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "@@@" in captured.out
@@ -1288,10 +1285,10 @@ class TestCompressCommand:
         (src / "main.py").write_text("x = 1\n")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--compress", "--src-dir", "mylib"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--compress"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: x = 1" not in captured.out
@@ -1306,10 +1303,10 @@ class TestCompressCommand:
         (src / "main.py").write_text("x = 1\n")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--compress", "--src-dir", "mylib", "--enable-line-numbers"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--compress", "--enable-line-numbers"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: x = 1" in captured.out
@@ -1321,24 +1318,24 @@ class TestCompressCommand:
 class TestTokensCommand:
     """CMD-016: --tokens tests."""
 
-    def test_tokens_rejects_base(self, capsys, repo_temp_dir):
-        """CMD-016: Must reject --base for here-only --tokens."""
-        rc = main(["--base", str(repo_temp_dir), "--tokens"])
-        assert rc != 0
+    def test_tokens_requires_prj_base(self, capsys, repo_temp_dir):
+        """CMD-016: --tokens must require --prj-base."""
+        rc = main(["--tokens"])
+        assert rc == 1
         captured = capsys.readouterr()
-        assert "do not allow --base" in captured.err
+        assert "--prj-base" in captured.err
 
     def test_tokens_implies_here_and_uses_config_docs_dir(self, capsys, repo_temp_dir, monkeypatch):
-        """CMD-016: Without --here, --tokens must still use docs-dir from config."""
+        """CMD-016: --tokens must use docs-dir from config under --prj-base."""
         docs = repo_temp_dir / "cfg_docs"
         docs.mkdir()
         (docs / "REQUIREMENTS.md").write_text("# req\n", encoding="utf-8")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
+        config = {"docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--tokens"])
+        rc = main(["--tokens", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "REQUIREMENTS.md" in captured.out
@@ -1357,10 +1354,10 @@ class TestTokensCommand:
         (nested / "skip.md").write_text("# ignored\n", encoding="utf-8")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
+        config = {"docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--tokens", "--docs-dir", "docs"])
+        rc = main(["--tokens", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "Pack Summary" in captured.out
@@ -1413,10 +1410,10 @@ class TestFindCommandVerbose:
         (src_dir / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--verbose", "--find", "FUNCTION", "foo", "--src-dir", "src"])
+        rc = main(["--verbose", "--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "foo"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "OK" in captured.err
@@ -1429,20 +1426,20 @@ class TestFindCommandVerbose:
         (src_dir / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"guidelines-dir": "docs/", "docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--find", "FUNCTION", "foo", "--src-dir", "src", "--enable-line-numbers"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "foo", "--enable-line-numbers"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: def foo():" in captured.out
 
-    def test_find_rejects_base(self, capsys, repo_temp_dir):
-        """CMD-029: --find must reject --base."""
-        rc = main(["--base", str(repo_temp_dir), "--find", "FUNCTION", "foo"])
-        assert rc != 0
+    def test_find_requires_prj_base(self, capsys, repo_temp_dir):
+        """CMD-029: --find must require --prj-base."""
+        rc = main(["--find", "FUNCTION", "foo"])
+        assert rc == 1
         captured = capsys.readouterr()
-        assert "do not allow --base" in captured.err
+        assert "--prj-base" in captured.err
 
 
 class TestFindCommandsDoxygen:
@@ -1591,7 +1588,6 @@ class TestFindCommandsDoxygen:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -1613,7 +1609,7 @@ class TestFindCommandsDoxygen:
         )
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--find", tag_filter, pattern])
+        rc = main(["--prj-base", str(repo_temp_dir), "--find", tag_filter, pattern])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1651,7 +1647,6 @@ class TestFindCommandsDoxygen:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -1659,7 +1654,7 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--find", "FUNCTION", "plain_function"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "plain_function"])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1696,7 +1691,6 @@ class TestFindCommandsDoxygen:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -1704,7 +1698,7 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--find", "FUNCTION", "^inc$"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "^inc$"])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1735,7 +1729,6 @@ class TestFindCommandsDoxygen:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -1743,7 +1736,7 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--here", "--find", "FUNCTION", "^cmd_major$"])
+        rc = main(["--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "^cmd_major$"])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_construct_block_by_name(captured.out, "FUNCTION", "cmd_major")
@@ -1892,7 +1885,6 @@ class TestProjectExamplesReferencesDoxygenParity:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -1909,7 +1901,7 @@ class TestProjectExamplesReferencesDoxygenParity:
                 )
 
         monkeypatch.chdir(repo_temp_dir)
-        rc, stdout, _ = _run_cli_capture(["--here", "--references"])
+        rc, stdout, _ = _run_cli_capture(["--prj-base", str(repo_temp_dir), "--references"])
         assert rc == 0, f"--references failed for {filepath.as_posix()}"
         output_tag_counts = _labels_to_tags_counts(_count_output_doxygen_labels(stdout))
         _assert_tag_counts_match(
@@ -2009,7 +2001,6 @@ class TestProjectExamplesFindDoxygenParity:
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {
-            "guidelines-dir": "docs/",
             "docs-dir": "docs/",
             "tests-dir": "tests/",
             "src-dir": ["src"],
@@ -2041,7 +2032,8 @@ class TestProjectExamplesFindDoxygenParity:
         monkeypatch.chdir(repo_temp_dir)
         rc, stdout, _ = _run_cli_capture(
             [
-                "--here",
+                "--prj-base",
+                str(repo_temp_dir),
                 "--find",
                 tag_filter,
                 ".*",

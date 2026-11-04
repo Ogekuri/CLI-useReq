@@ -1220,7 +1220,6 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
     def _write_config(self, sc_config: dict) -> None:
         """Write the user-global config file with base fields and given static-check section."""
         payload = {
-            "guidelines-dir": "guidelines",
             "docs-dir": "docs",
             "tests-dir": "tests",
             "src-dir": ["src"],
@@ -1234,7 +1233,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         f = _make_temp_file(self.tmp, "main.py")
         self._write_config({"Python": [{"module": "Dummy"}]})
         with patch("builtins.print"):
-            rc = cli.main(["--base", str(self.tmp), "--files-static-check", str(f)])
+            rc = cli.main(["--prj-base", str(self.tmp), "--files-static-check", str(f)])
         self.assertEqual(rc, 0)
 
     def test_files_static_check_unknown_extension_skipped(self) -> None:
@@ -1244,7 +1243,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         f = _make_temp_file(self.tmp, "file.unknown_ext")
         with patch("builtins.print"):
             with patch("sys.stderr", new_callable=StringIO):
-                rc = cli.main(["--base", str(self.tmp), "--files-static-check", str(f)])
+                rc = cli.main(["--prj-base", str(self.tmp), "--files-static-check", str(f)])
         self.assertEqual(rc, 0)
 
     def test_files_static_check_no_config_warns_and_returns_zero(self) -> None:
@@ -1256,7 +1255,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         # Do NOT mock builtins.print here: the warning is emitted via print(..., file=sys.stderr).
         # Patching builtins.print would swallow it before it reaches the patched sys.stderr.
         with patch("sys.stderr", new_callable=StringIO) as mock_err:
-            rc = cli.main(["--base", str(self.tmp), "--files-static-check", str(f)])
+            rc = cli.main(["--prj-base", str(self.tmp), "--files-static-check", str(f)])
         self.assertEqual(rc, 0)
         self.assertIn("Warning", mock_err.getvalue())
 
@@ -1267,7 +1266,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         # .c file, but only Python is configured
         f = _make_temp_file(self.tmp, "prog.c", "int main(){return 0;}\n")
         with patch("builtins.print"):
-            rc = cli.main(["--base", str(self.tmp), "--files-static-check", str(f)])
+            rc = cli.main(["--prj-base", str(self.tmp), "--files-static-check", str(f)])
         self.assertEqual(rc, 0)
 
     def test_files_static_check_fail_propagates_exit_code(self) -> None:
@@ -1281,7 +1280,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         mock_result.stderr = ""
         with patch("subprocess.run", return_value=mock_result):
             with patch("builtins.print"):
-                rc = cli.main(["--base", str(self.tmp), "--files-static-check", str(f)])
+                rc = cli.main(["--prj-base", str(self.tmp), "--files-static-check", str(f)])
         self.assertEqual(rc, 1)
 
     def test_files_static_check_multiple_files_mixed(self) -> None:
@@ -1294,7 +1293,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
                    MagicMock(returncode=1, stdout="err", stderr="")]
         with patch("subprocess.run", side_effect=results):
             with patch("builtins.print"):
-                rc = cli.main(["--base", str(self.tmp), "--files-static-check", str(f1), str(f2)])
+                rc = cli.main(["--prj-base", str(self.tmp), "--files-static-check", str(f1), str(f2)])
         self.assertEqual(rc, 1)
 
     def test_files_static_check_runs_all_entries_for_language_in_order(self) -> None:
@@ -1310,7 +1309,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
             }
         )
         with patch("usereq.static_check.dispatch_static_check_for_file", side_effect=[0, 0]) as mock_dispatch:
-            rc = cli.main(["--base", str(self.tmp), "--files-static-check", str(f)])
+            rc = cli.main(["--prj-base", str(self.tmp), "--files-static-check", str(f)])
         self.assertEqual(rc, 0)
         self.assertEqual(mock_dispatch.call_count, 2)
         self.assertEqual(mock_dispatch.call_args_list[0].args[1]["cmd"], "cppcheck")
@@ -1333,7 +1332,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         with patch("shutil.which", return_value="/usr/bin/node"):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
                 with patch("builtins.print"):
-                    rc = cli.main(["--base", str(self.tmp), "--files-static-check", str(f)])
+                    rc = cli.main(["--prj-base", str(self.tmp), "--files-static-check", str(f)])
         self.assertEqual(rc, 0)
         cmd_used = mock_run.call_args[0][0]
         self.assertEqual(cmd_used, ["node", "--check", str(f.resolve())])
@@ -1365,7 +1364,6 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
 
     def _write_config(self, sc_config: dict) -> None:
         payload = {
-            "guidelines-dir": "guidelines",
             "docs-dir": "docs",
             "tests-dir": "tests",
             "src-dir": ["src"],
@@ -1383,7 +1381,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("builtins.print"):
-                rc = cli.main(["--static-check"])
+                rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1398,7 +1396,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("builtins.print") as mock_print:
-                rc = cli.main(["--static-check"])
+                rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         # rc=0 because no files were actually checked (all skipped)
@@ -1421,7 +1419,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
             os.chdir(str(self.tmp))
             with patch("subprocess.run", return_value=mock_result):
                 with patch("builtins.print"):
-                    rc = cli.main(["--static-check"])
+                    rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 1)
@@ -1436,31 +1434,30 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
             os.chdir(str(self.tmp))
             with patch("sys.stderr", new_callable=StringIO):
                 with patch("builtins.print"):
-                    rc = cli.main(["--static-check"])
+                    rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertNotEqual(rc, 0)
 
-    def test_static_check_rejects_base(self) -> None:
-        """--static-check rejects --base in here-only mode."""
+    def test_static_check_requires_prj_base(self) -> None:
+        """--static-check requires the mandatory --prj-base argument (SRS-396)."""
         from usereq import cli
-        with patch("sys.stderr", new_callable=StringIO):
-            with patch("builtins.print"):
-                rc = cli.main(["--base", str(self.tmp), "--static-check"])
-        self.assertNotEqual(rc, 0)
+        self._write_config({"Python": [{"module": "Dummy"}]})
+        with (
+            patch("sys.stderr", new_callable=StringIO) as mock_stderr,
+            patch("sys.stdout", new_callable=StringIO),
+        ):
+            rc = cli.main(["--static-check"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--prj-base", mock_stderr.getvalue())
 
-    def test_static_check_uses_cwd_as_project_base_with_here(self) -> None:
-        """--static-check with implied --here uses CWD as project base."""
+    def test_static_check_uses_prj_base(self) -> None:
+        """--static-check resolves project files from --prj-base."""
         from usereq import cli
         _make_temp_file(self.tmp / "src", "ok.py")
         self._write_config({"Python": [{"module": "Dummy"}]})
-        old_cwd = os.getcwd()
-        try:
-            os.chdir(str(self.tmp))
-            with patch("builtins.print"):
-                rc = cli.main(["--static-check"])
-        finally:
-            os.chdir(old_cwd)
+        with patch("builtins.print"):
+            rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         self.assertEqual(rc, 0)
 
     def test_static_check_runs_all_entries_for_language_in_order(self) -> None:
@@ -1479,7 +1476,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("usereq.static_check.dispatch_static_check_for_file", side_effect=[0, 0]) as mock_dispatch:
-                rc = cli.main(["--static-check"])
+                rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1518,7 +1515,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
                     "subprocess.run", side_effect=_run_side_effect
                 ) as mock_run:
                     with patch("builtins.print"):
-                        rc = cli.main(["--static-check"])
+                        rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1548,7 +1545,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
-                rc = cli.main(["--static-check"])
+                rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1576,7 +1573,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
-                rc = cli.main(["--static-check"])
+                rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1603,7 +1600,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
-                rc = cli.main(["--static-check"])
+                rc = cli.main(["--static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1629,7 +1626,6 @@ class TestEnableStaticCheckExecutableValidation(GlobalConfigIsolatedTestCase):
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
         self.tmp.mkdir(parents=True, exist_ok=True)
-        (self.tmp / "guidelines").mkdir(parents=True, exist_ok=True)
         (self.tmp / "docs").mkdir(parents=True, exist_ok=True)
         (self.tmp / "tests").mkdir(parents=True, exist_ok=True)
         (self.tmp / "src").mkdir(parents=True, exist_ok=True)
@@ -1643,16 +1639,8 @@ class TestEnableStaticCheckExecutableValidation(GlobalConfigIsolatedTestCase):
         from usereq import cli
 
         argv = [
-            "--base",
+            "--prj-base",
             str(self.tmp),
-            "--guidelines-dir",
-            "guidelines",
-            "--docs-dir",
-            "docs",
-            "--tests-dir",
-            "tests",
-            "--src-dir",
-            "src",
             "--provider",
             "claude:prompts",
             "--enable-static-check",
@@ -1696,7 +1684,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """save_config with static_check_config persists Pylance config for Python."""
         from usereq.cli import save_config, load_static_check_from_config
         sc = {"Python": [{"module": "Pylance"}]}
-        save_config("guidelines", "docs", "tests", ["src"], static_check_config=sc)
+        save_config("docs", "tests", ["src"], static_check_config=sc)
         result = load_static_check_from_config()
         self.assertIn("Python", result)
         self.assertEqual(result["Python"][0]["module"], "Pylance")
@@ -1705,7 +1693,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """save_config persists Command module with cmd and params for C."""
         from usereq.cli import save_config, load_static_check_from_config
         sc = {"C": [{"module": "Command", "cmd": "cppcheck", "params": ["--check-library"]}]}
-        save_config("guidelines", "docs", "tests", ["src"], static_check_config=sc)
+        save_config("docs", "tests", ["src"], static_check_config=sc)
         result = load_static_check_from_config()
         self.assertIn("C", result)
         self.assertEqual(result["C"][0]["module"], "Command")
@@ -1719,7 +1707,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
             "Python": [{"module": "Pylance"}],
             "C": [{"module": "Dummy"}],
         }
-        save_config("guidelines", "docs", "tests", ["src"], static_check_config=sc)
+        save_config("docs", "tests", ["src"], static_check_config=sc)
         result = load_static_check_from_config()
         self.assertIn("Python", result)
         self.assertIn("C", result)
@@ -1734,7 +1722,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         for spec in specs:
             lang, cfg = parse_enable_static_check(spec)
             merged.setdefault(lang, []).append(cfg)
-        save_config("guidelines", "docs", "tests", ["src"], static_check_config=merged)
+        save_config("docs", "tests", ["src"], static_check_config=merged)
         result = load_static_check_from_config()
         self.assertEqual([entry["module"] for entry in result["Python"]], ["Dummy", "Ruff"])
 
@@ -1749,14 +1737,14 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """save_config without static_check_config omits 'static-check' key from JSON."""
         import json
         from usereq.cli import save_config
-        save_config("guidelines", "docs", "tests", ["src"])
+        save_config("docs", "tests", ["src"])
         payload = json.loads(self.config_path.read_text())
         self.assertNotIn("static-check", payload)
 
     def test_load_static_check_returns_empty_when_key_absent(self) -> None:
         """load_static_check_from_config returns {} when 'static-check' key is absent."""
         from usereq.cli import save_config, load_static_check_from_config
-        save_config("guidelines", "docs", "tests", ["src"])
+        save_config("docs", "tests", ["src"])
         result = load_static_check_from_config()
         self.assertEqual(result, {})
 
@@ -1809,7 +1797,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """Merging new entry identical to existing config entry is discarded (SRS-301)."""
         from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
         existing_sc = {"Python": [{"module": "Pylance"}]}
-        save_config("guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
+        save_config("docs", "tests", ["src"], static_check_config=existing_sc)
         # Simulate merge logic: load existing then add identical new entry.
         loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
@@ -1826,7 +1814,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """Existing static-check entries are not removed when a new non-duplicate entry is added (SRS-301)."""
         from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
         existing_sc = {"Python": [{"module": "Pylance"}]}
-        save_config("guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
+        save_config("docs", "tests", ["src"], static_check_config=existing_sc)
         loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
         new_entry = {"module": "Ruff"}
@@ -1844,7 +1832,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """New Command entry with different params is appended even if same module exists (SRS-301)."""
         from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
         existing_sc = {"C": [{"module": "Command", "cmd": "cppcheck", "params": ["--check-library"]}]}
-        save_config("guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
+        save_config("docs", "tests", ["src"], static_check_config=existing_sc)
         loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
         new_entry = {"module": "Command", "cmd": "cppcheck", "params": ["--enable=all"]}
@@ -1862,7 +1850,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """Existing entry with extra metadata still blocks identical identity tuple (SRS-301)."""
         from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
         existing_sc = {"Python": [{"module": "Pylance", "meta": "legacy-note"}]}
-        save_config("guidelines", "docs", "tests", ["src"], static_check_config=existing_sc)
+        save_config("docs", "tests", ["src"], static_check_config=existing_sc)
         loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
         new_entry = {"module": "Pylance"}
@@ -1880,7 +1868,6 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         from usereq import cli
 
         existing_payload = {
-            "guidelines-dir": "guidelines",
             "docs-dir": "docs",
             "tests-dir": "tests",
             "src-dir": ["src"],
@@ -1891,7 +1878,6 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
                 "JavaScript": [{"module": "Command", "cmd": "scripts/check-js-syntax.sh"}]
             },
         }
-        (self.tmp / "guidelines").mkdir(parents=True, exist_ok=True)
         (self.tmp / "docs").mkdir(parents=True, exist_ok=True)
         (self.tmp / "tests").mkdir(parents=True, exist_ok=True)
         (self.tmp / "src").mkdir(parents=True, exist_ok=True)
@@ -1901,16 +1887,8 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         self.write_global_config(existing_payload)
 
         argv = [
-            "--base",
+            "--prj-base",
             str(self.tmp),
-            "--guidelines-dir",
-            "guidelines",
-            "--docs-dir",
-            "docs",
-            "--tests-dir",
-            "tests",
-            "--src-dir",
-            "src",
             "--provider",
             "claude:prompts",
             "--enable-static-check",

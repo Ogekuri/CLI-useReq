@@ -43,7 +43,6 @@ REQUIREMENTS_TEMPLATE_NAME = "Requirements_Template.md"
 """! @brief Name of the packaged requirements template file."""
 
 PERSISTED_CONFIG_KEYS = (
-    "guidelines-dir",
     "docs-dir",
     "tests-dir",
     "src-dir",
@@ -52,17 +51,26 @@ PERSISTED_CONFIG_KEYS = (
 )
 """! @brief Canonical keys persisted in the user-global configuration file (SRS-288)."""
 
-DEFAULT_DOCS_DIR = "req/docs"
-"""! @brief Default docs-dir value for fresh installation when --docs-dir is omitted."""
+DEFAULT_DOCS_DIR = "usereq"
+"""! @brief Default docs-dir value stored when the configuration has no docs-dir (SRS-359)."""
 
-DEFAULT_GUIDELINES_DIR = "req/guidelines/"
-"""! @brief Default guidelines-dir value for fresh installation when --guidelines-dir is omitted."""
+DEFAULT_TESTS_DIR = "tests"
+"""! @brief Default tests-dir value stored when the configuration has no tests-dir (SRS-361)."""
 
-DEFAULT_TESTS_DIR = "tests/"
-"""! @brief Default tests-dir value for fresh installation when --tests-dir is omitted."""
+DEFAULT_SRC_DIRS = ("src",)
+"""! @brief Default src-dir list stored when the configuration has no src-dir (SRS-362)."""
 
-DEFAULT_SRC_DIRS = ("src/",)
-"""! @brief Default src-dir entries for fresh installation when --src-dir is omitted."""
+GUIDELINES_DIR_RELATIVE_TO_HOME = (
+    Path(".pi")
+    / "agent"
+    / "npm"
+    / "node_modules"
+    / "pi-usereq"
+    / "src"
+    / "resources"
+    / "guidelines"
+)
+"""! @brief Home-relative, non-configurable installation path of GUIDELINES_DIR (SRS-360)."""
 
 VALID_PROVIDERS = frozenset(
     {"antigravity", "claude", "codex", "opencode", "pi"}
@@ -115,6 +123,37 @@ def get_global_config_path() -> Path:
         / GLOBAL_CONFIG_APP_DIRNAME
         / GLOBAL_CONFIG_FILENAME
     )
+
+
+def guidelines_dir() -> Path:
+    """!
+    @brief Resolve the fixed installation-owned guidelines directory.
+    @details Composes the effective user HOME returned by :func:`home_dir` with the
+    non-configurable :data:`GUIDELINES_DIR_RELATIVE_TO_HOME` suffix.
+    @return {Path} Absolute path of the installed guidelines directory.
+    @satisfies SRS-360
+    """
+    return home_dir() / GUIDELINES_DIR_RELATIVE_TO_HOME
+
+
+def format_home_relative_path(path: Path) -> str:
+    """!
+    @brief Render an absolute path in ``~/`` home-relative form.
+    @details Returns ``~`` for the HOME directory, ``~/<rel>`` with POSIX separators for any
+    path under HOME, and the absolute string for paths outside HOME.
+    @param path {Path} Absolute path to render.
+    @return {str} Home-relative rendering when the path is under HOME, otherwise absolute.
+    @satisfies SRS-402, SRS-403
+    """
+    resolved_home = home_dir().resolve(strict=False)
+    resolved_path = Path(path).resolve(strict=False)
+    if resolved_path == resolved_home:
+        return "~"
+    try:
+        relative = resolved_path.relative_to(resolved_home).as_posix()
+    except ValueError:
+        return str(resolved_path)
+    return f"~/{relative}"
 
 
 def provider_artifact_root(provider: str, artifact: str) -> Path:
@@ -418,14 +457,13 @@ def build_parser() -> argparse.ArgumentParser:
     """
     version = load_package_version()
     usage = (
-        "req -c [-h] [--upgrade] [--uninstall] [--remove] [--update] (--base BASE | --here) "
-        "[--docs-dir DOCS_DIR] [--guidelines-dir GUIDELINES_DIR] [--tests-dir TESTS_DIR] [--src-dir SRC_DIR] [--verbose] [--debug] "
+        "req -c [-h] [--upgrade] [--uninstall] [--remove] [--update] --prj-base PRJ_BASE [--git-base GIT_BASE] "
+        "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
         "[--provider PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]] "
-        "[--add-guidelines | --upgrade-guidelines] "
         "[--files-tokens FILE ...] [--files-references FILE ...] [--files-compress FILE ...] [--files-find TAG PATTERN FILE ...] "
         "[--references] [--compress] [--find TAG PATTERN] [--enable-line-numbers] [--tokens] "
         "[--test-static-check {dummy,pylance,ruff,command} [FILES...]] "
-        "[--git-check] [--docs-check] [--git-wt-name] [--git-wt-create WT_NAME] [--git-wt-delete WT_NAME] [--git-path] [--get-base-path] "
+        "[--git-check] [--docs-check] [--git-wt-name] [--git-wt-create WT_NAME] [--git-wt-delete WT_NAME] [--git-path] "
         f"({version})"
     )
     parser = argparse.ArgumentParser(
@@ -433,42 +471,56 @@ def build_parser() -> argparse.ArgumentParser:
         prog="req",
         usage=usage,
     )
-    group = parser.add_mutually_exclusive_group(required=False)
-    group.add_argument(
-        "--base", type=Path, help="Directory root of the project to update."
-    )
-    group.add_argument(
-        "--here",
-        action="store_true",
-        help="Use current working directory as the project root.",
-    )
     parser.add_argument(
-        "--docs-dir",
+        "--prj-base",
+        type=Path,
+        default=None,
+        dest="prj_base",
         help=(
-            "Documentation directory relative to the project root. "
-            "Fresh install default when omitted: req/docs."
+            "Absolute project base directory containing the configured docs-dir, "
+            "src-dir, and tests-dir. Required for every project file command."
         ),
     )
     parser.add_argument(
-        "--guidelines-dir",
+        "--git-base",
+        type=Path,
+        default=None,
+        dest="git_base",
         help=(
-            "Technical directory relative to the project root. "
-            "Fresh install default when omitted: req/guidelines/."
+            "Absolute git repository base directory used as working directory for every "
+            "git operation. Required for every git command."
         ),
     )
     parser.add_argument(
-        "--tests-dir",
+        "--set-docs-dir",
+        metavar="DOCS_DIR",
+        default=None,
+        dest="set_docs_dir",
         help=(
-            "Test directory relative to the project root. "
-            "Fresh install default when omitted: tests/."
+            "Persist DOCS_DIR as the project-relative documentation directory in "
+            "~/.config/usereq/config.json. Requires --prj-base."
         ),
     )
     parser.add_argument(
-        "--src-dir",
+        "--set-src-dir",
         action="append",
+        metavar="SRC_DIR",
+        default=None,
+        dest="set_src_dir",
         help=(
-            "Source directory relative to the project root (repeatable). "
-            "Fresh install default when omitted: src/."
+            "Persist SRC_DIR as a project-relative source directory in "
+            "~/.config/usereq/config.json, replacing previous entries (repeatable). "
+            "Requires --prj-base."
+        ),
+    )
+    parser.add_argument(
+        "--set-tests-dir",
+        metavar="TESTS_DIR",
+        default=None,
+        dest="set_tests_dir",
+        help=(
+            "Persist TESTS_DIR as the project-relative test directory in "
+            "~/.config/usereq/config.json. Requires --prj-base."
         ),
     )
     parser.add_argument(
@@ -505,56 +557,45 @@ def build_parser() -> argparse.ArgumentParser:
             "Artifacts are installed into user-level CLI directories under the user HOME."
         ),
     )
-    guidelines_group = parser.add_mutually_exclusive_group()
-    guidelines_group.add_argument(
-        "--add-guidelines",
-        action="store_true",
-        help="Copy guidelines templates from resources/guidelines/ to --guidelines-dir without overwriting existing files.",
-    )
-    guidelines_group.add_argument(
-        "--upgrade-guidelines",
-        action="store_true",
-        help="Copy guidelines templates from resources/guidelines/ to --guidelines-dir, overwriting existing files.",
-    )
     parser.add_argument(
         "--files-tokens",
         nargs="+",
         metavar="FILE",
-        help="Count tokens and chars for the given files (standalone, no --base/--here required).",
+        help="Count tokens and chars for the given files (standalone, no --prj-base required).",
     )
     parser.add_argument(
         "--files-references",
         nargs="+",
         metavar="FILE",
-        help="Generate LLM reference markdown for the given files (standalone, no --base/--here required).",
+        help="Generate LLM reference markdown for the given files (standalone, no --prj-base required).",
     )
     parser.add_argument(
         "--files-compress",
         nargs="+",
         metavar="FILE",
-        help="Generate compressed output for the given files (standalone, no --base/--here required).",
+        help="Generate compressed output for the given files (standalone, no --prj-base required).",
     )
     parser.add_argument(
         "--files-find",
         nargs="+",
         metavar="ARG",
-        help=f"Find and extract specific constructs: --files-find TAG PATTERN FILE ... (standalone, no --base/--here required). Available tags:\n{_get_available_tags_help()}",
+        help=f"Find and extract specific constructs: --files-find TAG PATTERN FILE ... (standalone, no --prj-base required). Available tags:\n{_get_available_tags_help()}",
     )
     parser.add_argument(
         "--references",
         action="store_true",
-        help="Generate LLM reference markdown for all source files in configured src-dir directories (here-only project scan; --here implied; --base forbidden).",
+        help="Generate LLM reference markdown for all source files in configured src-dir directories under --prj-base (required).",
     )
     parser.add_argument(
         "--compress",
         action="store_true",
-        help="Generate compressed output for all source files in configured src-dir directories (here-only project scan; --here implied; --base forbidden).",
+        help="Generate compressed output for all source files in configured src-dir directories under --prj-base (required).",
     )
     parser.add_argument(
         "--find",
         nargs=2,
         metavar=("TAG", "PATTERN"),
-        help="Find and extract specific constructs from configured src-dir: --find TAG PATTERN (here-only project scan; --here implied; --base forbidden). For available tags, see --files-find help.",
+        help="Find and extract specific constructs from configured src-dir: --find TAG PATTERN (requires --prj-base). For available tags, see --files-find help.",
     )
     parser.add_argument(
         "--enable-line-numbers",
@@ -565,7 +606,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tokens",
         action="store_true",
-        help="Count tokens/chars for REQUIREMENTS.md, WORKFLOW.md, and REFERENCES.md in configured docs-dir (here-only project scan; --here implied; --base forbidden).",
+        help="Count tokens/chars for REQUIREMENTS.md, WORKFLOW.md, and REFERENCES.md in configured docs-dir under --prj-base (required).",
     )
     parser.add_argument(
         "--test-static-check",
@@ -575,7 +616,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Run static analysis: --test-static-check <subcommand> [FILES...]. "
             "Subcommands: dummy, pylance, ruff, command <cmd>. "
-            "[FILES] may be files, directories, or glob patterns including ** (standalone, no --base/--here required)."
+            "[FILES] may be files, directories, or glob patterns including ** (standalone, no --prj-base required)."
         ),
     )
     parser.add_argument(
@@ -605,7 +646,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Run static analysis on explicit files using tools configured in ~/.config/usereq/config.json. "
             "Detects language from file extension; skips files with no configured tool. "
-            "Standalone (no --base/--here required; uses --here/--base if provided, else CWD). "
+            "Standalone (no --prj-base required; uses --prj-base for dispatch context when provided, else CWD). "
             "Example: --files-static-check src/main.c src/utils.py"
         ),
     )
@@ -616,7 +657,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="static_check",
         help=(
             "Run static analysis on all source files in configured src-dir directories "
-            "(here-only project scan; --here implied; --base forbidden). Uses the same file-collection logic as --references "
+            "(requires --prj-base). Uses the same file-collection logic as --references "
             "and --compress. Tools are loaded from the 'static-check' section of ~/.config/usereq/config.json."
         ),
     )
@@ -627,7 +668,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="git_check",
         help=(
             "Check git repository status: clean work tree and valid HEAD "
-            "(here-only; --here implied; --base forbidden)."
+            "(requires --git-base)."
         ),
     )
     parser.add_argument(
@@ -637,7 +678,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="docs_check",
         help=(
             "Check existence of REQUIREMENTS.md, WORKFLOW.md, and REFERENCES.md in docs-dir "
-            "(here-only; --here implied; --base forbidden)."
+            "(requires --prj-base)."
         ),
     )
     parser.add_argument(
@@ -647,7 +688,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="git_wt_name",
         help=(
             "Print a standardized worktree name: useReq-<PROJECT>-<BRANCH>-<TIMESTAMP> "
-            "(here-only; --here implied; --base forbidden)."
+            "(requires --git-base)."
         ),
     )
     parser.add_argument(
@@ -657,7 +698,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="git_wt_create",
         help=(
             "Create a git worktree and branch with the given name, copying .venv when present "
-            "(here-only; --here implied; --base forbidden)."
+            "(requires --git-base)."
         ),
     )
     parser.add_argument(
@@ -667,7 +708,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="git_wt_delete",
         help=(
             "Remove a git worktree and branch by name "
-            "(here-only; --here implied; --base forbidden)."
+            "(requires --git-base)."
         ),
     )
     parser.add_argument(
@@ -676,18 +717,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         dest="git_path_cmd",
         help=(
-            "Print the git repository root resolved at runtime from the current working directory "
-            "(here-only; --here implied; --base forbidden)."
-        ),
-    )
-    parser.add_argument(
-        "--get-base-path",
-        action="store_true",
-        default=False,
-        dest="get_base_path_cmd",
-        help=(
-            "Print the absolute current working directory path "
-            "(here-only; --here implied; --base forbidden)."
+            "Print the git repository root resolved from --git-base (required)."
         ),
     )
     return parser
@@ -1414,38 +1444,6 @@ def maybe_notify_newer_version(
         return
 
 
-def ensure_guidelines_directory(
-    path: str, project_base: Path, *, create_missing: bool = False
-) -> None:
-    """!
-    @brief Resolve and validate guidelines directory path under project base.
-    @details Normalizes input path against project base, enforces in-repository containment, and validates directory shape. When `create_missing` is true, creates missing directory and all missing parent directories.
-    @param path {str} Candidate guidelines directory path.
-    @param project_base {Path} Absolute project base path.
-    @param create_missing {bool} Installation-mode flag enabling recursive directory creation.
-    @return {None} Function return value.
-    @throws {ReqError} Raised when path escapes project base or resolves to a file.
-    @satisfies SRS-360, SRS-363
-    """
-    normalized = make_relative_if_contains_project(path, project_base)
-    guidelines_path = project_base / normalized
-    resolved = guidelines_path.resolve(strict=False)
-    if not resolved.is_relative_to(project_base):
-        raise ReqError("Error: --guidelines-dir must be under the project base", 8)
-    if guidelines_path.exists() and not guidelines_path.is_dir():
-        raise ReqError(
-            "Error: --guidelines-dir must specify a directory, not a file", 8
-        )
-    if not guidelines_path.exists():
-        if create_missing:
-            guidelines_path.mkdir(parents=True, exist_ok=True)
-        else:
-            raise ReqError(
-                f"Error: the --guidelines-dir directory '{normalized}' does not exist under {project_base}",
-                8,
-            )
-
-
 def ensure_doc_directory(
     path: str, project_base: Path, *, create_missing: bool = False
 ) -> None:
@@ -1666,7 +1664,6 @@ def load_full_config() -> dict:
 
 
 def save_config(
-    guidelines_dir_value: str,
     doc_dir_value: str,
     test_dir_value: str,
     src_dir_values: list[str],
@@ -1674,25 +1671,24 @@ def save_config(
     provider_specs: Optional[list[str]] = None,
 ) -> None:
     """!
-    @brief Saves normalized parameters to the user-global configuration file.
-    @param guidelines_dir_value Relative path to guidelines directory.
-    @param doc_dir_value Relative path to docs directory.
-    @param test_dir_value Relative path to tests directory.
-    @param src_dir_values List of relative paths to source directories.
+    @brief Saves normalized directory parameters to the user-global configuration file.
+    @param doc_dir_value Project-relative docs directory value.
+    @param test_dir_value Project-relative tests directory value.
+    @param src_dir_values Ordered project-relative source directory values.
     @param static_check_config Optional dict of static-check config to persist under key
       `"static-check"`; omitted from JSON when None or empty.
     @param provider_specs Optional list of raw ``--provider`` SPEC strings to persist
       under the `"providers"` key (SRS-279).
     @details Writes the configuration payload to `~/.config/usereq/config.json`, creating
     missing parent directories on first write. Only canonical keys from
-    `PERSISTED_CONFIG_KEYS` are written (SRS-288, SRS-387).
+    `PERSISTED_CONFIG_KEYS` are written; `--prj-base` and `--git-base` are never written
+    (SRS-288, SRS-387, SRS-394, SRS-407).
     @return {None} Function return value.
-    @satisfies SRS-279, SRS-288, SRS-387
+    @satisfies SRS-279, SRS-288, SRS-387, SRS-394, SRS-407
     """
     config_path = get_global_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict = {
-        "guidelines-dir": guidelines_dir_value,
         "docs-dir": doc_dir_value,
         "tests-dir": test_dir_value,
         "src-dir": src_dir_values,
@@ -1706,36 +1702,72 @@ def save_config(
     )
 
 
+def update_directory_config(
+    docs_dir_value: Optional[str] = None,
+    tests_dir_value: Optional[str] = None,
+    src_dir_values: Optional[list[str]] = None,
+) -> None:
+    """!
+    @brief Persist one or more directory configuration keys while preserving unrelated keys.
+    @details Loads the existing raw configuration payload when present, replaces only the
+    supplied directory keys, and rewrites `~/.config/usereq/config.json` with parent
+    directories created on demand. `--prj-base` and `--git-base` are never persisted
+    (SRS-394, SRS-398, SRS-399, SRS-400, SRS-401).
+    @param docs_dir_value Project-relative docs directory value, or None to keep current.
+    @param tests_dir_value Project-relative tests directory value, or None to keep current.
+    @param src_dir_values Ordered project-relative source directory values, or None to keep current.
+    @return {None} Function return value.
+    @throws ReqError If the existing configuration file contains invalid JSON.
+    @satisfies SRS-394, SRS-398, SRS-399, SRS-400, SRS-401
+    """
+    config_path = get_global_config_path()
+    payload: dict = {}
+    if config_path.is_file():
+        try:
+            loaded = json.loads(config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ReqError(
+                f"Error: global configuration file {config_path} is not valid", 11
+            ) from exc
+        if isinstance(loaded, dict):
+            payload = loaded
+    if docs_dir_value is not None:
+        payload["docs-dir"] = docs_dir_value
+    if tests_dir_value is not None:
+        payload["tests-dir"] = tests_dir_value
+    if src_dir_values is not None:
+        payload["src-dir"] = list(src_dir_values)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
 def load_config() -> dict[str, str | list[str]]:
     """!
     @brief Loads directory parameters from the user-global configuration file.
-        @return Dictionary containing configuration values.
-        @throws ReqError If the global config file is missing or invalid.
-    @details Reads `~/.config/usereq/config.json` and validates the canonical directory
-    keys used by install, update, and project-scan flows.
-    @satisfies SRS-310, SRS-387
+    @return Dictionary containing `docs-dir`, `tests-dir`, and `src-dir` values.
+    @details Reads `~/.config/usereq/config.json`; when the file is absent every key falls
+    back to its default (`usereq`, `tests`, `src`). Present but invalid values raise
+    `ReqError`; `--prj-base` and `--git-base` are never read from the file
+    (SRS-359, SRS-361, SRS-362, SRS-394, SRS-407).
+    @throws ReqError If the global config file is invalid or holds invalid directory values.
+    @satisfies SRS-359, SRS-361, SRS-362, SRS-394, SRS-407
     """
     config_path = get_global_config_path()
-    if not config_path.is_file():
-        raise ReqError(
-            f"Error: global configuration file not found at {config_path}",
-            11,
-        )
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ReqError(
-            f"Error: global configuration file {config_path} is not valid", 11
-        ) from exc
-    guidelines_dir_value = payload.get("guidelines-dir")
-    doc_dir_value = payload.get("docs-dir")
-    test_dir_value = payload.get("tests-dir")
-    src_dir_value = payload.get("src-dir")
-    if not isinstance(guidelines_dir_value, str) or not guidelines_dir_value.strip():
-        raise ReqError(
-            "Error: missing or invalid 'guidelines-dir' field in the global configuration file",
-            11,
-        )
+    payload: dict = {}
+    if config_path.is_file():
+        try:
+            loaded = json.loads(config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ReqError(
+                f"Error: global configuration file {config_path} is not valid", 11
+            ) from exc
+        if isinstance(loaded, dict):
+            payload = loaded
+    doc_dir_value = payload.get("docs-dir", DEFAULT_DOCS_DIR)
+    test_dir_value = payload.get("tests-dir", DEFAULT_TESTS_DIR)
+    src_dir_value = payload.get("src-dir", list(DEFAULT_SRC_DIRS))
     if not isinstance(doc_dir_value, str) or not doc_dir_value.strip():
         raise ReqError(
             "Error: missing or invalid 'docs-dir' field in the global configuration file",
@@ -1756,7 +1788,6 @@ def load_config() -> dict[str, str | list[str]]:
             11,
         )
     return {
-        "guidelines-dir": guidelines_dir_value,
         "docs-dir": doc_dir_value,
         "tests-dir": test_dir_value,
         "src-dir": src_dir_value,
@@ -1839,107 +1870,51 @@ def load_persisted_provider_specs() -> list[str]:
     return []
 
 
-def generate_guidelines_file_list(guidelines_dir: Path, project_base: Path) -> str:
+def generate_guidelines_file_list() -> str:
     """!
-    @brief Generates the markdown file list for %%GUIDELINES_FILES%% replacement.
-    @details Implements the generate_guidelines_file_list function behavior with deterministic control flow.
-    @param guidelines_dir Input parameter `guidelines_dir`.
-    @param project_base Input parameter `project_base`.
-    @return {str} Function return value.
+    @brief Build the `%%GUIDELINES_FILES%%` substitution payload from GUIDELINES_DIR.
+    @details Enumerates non-hidden regular files in :func:`guidelines_dir` in deterministic
+    sorted order and renders each as a backticked home-relative path (SRS-402). When the
+    directory is absent or empty, renders the home-relative directory itself with a trailing
+    slash.
+    @return {str} Comma-separated backticked home-relative paths, or the directory fallback.
+    @satisfies SRS-403
     """
-    if not guidelines_dir.is_dir():
-        return ""
+    source_dir = guidelines_dir()
+    if not source_dir.is_dir():
+        return f"`{format_home_relative_path(source_dir)}/`"
 
-    files = []
-    for file_path in sorted(guidelines_dir.iterdir()):
-        if file_path.is_file() and not file_path.name.startswith("."):
-            try:
-                rel_path = file_path.relative_to(project_base)
-                rel_str = str(rel_path).replace(os.sep, "/")
-                files.append(f"`{rel_str}`")
-            except ValueError:
-                continue
-
-    # If there are no files, use the directory itself.
+    files = [
+        f"`{format_home_relative_path(file_path)}`"
+        for file_path in sorted(source_dir.iterdir())
+        if file_path.is_file() and not file_path.name.startswith(".")
+    ]
     if not files:
-        try:
-            rel_path = guidelines_dir.relative_to(project_base)
-            rel_str = str(rel_path).replace(os.sep, "/") + "/"
-            return f"`{rel_str}`"
-        except ValueError:
-            return ""
-
+        return f"`{format_home_relative_path(source_dir)}/`"
     return ", ".join(files)
 
 
-def generate_guidelines_file_items(
-    guidelines_dir: Path, project_base: Path
-) -> list[str]:
+def generate_guidelines_file_items() -> list[str]:
     """!
-    @brief Generates a list of relative file paths (no formatting) for printing.
-        @details Each entry is formatted as `guidelines/file.md` (forward slashes). If there are no files, returns the directory itself with a trailing slash.
-    @param guidelines_dir Input parameter `guidelines_dir`.
-    @param project_base Input parameter `project_base`.
-    @return {list[str]} Function return value.
+    @brief List the home-relative guideline entries reported after installation.
+    @details Returns one home-relative path per non-hidden regular file in
+    :func:`guidelines_dir`; when the directory is absent or empty, returns the home-relative
+    directory itself with a trailing slash.
+    @return {list[str]} Ordered home-relative guideline paths.
+    @satisfies SRS-360, SRS-403
     """
-    if not guidelines_dir.is_dir():
-        return []
+    source_dir = guidelines_dir()
+    if not source_dir.is_dir():
+        return [f"{format_home_relative_path(source_dir)}/"]
 
-    items: list[str] = []
-    for file_path in sorted(guidelines_dir.iterdir()):
-        if file_path.is_file() and not file_path.name.startswith("."):
-            try:
-                rel_path = file_path.relative_to(project_base)
-                rel_str = str(rel_path).replace(os.sep, "/")
-                items.append(rel_str)
-            except ValueError:
-                continue
-
-    # If there are no files, use the directory itself.
+    items = [
+        format_home_relative_path(file_path)
+        for file_path in sorted(source_dir.iterdir())
+        if file_path.is_file() and not file_path.name.startswith(".")
+    ]
     if not items:
-        try:
-            rel_path = guidelines_dir.relative_to(project_base)
-            rel_str = str(rel_path).replace(os.sep, "/") + "/"
-            return [rel_str]
-        except ValueError:
-            return []
-
+        return [f"{format_home_relative_path(source_dir)}/"]
     return items
-
-
-def upgrade_guidelines_templates(guidelines_dest: Path, overwrite: bool = False) -> int:
-    """!
-    @brief Copies guidelines templates from resources/guidelines/ to the target directory.
-        @details Args: guidelines_dest: Target directory where templates will be copied overwrite: If True, overwrite existing files; if False, skip existing files Returns: Number of non-hidden files copied; returns 0 when the source directory is empty.
-    @param guidelines_dest Input parameter `guidelines_dest`.
-    @param overwrite Input parameter `overwrite`.
-    @return {int} Function return value.
-    """
-    guidelines_src = RESOURCE_ROOT / "guidelines"
-    if not guidelines_src.is_dir():
-        vlog(f"Guidelines templates directory not found at {guidelines_src}, skipping")
-        return 0
-
-    if not guidelines_dest.is_dir():
-        raise ReqError(
-            f"Error: target guidelines directory '{guidelines_dest}' does not exist",
-            8,
-        )
-
-    copied_count = 0
-    for src_file in sorted(guidelines_src.iterdir()):
-        if src_file.is_file() and not src_file.name.startswith("."):
-            dst_file = guidelines_dest / src_file.name
-            existed = dst_file.exists()
-            if existed and not overwrite:
-                vlog(f"SKIPPED (already exists): {dst_file}")
-                continue
-            shutil.copyfile(src_file, dst_file)
-            copied_count += 1
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_file}")
-
-    return copied_count
 
 
 def ensure_relative(value: str, name: str, code: int) -> None:
@@ -2306,27 +2281,16 @@ def remove_generated_resources() -> None:
 def run_remove(args: Namespace) -> None:
     """!
     @brief Handles the removal of generated user-level resources.
-    @details Validates that `--update` and directory flags are not combined with
-    `--remove`, verifies that the user-global configuration file exists, and removes
-    `req-*` artifacts from user-level provider directories (SRS-390).
+    @details Validates that `--update` is not combined with `--remove`, verifies that the
+    user-global configuration file exists, and removes `req-*` artifacts from user-level
+    provider directories (SRS-390).
     @param args Input parameter `args`.
     @return {None} Function return value.
     @satisfies SRS-390
     """
-    guidelines_dir = getattr(args, "guidelines_dir", None)
-    doc_dir = getattr(args, "docs_dir", None)
-    test_dir = getattr(args, "tests_dir", None)
-    src_dir = getattr(args, "src_dir", None)
     if args.update:
         raise ReqError(
             "Error: --remove does not accept --update",
-            4,
-        )
-    if (not getattr(args, "here", False)) and (
-        guidelines_dir or doc_dir or test_dir or src_dir
-    ):
-        raise ReqError(
-            "Error: --remove does not accept --guidelines-dir, --docs-dir, --tests-dir, or --src-dir without --here",
             4,
         )
     if not get_global_config_path().is_file():
@@ -2335,6 +2299,71 @@ def run_remove(args: Namespace) -> None:
             11,
         )
     remove_generated_resources()
+
+
+def run_set_directories(args: Namespace) -> None:
+    """!
+    @brief Persist `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir` values.
+    @details Requires `--prj-base` (SRS-396), normalizes each supplied path against the
+    project base, rejects absolute or escaping paths, and writes only the supplied keys to
+    `~/.config/usereq/config.json` while preserving unrelated keys (SRS-398, SRS-399,
+    SRS-400, SRS-401). No project directory is created and no provider artifact is generated.
+    @param args Parsed CLI namespace carrying the `set_docs_dir`, `set_src_dir`, and
+      `set_tests_dir` values.
+    @return {None} Function return value.
+    @throws ReqError If `--prj-base` is absent or a supplied path escapes the project base.
+    @satisfies SRS-396, SRS-398, SRS-399, SRS-400, SRS-401
+    """
+    project_base = _require_prj_base(args)
+
+    docs_value = getattr(args, "set_docs_dir", None)
+    tests_value = getattr(args, "set_tests_dir", None)
+    src_values = getattr(args, "set_src_dir", None)
+
+    normalized_docs: Optional[str] = None
+    if docs_value is not None:
+        normalized_docs = make_relative_if_contains_project(
+            docs_value, project_base
+        ).rstrip("/\\")
+        ensure_relative(normalized_docs, "DOCS_DIR", 4)
+        abs_docs = resolve_absolute(normalized_docs, project_base)
+        if abs_docs and not abs_docs.resolve().is_relative_to(project_base):
+            raise ReqError("Error: docs-dir must be under the project base", 4)
+
+    normalized_tests: Optional[str] = None
+    if tests_value is not None:
+        normalized_tests = make_relative_if_contains_project(
+            tests_value, project_base
+        ).rstrip("/\\")
+        ensure_relative(normalized_tests, "TESTS_DIR", 4)
+        abs_tests = resolve_absolute(normalized_tests, project_base)
+        if abs_tests and not abs_tests.resolve().is_relative_to(project_base):
+            raise ReqError("Error: tests-dir must be under the project base", 4)
+
+    normalized_srcs: Optional[list[str]] = None
+    if src_values:
+        normalized_srcs = []
+        for src_value in src_values:
+            normalized_src = make_relative_if_contains_project(
+                src_value, project_base
+            ).rstrip("/\\")
+            ensure_relative(normalized_src, "SRC_DIR", 4)
+            abs_src = resolve_absolute(normalized_src, project_base)
+            if abs_src and not abs_src.resolve().is_relative_to(project_base):
+                raise ReqError("Error: src-dir must be under the project base", 4)
+            normalized_srcs.append(normalized_src)
+
+    update_directory_config(
+        docs_dir_value=normalized_docs,
+        tests_dir_value=normalized_tests,
+        src_dir_values=normalized_srcs,
+    )
+    if docs_value is not None:
+        log(f"OK: docs-dir set to {normalized_docs}")
+    if tests_value is not None:
+        log(f"OK: tests-dir set to {normalized_tests}")
+    if normalized_srcs is not None:
+        log(f"OK: src-dir set to {', '.join(normalized_srcs)}")
 
 def _validate_enable_static_check_command_executables(
     static_check_config: Mapping[str, list[dict[str, Any]]],
@@ -2370,11 +2399,17 @@ def _validate_enable_static_check_command_executables(
 
 def run(args: Namespace) -> None:
     """!
-    @brief Handles the main initialization flow.
-        @details Validates input arguments, resolves install/update path sources, applies fresh-install defaults for omitted directory flags, creates configured directory trees during installation, persists the user-global configuration, and orchestrates user-level provider artifact generation. Requires at least one ``--provider`` spec (SRS-035). Deduplicates ``--enable-static-check`` entries (SRS-251, SRS-301).
-        @param args Parsed CLI namespace; must contain ``provider_specs`` list.
+    @brief Handles the main installation/update flow.
+    @details Requires `--prj-base` (SRS-396), loads the `docs-dir`, `tests-dir`, and `src-dir`
+    values from the user-global configuration with defaults `usereq`, `tests`, and `src`
+    (SRS-359, SRS-361, SRS-362), creates missing directories during non-update installation
+    (SRS-363), persists the effective directory configuration plus providers and static-check
+    entries (SRS-288, SRS-407), and orchestrates user-level provider artifact generation with
+    home-relative GUIDELINES_DIR token substitution (SRS-402, SRS-403).
+    @param args Parsed CLI namespace; must contain ``provider_specs`` list.
     @return {None} Function return value.
-    @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-280, SRS-301, SRS-359, SRS-360, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388
+    @throws ReqError If `--prj-base` is absent, providers are missing, or configured paths are invalid.
+    @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-280, SRS-288, SRS-301, SRS-359, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388, SRS-396, SRS-402, SRS-403, SRS-407
     """
     global VERBOSE, DEBUG
     VERBOSE = args.verbose
@@ -2385,43 +2420,14 @@ def run(args: Namespace) -> None:
         run_remove(args)
         return
 
-    if args.base:
-        project_base = args.base.resolve()
-    else:
-        project_base = Path.cwd().resolve()
-    if not project_base.exists():
-        raise ReqError(f"Error: PROJECT_BASE '{project_base}' does not exist", 2)
+    project_base = _resolve_project_base(args)
 
-    guidelines_dir = getattr(args, "guidelines_dir", None)
-    doc_dir = getattr(args, "docs_dir", None)
-    test_dir = getattr(args, "tests_dir", None)
-    src_dir = getattr(args, "src_dir", None)
-    use_here_config = bool(getattr(args, "here", False))
+    config = load_config()
+    doc_dir_value = config["docs-dir"]
+    test_dir_value = config["tests-dir"]
+    src_dir_values = config["src-dir"]
 
-    if (
-        args.update
-        and (not use_here_config)
-        and (guidelines_dir or doc_dir or test_dir or src_dir)
-    ):
-        raise ReqError(
-            "Error: --update does not accept --guidelines-dir, --docs-dir, --tests-dir, or --src-dir",
-            4,
-        )
-    if use_here_config or args.update:
-        config = load_config()
-        guidelines_dir_value = config["guidelines-dir"]
-        doc_dir_value = config["docs-dir"]
-        test_dir_value = config["tests-dir"]
-        src_dir_values = config["src-dir"]
-    else:
-        guidelines_dir_value = (
-            guidelines_dir if guidelines_dir is not None else DEFAULT_GUIDELINES_DIR
-        )
-        doc_dir_value = doc_dir if doc_dir is not None else DEFAULT_DOCS_DIR
-        test_dir_value = test_dir if test_dir is not None else DEFAULT_TESTS_DIR
-        src_dir_values = src_dir if src_dir is not None else list(DEFAULT_SRC_DIRS)
-
-    if not isinstance(guidelines_dir_value, str) or not isinstance(doc_dir_value, str):
+    if not isinstance(doc_dir_value, str):
         raise ReqError("Error: invalid docs configuration values", 11)
     if not isinstance(test_dir_value, str):
         raise ReqError("Error: invalid tests configuration value", 11)
@@ -2432,10 +2438,7 @@ def run(args: Namespace) -> None:
     ):
         raise ReqError("Error: invalid src configuration values", 11)
 
-    create_missing_dirs = not args.update and not use_here_config
-    ensure_guidelines_directory(
-        guidelines_dir_value, project_base, create_missing=create_missing_dirs
-    )
+    create_missing_dirs = not args.update
     ensure_doc_directory(
         doc_dir_value, project_base, create_missing=create_missing_dirs
     )
@@ -2447,100 +2450,40 @@ def run(args: Namespace) -> None:
             src_dir_value, project_base, create_missing=create_missing_dirs
         )
 
-    normalized_guidelines = make_relative_if_contains_project(
-        guidelines_dir_value, project_base
-    )
-    normalized_doc = make_relative_if_contains_project(doc_dir_value, project_base)
-    normalized_test = make_relative_if_contains_project(test_dir_value, project_base)
+    normalized_doc = make_relative_if_contains_project(
+        doc_dir_value, project_base
+    ).rstrip("/\\")
+    normalized_test = make_relative_if_contains_project(
+        test_dir_value, project_base
+    ).rstrip("/\\")
     normalized_src_dirs: list[str] = []
-    config_src_dirs: list[str] = []
-    src_has_trailing_slashes: list[bool] = []
-    guidelines_has_trailing_slash = guidelines_dir_value.endswith(
-        "/"
-    ) or guidelines_dir_value.endswith("\\")
-    doc_has_trailing_slash = doc_dir_value.endswith("/") or doc_dir_value.endswith("\\")
-    test_has_trailing_slash = test_dir_value.endswith("/") or test_dir_value.endswith(
-        "\\"
-    )
-    normalized_guidelines = normalized_guidelines.rstrip("/\\")
-    normalized_doc = normalized_doc.rstrip("/\\")
-    normalized_test = normalized_test.rstrip("/\\")
     for src_dir_value in src_dir_values:
-        has_trailing = src_dir_value.endswith("/") or src_dir_value.endswith("\\")
         normalized_src = make_relative_if_contains_project(src_dir_value, project_base)
-        normalized_src = normalized_src.rstrip("/\\")
-        normalized_src_dirs.append(normalized_src)
-        src_has_trailing_slashes.append(has_trailing)
+        normalized_src_dirs.append(normalized_src.rstrip("/\\"))
 
-    ensure_relative(normalized_guidelines, "GUIDELINES_DIR", 5)
     ensure_relative(normalized_doc, "DOCS_DIR", 4)
     ensure_relative(normalized_test, "TESTS_DIR", 4)
     for normalized_src in normalized_src_dirs:
         ensure_relative(normalized_src, "SRC_DIR", 4)
 
-    abs_guidelines = resolve_absolute(normalized_guidelines, project_base)
     abs_doc = resolve_absolute(normalized_doc, project_base)
     abs_test = resolve_absolute(normalized_test, project_base)
     abs_src_dirs = [
         resolve_absolute(normalized_src, project_base)
         for normalized_src in normalized_src_dirs
     ]
-    if abs_guidelines and not abs_guidelines.resolve().is_relative_to(project_base):
-        raise ReqError("Error: --guidelines-dir must be under the project base", 8)
     if abs_doc and not abs_doc.resolve().is_relative_to(project_base):
-        raise ReqError("Error: --docs-dir must be under the project base", 5)
+        raise ReqError("Error: docs-dir must be under the project base", 5)
     if abs_test and not abs_test.resolve().is_relative_to(project_base):
-        raise ReqError("Error: --tests-dir must be under the project base", 5)
+        raise ReqError("Error: tests-dir must be under the project base", 5)
     for abs_src in abs_src_dirs:
         if abs_src and not abs_src.resolve().is_relative_to(project_base):
-            raise ReqError("Error: --src-dir must be under the project base", 5)
-
-    config_guidelines = (
-        f"{normalized_guidelines}/"
-        if guidelines_has_trailing_slash and normalized_guidelines
-        else normalized_guidelines
-    )
-    config_doc = (
-        f"{normalized_doc}/"
-        if doc_has_trailing_slash and normalized_doc
-        else normalized_doc
-    )
-    config_test = (
-        f"{normalized_test}/"
-        if test_has_trailing_slash and normalized_test
-        else normalized_test
-    )
-    for normalized_src, has_trailing in zip(
-        normalized_src_dirs, src_has_trailing_slashes
-    ):
-        config_src = (
-            f"{normalized_src}/" if has_trailing and normalized_src else normalized_src
-        )
-        config_src_dirs.append(config_src)
-
-    guidelines_dest = project_base / normalized_guidelines
-    if VERBOSE:
-        log(f"OK: technical directory found {guidelines_dest}")
-
-    # Copy guidelines templates if requested (REQ-085, REQ-086, REQ-087, REQ-089)
-    if args.add_guidelines or args.upgrade_guidelines:
-        guidelines_src = RESOURCE_ROOT / "guidelines"
-        if guidelines_src.is_dir():
-            copied = upgrade_guidelines_templates(
-                guidelines_dest, overwrite=args.upgrade_guidelines
-            )
-            if VERBOSE:
-                log(f"OK: copied {copied} guidelines template(s) to {guidelines_dest}")
-        else:
-            if VERBOSE:
-                log(
-                    f"OK: no guidelines templates found at {guidelines_src}, skipping copy"
-                )
+            raise ReqError("Error: src-dir must be under the project base", 5)
 
     # Resolve --provider specs: load persisted specs on --update, replace with CLI specs (SRS-275, SRS-280).
     cli_provider_specs: list[str] = getattr(args, "provider_specs", None) or []
     persisted_provider_specs: list[str] = []
-    if use_here_config or args.update:
+    if args.update:
         persisted_provider_specs = load_persisted_provider_specs()
     # CLI --provider replaces persisted specs when at least one is given (SRS-280).
     effective_provider_specs = (
@@ -2616,15 +2559,14 @@ def run(args: Namespace) -> None:
                 new_static_check.setdefault(canonical_lang, []).append(lang_cfg)
     _validate_enable_static_check_command_executables(
         new_static_check,
-        enforce=(not args.update and not use_here_config),
+        enforce=(not args.update),
     )
 
     # Compute merged static-check: existing config + new non-duplicate entries (SRS-252, SRS-301).
     # Preserve pre-existing static-check entries whenever the global configuration file
     # already exists and the invocation includes at least one --enable-static-check spec.
     should_merge_existing = (
-        use_here_config
-        or args.update
+        args.update
         or (bool(enable_static_check_specs) and get_global_config_path().is_file())
     )
     if should_merge_existing:
@@ -2646,26 +2588,24 @@ def run(args: Namespace) -> None:
     else:
         merged_static_check = new_static_check
 
-    # Persist the single user-global configuration file (SRS-279, SRS-287).
+    # Persist the single user-global configuration file (SRS-279, SRS-288, SRS-407).
     save_config(
-        config_guidelines,
-        config_doc,
-        config_test,
-        config_src_dirs,
+        normalized_doc,
+        normalized_test,
+        normalized_src_dirs,
         static_check_config=merged_static_check if merged_static_check else None,
         provider_specs=effective_provider_specs
         if effective_provider_specs
         else None,
     )
 
-    # Generate the file list for the %%GUIDELINES_FILES%% token.
-    guidelines_file_list = generate_guidelines_file_list(
-        project_base / normalized_guidelines, project_base
-    )
+    # Resolve the installation-owned guidelines substitution values (SRS-360, SRS-402, SRS-403).
+    guidelines_file_list = generate_guidelines_file_list()
+    guidelines_path_value = f"{format_home_relative_path(guidelines_dir())}/"
 
     dlog(f"project_base={project_base}")
     dlog(f"DOCS_DIR={normalized_doc}")
-    dlog(f"GUIDELINES_DIR={normalized_guidelines}")
+    dlog(f"GUIDELINES_DIR={guidelines_path_value}")
     dlog(f"TESTS_DIR={normalized_test}")
     dlog(f"SRC_DIRS={normalized_src_dirs}")
     dlog(f"GUIDELINES_FILE_LIST={guidelines_file_list}")
@@ -2727,7 +2667,7 @@ def run(args: Namespace) -> None:
 
         base_replacements = {
             "%%GUIDELINES_FILES%%": guidelines_file_list,
-            "%%GUIDELINES_PATH%%": normalized_guidelines,
+            "%%GUIDELINES_PATH%%": guidelines_path_value,
         }
         prompt_replacements = {
             **base_replacements,
@@ -2783,7 +2723,7 @@ def run(args: Namespace) -> None:
             md_to_toml(prompt_path, dst_toml, force=existed)
             toml_replacements = {
                 "%%GUIDELINES_FILES%%": guidelines_file_list,
-                "%%GUIDELINES_PATH%%": normalized_guidelines,
+                "%%GUIDELINES_PATH%%": guidelines_path_value,
                 "%%ARGS%%": "{{args}}",
             }
             replace_tokens(dst_toml, toml_replacements)
@@ -2990,9 +2930,7 @@ def run(args: Namespace) -> None:
 
     # Print the discovered directories used for token substitutions
     # as required by REQ-078: one item per line prefixed with '- '.
-    guidelines_items = generate_guidelines_file_items(
-        project_base / normalized_guidelines, project_base
-    )
+    guidelines_items = generate_guidelines_file_items()
 
     if guidelines_items:
         for entry in guidelines_items:
@@ -3364,7 +3302,7 @@ def _is_project_scan_command(args: Namespace) -> bool:
     @return True when any project-scan flag is present.
     @details Project-scan commands: `--references`, `--compress`, `--tokens`, `--find`,
       `--static-check`, `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create`,
-      `--git-wt-delete`, `--git-path`, and `--get-base-path`.
+      `--git-wt-delete`, and `--git-path`.
     """
     return bool(
         getattr(args, "references", False)
@@ -3378,56 +3316,72 @@ def _is_project_scan_command(args: Namespace) -> bool:
         or getattr(args, "git_wt_create", None)
         or getattr(args, "git_wt_delete", None)
         or getattr(args, "git_path_cmd", False)
-        or getattr(args, "get_base_path_cmd", False)
     )
 
 
-def _is_here_only_project_scan_command(args: Namespace) -> bool:
+def _is_directory_config_command(args: Namespace) -> bool:
     """!
-    @brief Check if args request a project-scan command restricted to `--here` mode.
+    @brief Check if args request a directory configuration command.
     @param args Parsed CLI namespace.
-    @return True when command requires implicit `--here` and rejects `--base`.
-    @details Includes `--references`, `--compress`, `--tokens`, `--find`, `--static-check`,
-      `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`,
-      `--git-path`, and `--get-base-path`.
-    @satisfies SRS-311, SRS-313, SRS-318, SRS-320, SRS-326, SRS-333
+    @return True when any `--set-*-dir` flag is present.
+    @details Configuration commands persist project-relative directories and therefore
+      require `--prj-base` without activating the installation flow (SRS-396, SRS-398,
+      SRS-399, SRS-400).
     """
     return bool(
-        getattr(args, "references", False)
-        or getattr(args, "compress", False)
-        or getattr(args, "tokens", False)
-        or getattr(args, "find", None)
-        or getattr(args, "static_check", False)
-        or getattr(args, "git_check", False)
-        or getattr(args, "docs_check", False)
-        or getattr(args, "git_wt_name", False)
-        or getattr(args, "git_wt_create", None)
-        or getattr(args, "git_wt_delete", None)
-        or getattr(args, "git_path_cmd", False)
-        or getattr(args, "get_base_path_cmd", False)
+        getattr(args, "set_docs_dir", None) is not None
+        or getattr(args, "set_src_dir", None)
+        or getattr(args, "set_tests_dir", None) is not None
     )
 
 
-def _resolve_runtime_git_root() -> Path:
+def _require_prj_base(args: Namespace) -> Path:
     """!
-    @brief Resolve the git repository root at runtime from the current working directory.
-    @details Executes `git rev-parse --show-toplevel` from the CWD (SRS-391) and returns
-    the absolute repository root path. Project-local configuration is never consulted.
-    @return {Path} Absolute git repository root path.
-    @throws ReqError If the CWD is not inside a git work tree or git is unavailable.
-    @satisfies SRS-391
+    @brief Return the mandatory absolute project base for the current command.
+    @param args Parsed CLI namespace.
+    @return {Path} Absolute project base path.
+    @throws ReqError If `--prj-base` is absent or the resolved path does not exist.
+    @details `--prj-base` is command-line only and is never loaded from configuration
+      (SRS-392, SRS-394, SRS-395, SRS-396).
+    @satisfies SRS-392, SRS-394, SRS-395, SRS-396
     """
-    return resolve_git_root(Path.cwd().resolve())
+    prj_base = getattr(args, "prj_base", None)
+    if prj_base is None:
+        raise ReqError("Error: --prj-base is required for this command.", 1)
+    project_base = Path(prj_base).resolve()
+    if not project_base.exists():
+        raise ReqError(f"Error: --prj-base '{project_base}' does not exist", 2)
+    return project_base
+
+
+def _require_git_base(args: Namespace) -> Path:
+    """!
+    @brief Return the mandatory absolute git repository base for the current command.
+    @param args Parsed CLI namespace.
+    @return {Path} Absolute git repository root resolved from `--git-base`.
+    @throws ReqError If `--git-base` is absent, does not exist, or is not inside a git work tree.
+    @details `--git-base` is command-line only and is never loaded from configuration; the
+      returned path is the repository root reported by `git rev-parse --show-toplevel`
+      executed in `--git-base` (SRS-334, SRS-393, SRS-394, SRS-395, SRS-397).
+    @satisfies SRS-334, SRS-393, SRS-394, SRS-395, SRS-397
+    """
+    git_base = getattr(args, "git_base", None)
+    if git_base is None:
+        raise ReqError("Error: --git-base is required for this command.", 1)
+    git_path = Path(git_base).resolve()
+    if not git_path.exists():
+        raise ReqError(f"Error: --git-base '{git_path}' does not exist", 2)
+    return resolve_git_root(git_path)
 
 def run_git_check(args: Namespace) -> None:
     """!
     @brief Execute --git-check: verify clean git status and valid HEAD.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError On git status unclear or when CWD is outside a git repository.
-    @satisfies SRS-311, SRS-312, SRS-391
+    @throws ReqError On git status unclear or when `--git-base` is outside a git repository.
+    @satisfies SRS-311, SRS-312, SRS-391, SRS-397
     """
-    git_path = _resolve_runtime_git_root()
+    git_path = _require_git_base(args)
     cmd = (
         "git rev-parse --is-inside-work-tree "
         "&& ! git status --porcelain | grep -q . "
@@ -3453,12 +3407,12 @@ def run_docs_check(args: Namespace) -> None:
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @throws ReqError If any required doc file is missing.
-    @satisfies SRS-313, SRS-314, SRS-315, SRS-316, SRS-317
+    @satisfies SRS-313, SRS-314, SRS-315, SRS-316, SRS-317, SRS-396
     """
-    project_base = _resolve_project_base(args)
+    project_base = _require_prj_base(args)
     full_cfg = load_full_config()
     base_path = project_base
-    docs_dir = full_cfg.get("docs-dir", "docs")
+    docs_dir = full_cfg.get("docs-dir", DEFAULT_DOCS_DIR)
     if isinstance(docs_dir, str):
         docs_dir = docs_dir.rstrip("/\\")
     doc_path = Path(base_path) / docs_dir
@@ -3482,9 +3436,9 @@ def run_git_wt_name(args: Namespace) -> None:
     @brief Execute --git-wt-name: print standardized worktree name.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @satisfies SRS-318, SRS-319, SRS-391
+    @satisfies SRS-318, SRS-319, SRS-391, SRS-397
     """
-    git_path = _resolve_runtime_git_root()
+    git_path = _require_git_base(args)
     project_name = git_path.name
     try:
         branch_result = subprocess.run(
@@ -3575,15 +3529,16 @@ def run_git_wt_create(args: Namespace) -> None:
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @throws ReqError On invalid name, git command failure, or when CWD is outside a git repository.
-    @satisfies SRS-320, SRS-321, SRS-322, SRS-331, SRS-335, SRS-391
+    @satisfies SRS-320, SRS-321, SRS-322, SRS-331, SRS-335, SRS-391, SRS-397
     """
     wt_name: str = args.git_wt_create
     if not validate_wt_name(wt_name):
         msg = f"ERROR: Invalid worktree/branch name: {wt_name}."
         print(msg)
         raise ReqError(msg, 1)
-    base_path = Path.cwd().resolve()
-    git_path = _resolve_runtime_git_root()
+    git_path = _require_git_base(args)
+    prj_base_arg = getattr(args, "prj_base", None)
+    base_path = Path(prj_base_arg).resolve() if prj_base_arg else git_path
     parent_path = git_path.parent
     # SRS-322: create worktree + branch.
     wt_dest = parent_path / wt_name
@@ -3604,7 +3559,7 @@ def run_git_wt_create(args: Namespace) -> None:
     except subprocess.TimeoutExpired:
         raise ReqError("Error: git worktree add timed out.", 3)
     try:
-        # SRS-335: copy .venv from CWD first, then git root, preserving path from git root.
+        # SRS-335: copy .venv from --prj-base first when provided, else --git-base.
         src_venv: Optional[Path] = None
         base_venv = base_path / ".venv"
         git_venv = git_path / ".venv"
@@ -3637,11 +3592,11 @@ def run_git_wt_delete(args: Namespace) -> None:
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @throws ReqError On invalid name or git removal failure.
-    @satisfies SRS-326, SRS-327, SRS-328, SRS-332, SRS-391
+    @satisfies SRS-326, SRS-327, SRS-328, SRS-332, SRS-391, SRS-397
     """
     wt_name: str = args.git_wt_delete
-    base_path = Path.cwd().resolve()
-    git_path = _resolve_runtime_git_root()
+    git_path = _require_git_base(args)
+    base_path = git_path
     parent_path = git_path.parent
     # SRS-327: validate branch or worktree exists.
     branch_exists = False
@@ -3702,24 +3657,13 @@ def run_git_wt_delete(args: Namespace) -> None:
 
 def run_git_path(args: Namespace) -> None:
     """!
-    @brief Execute --git-path: print the runtime-resolved git repository root.
+    @brief Execute --git-path: print the git repository root resolved from `--git-base`.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError If the current working directory is not inside a git repository.
-    @satisfies SRS-333, SRS-334, SRS-391
+    @throws ReqError If `--git-base` is not inside a git repository.
+    @satisfies SRS-333, SRS-334, SRS-391, SRS-397
     """
-    git_path = _resolve_runtime_git_root()
-    print(str(git_path))
-
-
-def run_get_base_path(args: Namespace) -> None:
-    """!
-    @brief Execute --get-base-path: print the absolute current working directory.
-    @param args Parsed CLI namespace.
-    @return {None} Function return value.
-    @satisfies SRS-333, SRS-347
-    """
-    print(str(Path.cwd().resolve()))
+    print(str(_require_git_base(args)))
 
 
 def run_files_tokens(files: list[str]) -> None:
@@ -3885,10 +3829,11 @@ def run_tokens(args: Namespace) -> None:
     @param args Parsed CLI arguments namespace.
     @return None.
     @exception ReqError Raised when no canonical documentation file exists in configured docs-dir.
-    @details Uses docs-dir from ~/.config/usereq/config.json in here-only mode, ignores
-      explicit --docs-dir, selects only REQUIREMENTS.md/WORKFLOW.md/REFERENCES.md as direct
-      regular files in fixed order, and delegates summary rendering to run_files_tokens.
-    @satisfies SRS-310, SRS-387
+    @details Uses the mandatory `--prj-base` project base joined with the docs-dir value
+      from ~/.config/usereq/config.json, selects only REQUIREMENTS.md/WORKFLOW.md/REFERENCES.md
+      as direct regular files in fixed order, and delegates summary rendering to
+      run_files_tokens.
+    @satisfies SRS-387, SRS-392, SRS-396
     """
     project_base = _resolve_project_base(args)
     config = load_config()
@@ -3913,15 +3858,15 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
     """!
     @brief Execute `--files-static-check`: run static analysis on an explicit file list.
     @param files List of raw file paths supplied by the user.
-    @param args Parsed CLI namespace; `--here`/`--base` are used to resolve dispatch context.
+    @param args Parsed CLI namespace; `--prj-base` resolves the dispatch context when present.
     @return Exit code: 0 if all checked files pass (or none are checked), 1 if any fail.
     @details
       Static-check configuration is loaded from `~/.config/usereq/config.json`.
       When the global configuration file cannot be located, emits a warning to stderr and
       returns 0 (SRS-254).
       Project-base resolution order for dispatch context:
-      1. `--base PATH` -> use PATH.
-      2. `--here` or fallback -> use CWD.
+      1. `--prj-base PATH` -> use PATH.
+      2. Fallback -> use CWD.
       For each file:
       - Resolves absolute path; skips with warning if not a regular file.
       - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on the lowercase extension.
@@ -3936,8 +3881,8 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
     """
     from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
 
-    # Resolve project base for dispatch context
-    base_arg = getattr(args, "base", None)
+    # Resolve optional project base for dispatch context (SRS-253).
+    base_arg = getattr(args, "prj_base", None)
     if base_arg:
         project_base: Path = Path(base_arg).resolve()
     else:
@@ -3985,7 +3930,7 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
 def run_project_static_check_cmd(args: Namespace) -> int:
     """!
     @brief Execute `--static-check`: run static analysis on project source and test files.
-    @param args Parsed CLI namespace; here-only project scan (`--here` implied; `--base` rejected).
+    @param args Parsed CLI namespace; requires the mandatory `--prj-base` argument.
     @return Exit code: 0 if all checked files pass (or none are checked), 1 if any fail.
     @details
       Collects files from configured `src-dir` directories and the `tests-dir` directory
@@ -4084,34 +4029,27 @@ def run_project_static_check_cmd(args: Namespace) -> int:
 
 def _resolve_project_base(args: Namespace) -> Path:
     """!
-    @brief Resolve project base path for project-level commands.
-        @param args Parsed CLI arguments namespace.
-        @return Absolute path of project base.
-        @throws ReqError If --base/--here is missing or the resolved path does not exist.
-    @details Implements the _resolve_project_base function behavior with deterministic control flow.
+    @brief Resolve the mandatory project base path for project-level commands.
+    @param args Parsed CLI arguments namespace.
+    @return Absolute path of the project base supplied by `--prj-base`.
+    @throws ReqError If `--prj-base` is missing or the resolved path does not exist.
+    @details The project base is never derived from the current working directory and is
+      never loaded from configuration (SRS-392, SRS-394, SRS-395, SRS-396).
+    @satisfies SRS-392, SRS-394, SRS-395, SRS-396
     """
-    if not getattr(args, "base", None) and not getattr(args, "here", False):
-        raise ReqError("Error: --base or --here is required for this command.", 1)
-
-    if args.base:
-        project_base = args.base.resolve()
-    else:
-        project_base = Path.cwd().resolve()
-
-    if not project_base.exists():
-        raise ReqError(f"Error: PROJECT_BASE '{project_base}' does not exist", 2)
-    return project_base
+    return _require_prj_base(args)
 
 
 def _resolve_project_src_dirs(args: Namespace) -> tuple[Path, list[str]]:
     """!
     @brief Resolve project base and src-dirs for project source commands.
     @details Loads the `src-dir` list from the user-global configuration file
-    (`~/.config/usereq/config.json`) and resolves it against the project base derived
-    from `--base` or the current working directory.
+    (`~/.config/usereq/config.json`) and resolves it against the mandatory `--prj-base`
+    project base (SRS-392, SRS-396).
     @param args Input parameter `args`.
     @return {tuple[Path, list[str]]} Tuple `(project_base, src_dirs)`.
-    @throws ReqError If the global configuration file is missing or `src-dir` is invalid.
+    @throws ReqError If `--prj-base` is missing or `src-dir` is invalid.
+    @satisfies SRS-392, SRS-396
     """
     project_base = _resolve_project_base(args)
 
@@ -4166,16 +4104,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         args = parse_args(argv_list)
         VERBOSE = getattr(args, "verbose", False)
         DEBUG = getattr(args, "debug", False)
-        if _is_here_only_project_scan_command(args):
-            if getattr(args, "base", None):
-                raise ReqError(
-                    "Error: --references, --compress, --tokens, --find, --static-check, "
-                    "--git-check, --docs-check, --git-wt-name, --git-wt-create, and "
-                    "--git-wt-delete, --git-path, and --get-base-path do not allow --base; use --here.",
-                    1,
-                )
-            args.here = True
-        # Standalone file commands (no --base/--here required)
+        # Directory configuration commands require --prj-base only (SRS-396, SRS-398..SRS-401).
+        if _is_directory_config_command(args):
+            run_set_directories(args)
+            return 0
+        # Standalone file commands (no --prj-base required)
         if _is_standalone_command(args):
             if getattr(args, "files_tokens", None):
                 run_files_tokens(args.files_tokens)
@@ -4225,12 +4158,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                 run_git_wt_delete(args)
             elif getattr(args, "git_path_cmd", False):
                 run_git_path(args)
-            elif getattr(args, "get_base_path_cmd", False):
-                run_get_base_path(args)
             return 0
-        # Standard init flow requires --base or --here
-        if not getattr(args, "base", None) and not getattr(args, "here", False):
-            raise ReqError("Error: --base or --here is required for initialization.", 1)
+        # Install/update/remove flows require --prj-base except for --remove (SRS-396).
+        if getattr(args, "remove", False):
+            run_remove(args)
+            return 0
         run(args)
     except ReqError as e:
         print(e.message, file=sys.stderr)

@@ -94,7 +94,7 @@ Click to zoom flowchart image.
 
 ### Project's Tree
 
-Here the typical project's tree; you can configure the directories according your project layout:
+Here the typical project's tree; configure `docs-dir`, `src-dir`, and `tests-dir` according to your project layout:
 
 ```text
 .
@@ -103,8 +103,6 @@ Here the typical project's tree; you can configure the directories according you
 │   ├── REQUIREMENTS.md
 │   ├── REFERENCES.md
 │   └── WORKFLOW.md
-├── guidelines/
-│   └── User's guidelines
 ├── src/
 │   └── Source code
 └── tests/
@@ -114,7 +112,7 @@ Here the typical project's tree; you can configure the directories according you
 ### Run useReq/req with uvx
 ```bash
 uvx --from git+https://github.com/Ogekuri/useReq.git req \
-  --base myproject/ \
+  --prj-base myproject/ \
   --provider pi:prompts
 ```
 
@@ -132,16 +130,11 @@ uv tool uninstall usereq
 
 ### Quick Install
 
-1. Install on a project in path `project_path` (missing directories are created automatically on fresh install):
-- Typical Install:
+1. Install on a project in path `project_path` (missing configured directories are created automatically on fresh install):
+- Typical Install (directory values come from `~/.config/usereq/config.json`, defaults: `usereq`, `src`, `tests`):
 ```
 req \
---base "project_path" \
---docs-dir "docs/" \
---guidelines-dir "guidelines/" \
---src-dir "src/" \
---tests-dir "tests/" \
---upgrade-guidelines \
+--prj-base "project_path" \
 --provider pi:prompts \
 --provider claude:prompts \
 --provider codex:skills \
@@ -162,15 +155,16 @@ req \
 ### Usage
 - Run `req` to create or recreate useReq resources. Prompts, agents, and skills are installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`); nothing is written into the project repository.
   - You can run `req` from any directory:
-    - Use `--base <project-folder>` to target a specific project directory (recommended for first installation).
-    - Use `--here` to target the current working directory.
-    - For initialization, you cannot omit both `--base` and `--here`.
-    - `--here` and `--update` load directory settings from the global configuration file `~/.config/usereq/config.json`, so first installation requires `--base`.
-  - Directory flags for initialization:
-    - `--docs-dir`, `--guidelines-dir`, `--tests-dir`, and `--src-dir` must resolve under the project base.
-    - On fresh installation (`--base` without `--update`), omitted values default to `req/docs`, `req/guidelines/`, `tests/`, and `src/`.
+    - `--prj-base <project-folder>` is mandatory for every command that reads or writes project files (install, `--update`, `--references`, `--compress`, `--tokens`, `--find`, `--static-check`, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, `--set-tests-dir`).
+    - `--git-base <git-repository-folder>` is mandatory for every git command (`--git-check`, `--git-path`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`).
+    - `--prj-base` and `--git-base` are never persisted in `~/.config/usereq/config.json`.
+  - Directory configuration:
+    - `docs-dir`, `tests-dir`, and `src-dir` are persisted in `~/.config/usereq/config.json`.
+    - Defaults when the configuration stores no value: `usereq`, `tests`, and `src`.
+    - `--set-docs-dir DOCS_DIR`, `--set-src-dir SRC_DIR` (repeatable), and `--set-tests-dir TESTS_DIR` persist project-relative directory values and require `--prj-base`.
+    - Configured directories must resolve under `--prj-base`.
     - On fresh installation, missing configured directories are created automatically.
-    - `--src-dir` is repeatable and can be provided multiple times to include multiple source directories.
+  - `GUIDELINES_DIR` is fixed to `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines` and is not configurable; generated prompts and skills reference it through home-relative paths.
   - Use one or more `--provider SPEC` parameters (at least one is required) to configure provider activation, artifact types, and options:
     - `SPEC` format: `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`
     - `PROVIDER`: `antigravity`, `claude`, `codex`, `opencode`, or `pi`.
@@ -185,13 +179,11 @@ req \
       - Supported `MODULE` values: `Dummy`, `Pylance`, `Ruff`, `Command` (case-insensitive).
       - Entries are merged into `~/.config/usereq/config.json` without replacing existing ones: existing entries are preserved, identity-duplicates are ignored, and only new non-duplicate entries are appended per language.
 - Configuration is stored in a single user-global file: `~/.config/usereq/config.json`. No configuration files are written to the project home or git repository path.
-- You need to run `req` again if you add or remove requirement-related files in the documentation directory or any files in the `guidelines/` directory.
+- You need to run `req` again if you add or remove requirement-related files in the documentation directory, or if the installed guidelines under `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines` change.
 - Provider-scoped option `prompts-use-agents` (in the optional `:PROVIDER_OPTIONS` segment) generates prompt files as **agent-only references** (adds an `agent:` front matter field) where supported (Claude commands, OpenCode commands, and pi prompts).
 - Add `--verbose` and `--debug` to get detailed and diagnostic output.
 - Add `--update` to update an existing installation (requires an existing `~/.config/usereq/config.json`).
   - With `--update`, passing one or more `--provider` specs replaces persisted provider specs; without `--provider`, persisted specs are reused.
-- Add `--add-guidelines` to copy packaged guideline templates into `--guidelines-dir` without overwriting existing files.
-- Add `--upgrade-guidelines` to copy packaged guideline templates into `--guidelines-dir` and overwrite existing files.
 - Add `-h` / `--help` to print command help and exit.
 - Add `--ver` / `--version` to print the installed package version and exit.
 - Add `--remove` to remove `req-*` artifacts generated by useReq from the user-level provider directories configured in the global configuration file.
@@ -200,53 +192,50 @@ req \
 
 ### Embedded Utility
 
-- Count tokens and chars for the given files (standalone, no --base/--here required).
+- Count tokens and chars for the given files (standalone, no --prj-base required).
   `--files-tokens FILE [FILE ...]`
 
-- Generate LLM reference markdown for the given files (standalone, no --base/--here required).
+- Generate LLM reference markdown for the given files (standalone, no --prj-base required).
   `--files-references FILE [FILE ...]`
 
-- Generate compressed output for the given files (standalone, no --base/--here required).                        
+- Generate compressed output for the given files (standalone, no --prj-base required).
   `--files-compress FILE [FILE ...]`
 
-- Find and extract specific constructs from the given files (standalone, no --base/--here required).
+- Find and extract specific constructs from the given files (standalone, no --prj-base required).
   `--files-find TAG PATTERN FILE [FILE ...]`
 
-- Run static analysis on the given files using tools configured in `~/.config/usereq/config.json` (standalone, no --base/--here required).
+- Run static analysis on the given files using tools configured in `~/.config/usereq/config.json` (standalone, no --prj-base required).
   `--files-static-check FILE [FILE ...]`
 
-- Count tokens and chars for canonical docs files in configured `docs-dir` (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`; here-only project scan: `--here` is implied when omitted, `--base` is not allowed, and explicit `--docs-dir` is ignored).
+- Count tokens and chars for canonical docs files in configured `docs-dir` (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`; requires `--prj-base`).
   `--tokens`
 
-- Generate LLM reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Generate LLM reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (requires `--prj-base`).
   `--references`
 
-- Generate compressed output for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).  
+- Generate compressed output for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (requires `--prj-base`).  
   `--compress`
 
-- Find and extract specific constructs from source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Find and extract specific constructs from source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (requires `--prj-base`).
   `--find TAG PATTERN`
 
-- Run static analysis on source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (plus configured `tests-dir`, excluding `fixtures/`) using tools configured in `~/.config/usereq/config.json` (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Run static analysis on source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (plus configured `tests-dir`, excluding `fixtures/`) using tools configured in `~/.config/usereq/config.json` (requires `--prj-base`).
   `--static-check`
 
-- Check repository integrity for the configured git path: clean working tree and valid HEAD (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Check repository integrity for `--git-base`: clean working tree and valid HEAD (requires `--git-base`).
   `--git-check`
 
-- Check canonical docs presence in configured `docs-dir`: `REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md` (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Check canonical docs presence in configured `docs-dir`: `REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md` (requires `--prj-base`).
   `--docs-check`
 
-- Create an isolated git worktree and branch with the provided name; also copies `.venv` (when present) into the new worktree context (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Create an isolated git worktree and branch with the provided name; also copies `.venv` (when present) into the new worktree context (requires `--git-base`).
   `--git-wt-create WT_NAME`
 
-- Remove the git worktree and branch identified by name (force-removes the target worktree and deletes the branch; here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Remove the git worktree and branch identified by name (force-removes the target worktree and deletes the branch; requires `--git-base`).
   `--git-wt-delete WT_NAME`
 
-- Print the git repository root resolved at runtime from the current working directory; the command fails when the current directory is not inside a git repository (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
+- Print the git repository root resolved from `--git-base`; the command fails when `--git-base` is not inside a git repository (requires `--git-base`).
   `--git-path`
-
-- Print the absolute current working directory path (here-only project scan: `--here` is implied when omitted, `--base` is not allowed).
-  `--get-base-path`
 
 
 - Add `--enable-line-numbers` to include `<n>:` prefixes in `--files-compress`, `--compress`, `--files-find`, and `--find` output.

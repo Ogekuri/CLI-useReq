@@ -8,7 +8,8 @@
 # @details Resolves repository-relative paths, isolates HOME to a disposable
 # directory, removes previously generated user-level provider directories
 # from the disposable HOME, recreates the required project directory scaffold,
-# and invokes `scripts/req.sh` with the canonical installation argument set.
+# persists the project-relative docs/src/tests directories, and invokes
+# `scripts/req.sh` with the canonical installation argument set.
 # The provider list includes Pi prompts and Pi skills so `~/.pi/agent`
 # resources are exercised during smoke installation.
 # @satisfies SRS-366, SRS-367
@@ -103,20 +104,29 @@ else
     done
 
     # make dirs
-    mkdir -p "${FOLDER_PATH}/guidelines"
     mkdir -p "${FOLDER_PATH}/docs"
     mkdir -p "${FOLDER_PATH}/tests"
     mkdir -p "${FOLDER_PATH}/src"
+
+    # @brief Prints the exact smoke-test directory configuration command line.
+    # @details Persists the project-relative docs/src/tests directories in the
+    # disposable HOME configuration file before installation.
+    echo "${SCRIPT_PATH}/req.sh" \
+        --prj-base "${FOLDER_PATH}" --set-docs-dir docs \
+        --set-src-dir src --set-tests-dir tests
+
+    # @brief Executes the smoke-test directory configuration command.
+    # @details Writes docs-dir, src-dir, and tests-dir to the disposable
+    # `~/.config/usereq/config.json`.
+    "${SCRIPT_PATH}/req.sh" \
+        --prj-base "${FOLDER_PATH}" --set-docs-dir docs \
+        --set-src-dir src --set-tests-dir tests
 
     # @brief Prints the exact smoke-test installation command line.
     # @details Mirrors the execution command for manual reproduction and keeps
     # the Pi provider visible in installation logs.
     echo "${SCRIPT_PATH}/req.sh" \
-        --base "${FOLDER_PATH}" --docs-dir "${FOLDER_PATH}/docs" \
-        --guidelines-dir "${FOLDER_PATH}/guidelines" \
-        --src-dir "${FOLDER_PATH}/src" \
-        --tests-dir "${FOLDER_PATH}/tests" \
-        --upgrade-guidelines \
+        --prj-base "${FOLDER_PATH}" \
         --provider antigravity:prompts,skills \
         --provider claude:prompts,agents,skills \
         --provider codex:prompts,skills \
@@ -134,11 +144,7 @@ else
     # prompts and Pi skills, into user-level directories under the disposable
     # HOME.
     "${SCRIPT_PATH}/req.sh" \
-        --base "${FOLDER_PATH}" --docs-dir "${FOLDER_PATH}/docs" \
-        --guidelines-dir "${FOLDER_PATH}/guidelines" \
-        --src-dir "${FOLDER_PATH}/src" \
-        --tests-dir "${FOLDER_PATH}/tests" \
-        --upgrade-guidelines \
+        --prj-base "${FOLDER_PATH}" \
         --provider antigravity:prompts,skills \
         --provider claude:prompts,agents,skills \
         --provider codex:prompts,skills \

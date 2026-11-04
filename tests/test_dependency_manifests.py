@@ -158,21 +158,21 @@ def test_req_sh_executes_cli_with_uv_run() -> None:
     assert "sha256sum" not in content
 
 
-def test_req_sh_preserves_invocation_cwd_for_here_commands(tmp_path: Path) -> None:
-    """@brief Verify req.sh does not force CLI here-mode commands to repository root.
+def test_req_sh_forwards_git_base_argument(tmp_path: Path) -> None:
+    """@brief Verify req.sh forwards the mandatory --git-base argument unchanged.
     @details Executes req.sh from an isolated non-git directory and calls
-    `--git-check`; expected behavior is failure with the runtime git-resolution
-    diagnostic because the caller context is not inside a git repository.
+    `--git-check --git-base <target>`; expected behavior is failure with the git
+    resolution diagnostic because the forwarded base is not inside a git repository.
     @param tmp_path {Path} Pytest-provided isolated temporary directory.
     @return {None} No return value.
     @satisfies SRS-056
-    @satisfies SRS-311, SRS-391
+    @satisfies SRS-311, SRS-391, SRS-397
     """
 
     target_cwd = tmp_path / "external-project"
     target_cwd.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
-        [str(REQ_SCRIPT_PATH), "--git-check"],
+        [str(REQ_SCRIPT_PATH), "--git-check", "--git-base", str(target_cwd)],
         cwd=target_cwd,
         capture_output=True,
         text=True,

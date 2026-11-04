@@ -85,6 +85,15 @@ class HomeIsolatedTestCase(unittest.TestCase):
         with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
             return cli.main(argv)
 
+    def seed_directory_config(
+        self,
+        docs: str = "docs",
+        tests: str = "tests",
+        src: tuple[str, ...] = ("src",),
+    ) -> None:
+        """Persist project-relative directory values for the isolated HOME (SRS-398..SRS-400)."""
+        cli.update_directory_config(docs, tests, list(src))
+
 
 class TestUserLevelInstall(HomeIsolatedTestCase):
     """SRS-381..389: single install run with every provider and artifact."""
@@ -94,11 +103,8 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         """Executes one installation for all assertion methods."""
         cls.CLASS_HOME = Path(tempfile.mkdtemp(prefix="usereq-install-home-"))
         cls.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-install-project-"))
-        for sub in ("docs", "guidelines", "tests", "src"):
+        for sub in ("docs", "tests", "src"):
             (cls.TEST_DIR / sub).mkdir(exist_ok=True)
-        (cls.TEST_DIR / "guidelines" / "sample.md").write_text(
-            "guideline\n", encoding="utf-8"
-        )
         cls.prompts_snapshot_before = {
             p.name: p.read_text(encoding="utf-8")
             for p in sorted((cli.RESOURCE_ROOT / "prompts").iterdir())
@@ -108,18 +114,11 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
             patch("usereq.cli.maybe_notify_newer_version", autospec=True),
             patch("usereq.cli.home_dir", return_value=cls.CLASS_HOME),
         ):
+            cli.update_directory_config("docs", "tests", ["src"])
             cls.exit_code = cli.main(
                 [
-                    "--base",
+                    "--prj-base",
                     str(cls.TEST_DIR),
-                    "--docs-dir",
-                    "docs",
-                    "--guidelines-dir",
-                    "guidelines",
-                    "--tests-dir",
-                    "tests",
-                    "--src-dir",
-                    "src",
                 ]
                 + ALL_PROVIDERS_ALL_ARTIFACTS
             )
@@ -279,27 +278,25 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
             self.assertNotIn("allowed-tools:", content)
 
     def test_global_config_saved_with_canonical_keys(self) -> None:
-        """SRS-287/SRS-288: single global config file with canonical keys only."""
+        """SRS-288: single global config file with canonical directory/provider keys only."""
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         self.assertTrue(config_path.is_file())
         data = json.loads(config_path.read_text(encoding="utf-8"))
         self.assertEqual(
             sorted(data.keys()),
-            sorted(
-                [
-                    "guidelines-dir",
-                    "docs-dir",
-                    "tests-dir",
-                    "src-dir",
-                    "providers",
-                ]
-            ),
+            sorted(["docs-dir", "tests-dir", "src-dir", "providers"]),
         )
-        self.assertEqual(data["guidelines-dir"], "guidelines")
         self.assertEqual(data["docs-dir"], "docs")
         self.assertEqual(data["tests-dir"], "tests")
         self.assertEqual(data["src-dir"], ["src"])
         self.assertIsInstance(data["providers"], list)
+
+    def test_prj_base_and_git_base_not_persisted(self) -> None:
+        """SRS-394: --prj-base and --git-base are never written to the configuration file."""
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertNotIn("prj-base", data)
+        self.assertNotIn("git-base", data)
 
     def test_flowchart_resources_created(self) -> None:
         """SRS-371/SRS-374: req-flowchart artifacts are emitted when bundled."""
@@ -323,11 +320,15 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         )
 
     def test_guidelines_tokens_replaced(self) -> None:
-        """%%GUIDELINES_PATH%% and %%GUIDELINES_FILES%% are substituted."""
-        command = self.HOME / ".claude" / "commands" / "req" / "write.md"
+        """SRS-402/SRS-403: guidelines tokens are substituted with home-relative paths."""
+        command = self.HOME / ".claude" / "commands" / "req" / "analyze.md"
         content = command.read_text(encoding="utf-8")
         self.assertNotIn("%%GUIDELINES_PATH%%", content)
         self.assertNotIn("%%GUIDELINES_FILES%%", content)
+        self.assertIn(
+            "~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines",
+            content,
+        )
 
 
 class TestProviderSpecParsing(unittest.TestCase):
@@ -390,22 +391,15 @@ class TestProviderSpecMultiple(HomeIsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-multi-"))
-        for sub in ("docs", "guidelines", "tests", "src"):
+        for sub in ("docs", "tests", "src"):
             (self.TEST_DIR / sub).mkdir(exist_ok=True)
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
 
     def install(self, *specs: str) -> int:
         argv = [
-            "--base",
+            "--prj-base",
             str(self.TEST_DIR),
-            "--docs-dir",
-            "docs",
-            "--guidelines-dir",
-            "guidelines",
-            "--tests-dir",
-            "tests",
-            "--src-dir",
-            "src",
         ]
         for spec in specs:
             argv.extend(["--provider", spec])
@@ -440,16 +434,8 @@ class TestProviderSpecMultiple(HomeIsolatedTestCase):
         """SRS-035: installation without --provider specs fails with exit code 4."""
         rc = self.run_cli(
             [
-                "--base",
+                "--prj-base",
                 str(self.TEST_DIR),
-                "--docs-dir",
-                "docs",
-                "--guidelines-dir",
-                "guidelines",
-                "--tests-dir",
-                "tests",
-                "--src-dir",
-                "src",
             ]
         )
         self.assertEqual(rc, 4)
@@ -461,20 +447,13 @@ class TestProviderSpecPersistence(HomeIsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-persist-"))
-        for sub in ("docs", "guidelines", "tests", "src"):
+        for sub in ("docs", "tests", "src"):
             (self.TEST_DIR / sub).mkdir(exist_ok=True)
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
         self.base_argv = [
-            "--base",
+            "--prj-base",
             str(self.TEST_DIR),
-            "--docs-dir",
-            "docs",
-            "--guidelines-dir",
-            "guidelines",
-            "--tests-dir",
-            "tests",
-            "--src-dir",
-            "src",
         ]
 
     def test_provider_specs_persisted_to_global_config(self) -> None:
@@ -487,7 +466,7 @@ class TestProviderSpecPersistence(HomeIsolatedTestCase):
         """SRS-280: --update without --provider reuses persisted specs."""
         self.run_cli(self.base_argv + ["--provider", "codex:prompts"])
         shutil.rmtree(self.HOME / ".codex")
-        rc = self.run_cli(["--update", "--base", str(self.TEST_DIR)])
+        rc = self.run_cli(["--update", "--prj-base", str(self.TEST_DIR)])
         self.assertEqual(rc, 0)
         self.assertTrue(
             (self.HOME / ".codex" / "prompts" / f"req-{EXPECTED_PROMPTS[0]}.md").exists()
@@ -497,7 +476,7 @@ class TestProviderSpecPersistence(HomeIsolatedTestCase):
         """SRS-280: CLI --provider specs replace persisted entries."""
         self.run_cli(self.base_argv + ["--provider", "codex:prompts"])
         rc = self.run_cli(
-            ["--update", "--base", str(self.TEST_DIR), "--provider", "claude:prompts"]
+            ["--update", "--prj-base", str(self.TEST_DIR), "--provider", "claude:prompts"]
         )
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
@@ -511,20 +490,13 @@ class TestPromptsUseAgents(HomeIsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-agents-stub-"))
-        for sub in ("docs", "guidelines", "tests", "src"):
+        for sub in ("docs", "tests", "src"):
             (self.TEST_DIR / sub).mkdir(exist_ok=True)
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
         self.base_argv = [
-            "--base",
+            "--prj-base",
             str(self.TEST_DIR),
-            "--docs-dir",
-            "docs",
-            "--guidelines-dir",
-            "guidelines",
-            "--tests-dir",
-            "tests",
-            "--src-dir",
-            "src",
         ]
 
     def test_claude_commands_are_agent_stubs(self) -> None:
@@ -575,129 +547,130 @@ class TestPromptsUseAgents(HomeIsolatedTestCase):
 
 
 class TestInstallDefaultDirectories(HomeIsolatedTestCase):
-    """SRS-359..SRS-363: fresh-install defaults and directory creation."""
+    """SRS-359..SRS-363: configured directory defaults and creation."""
 
     def setUp(self) -> None:
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-defaults-"))
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
-    def test_install_uses_default_directories_when_cli_flags_omitted(self) -> None:
-        rc = self.run_cli(["--base", str(self.TEST_DIR), "--provider", "codex:prompts"])
+    def test_install_uses_default_directories_without_configuration(self) -> None:
+        """SRS-359/SRS-361/SRS-362: defaults are usereq, tests, and src."""
+        rc = self.run_cli(
+            ["--prj-base", str(self.TEST_DIR), "--provider", "codex:prompts"]
+        )
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["docs-dir"], "req/docs")
-        self.assertEqual(data["guidelines-dir"], "req/guidelines/")
-        self.assertEqual(data["tests-dir"], "tests/")
-        self.assertEqual(data["src-dir"], ["src/"])
+        self.assertEqual(data["docs-dir"], "usereq")
+        self.assertEqual(data["tests-dir"], "tests")
+        self.assertEqual(data["src-dir"], ["src"])
 
-    def test_install_creates_missing_parent_directories(self) -> None:
-        rc = self.run_cli(["--base", str(self.TEST_DIR), "--provider", "codex:prompts"])
+    def test_install_creates_missing_directories(self) -> None:
+        """SRS-363: installation creates configured directories under --prj-base."""
+        rc = self.run_cli(
+            ["--prj-base", str(self.TEST_DIR), "--provider", "codex:prompts"]
+        )
         self.assertEqual(rc, 0)
-        self.assertTrue((self.TEST_DIR / "req" / "docs").is_dir())
-        self.assertTrue((self.TEST_DIR / "req" / "guidelines").is_dir())
+        self.assertTrue((self.TEST_DIR / "usereq").is_dir())
         self.assertTrue((self.TEST_DIR / "tests").is_dir())
         self.assertTrue((self.TEST_DIR / "src").is_dir())
 
-    def test_update_keeps_configured_directories(self) -> None:
-        self.run_cli(
-            [
-                "--base",
-                str(self.TEST_DIR),
-                "--docs-dir",
-                "docs",
-                "--guidelines-dir",
-                "guidelines",
-                "--tests-dir",
-                "tests",
-                "--src-dir",
-                "src",
-                "--provider",
-                "codex:prompts",
-            ]
+    def test_install_creates_nested_configured_directories(self) -> None:
+        """SRS-363: nested configured directories are created with their parents."""
+        self.seed_directory_config(docs="req/docs")
+        rc = self.run_cli(
+            ["--prj-base", str(self.TEST_DIR), "--provider", "codex:prompts"]
         )
-        rc = self.run_cli(["--update", "--base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
+        self.assertTrue((self.TEST_DIR / "req" / "docs").is_dir())
+
+    def test_update_keeps_configured_directories(self) -> None:
+        """SRS-407: update reuses the persisted directory configuration."""
+        self.seed_directory_config()
+        self.run_cli(
+            ["--prj-base", str(self.TEST_DIR), "--provider", "codex:prompts"]
+        )
+        rc = self.run_cli(["--update", "--prj-base", str(self.TEST_DIR)])
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
         self.assertEqual(data["docs-dir"], "docs")
 
 
-class TestGuidelinesTemplates(HomeIsolatedTestCase):
-    """Guidelines template copy flows (--add-guidelines / --upgrade-guidelines)."""
+class TestGuidelinesDirectory(HomeIsolatedTestCase):
+    """SRS-360/SRS-402/SRS-403/SRS-404: fixed installation-owned guidelines directory."""
 
     def setUp(self) -> None:
         super().setUp()
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
-        (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "tests").mkdir(exist_ok=True)
-        (self.TEST_DIR / "src").mkdir(exist_ok=True)
-        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
-        # Synthetic guidelines template source so tests never touch packaged resources.
-        self.RESOURCE_ROOT = Path(tempfile.mkdtemp(prefix="usereq-resroot-"))
-        (self.RESOURCE_ROOT / "guidelines").mkdir()
-        (self.RESOURCE_ROOT / "prompts").mkdir()
-        (self.RESOURCE_ROOT / "docs").mkdir()
-        template = self.RESOURCE_ROOT / "guidelines" / "existing.md"
-        template.write_text("template\n", encoding="utf-8")
-        (
-            self.RESOURCE_ROOT
-            / "docs"
-            / "Requirements_Template.md"
-        ).write_text("template\n", encoding="utf-8")
-        self.addCleanup(shutil.rmtree, self.RESOURCE_ROOT, ignore_errors=True)
-        root_patcher = patch.object(cli, "RESOURCE_ROOT", self.RESOURCE_ROOT)
-        root_patcher.start()
-        self.addCleanup(root_patcher.stop)
-        self.base_argv = [
-            "--base",
-            str(self.TEST_DIR),
-            "--docs-dir",
-            "docs",
-            "--guidelines-dir",
-            "guidelines",
-            "--tests-dir",
-            "tests",
-            "--src-dir",
-            "src",
-        ]
+        self.guidelines = (
+            self.HOME
+            / ".pi"
+            / "agent"
+            / "npm"
+            / "node_modules"
+            / "pi-usereq"
+            / "src"
+            / "resources"
+            / "guidelines"
+        )
 
-    def test_add_guidelines_preserves_existing(self) -> None:
-        existing = self.TEST_DIR / "guidelines" / "existing.md"
-        existing.write_text("existing\n", encoding="utf-8")
+    def test_guidelines_dir_is_fixed_home_relative_path(self) -> None:
+        """SRS-360: GUIDELINES_DIR resolves under HOME and is not configurable."""
+        self.assertEqual(cli.guidelines_dir(), self.guidelines)
+        project = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
         rc = self.run_cli(
-            self.base_argv + ["--add-guidelines", "--provider", "codex:prompts"]
+            ["--prj-base", str(project), "--provider", "codex:prompts"]
         )
         self.assertEqual(rc, 0)
-        self.assertEqual(existing.read_text(encoding="utf-8"), "existing\n")
-
-    def test_upgrade_guidelines_overwrites_existing(self) -> None:
-        existing = self.TEST_DIR / "guidelines" / "existing.md"
-        existing.write_text("existing\n", encoding="utf-8")
-        rc = self.run_cli(
-            self.base_argv + ["--upgrade-guidelines", "--provider", "codex:prompts"]
-        )
-        self.assertEqual(rc, 0)
-        self.assertEqual(existing.read_text(encoding="utf-8"), "template\n")
-
-    def test_add_guidelines_copies_missing_templates(self) -> None:
-        rc = self.run_cli(
-            self.base_argv + ["--add-guidelines", "--provider", "codex:prompts"]
-        )
-        self.assertEqual(rc, 0)
-        self.assertEqual(
-            (self.TEST_DIR / "guidelines" / "existing.md").read_text(
+        self.assertNotIn(
+            "guidelines-dir",
+            (self.HOME / ".config" / "usereq" / "config.json").read_text(
                 encoding="utf-8"
             ),
-            "template\n",
         )
 
-    def test_no_copy_without_flags(self) -> None:
-        rc = self.run_cli(self.base_argv + ["--provider", "codex:prompts"])
+    def test_home_relative_path_rendering(self) -> None:
+        """SRS-402/SRS-403: substitution values use the ~/ form."""
+        self.assertEqual(cli.format_home_relative_path(self.HOME), "~")
+        self.assertEqual(
+            cli.format_home_relative_path(self.guidelines / "RFC2119.md"),
+            "~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines/RFC2119.md",
+        )
+
+    def test_guidelines_file_list_uses_installed_directory(self) -> None:
+        """SRS-403: %%GUIDELINES_FILES%% lists installed guideline files."""
+        self.guidelines.mkdir(parents=True, exist_ok=True)
+        (self.guidelines / "RFC2119.md").write_text("rfc\n", encoding="utf-8")
+        self.assertEqual(
+            cli.generate_guidelines_file_list(),
+            "`~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines/RFC2119.md`",
+        )
+        self.assertEqual(
+            cli.generate_guidelines_file_items(),
+            [
+                "~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines/RFC2119.md"
+            ],
+        )
+
+    def test_guidelines_file_list_falls_back_to_directory(self) -> None:
+        """SRS-402: missing guidelines directory renders the directory with a trailing slash."""
+        self.assertEqual(
+            cli.generate_guidelines_file_list(),
+            "`~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines/`",
+        )
+
+    def test_install_does_not_copy_guidelines_into_project(self) -> None:
+        """SRS-404: installation never writes guideline files into the project."""
+        project = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        self.guidelines.mkdir(parents=True, exist_ok=True)
+        (self.guidelines / "RFC2119.md").write_text("rfc\n", encoding="utf-8")
+        rc = self.run_cli(["--prj-base", str(project), "--provider", "codex:prompts"])
         self.assertEqual(rc, 0)
-        self.assertEqual(list((self.TEST_DIR / "guidelines").iterdir()), [])
+        self.assertFalse((project / "guidelines").exists())
+        self.assertFalse((project / "usereq" / "guidelines").exists())
 
 
 class TestRemoveCommand(HomeIsolatedTestCase):
@@ -706,21 +679,14 @@ class TestRemoveCommand(HomeIsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-remove-"))
-        for sub in ("docs", "guidelines", "tests", "src"):
+        for sub in ("docs", "tests", "src"):
             (self.TEST_DIR / sub).mkdir(exist_ok=True)
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
         rc = self.run_cli(
             [
-                "--base",
+                "--prj-base",
                 str(self.TEST_DIR),
-                "--docs-dir",
-                "docs",
-                "--guidelines-dir",
-                "guidelines",
-                "--tests-dir",
-                "tests",
-                "--src-dir",
-                "src",
                 "--provider",
                 "claude:prompts,skills",
                 "--provider",
@@ -730,7 +696,7 @@ class TestRemoveCommand(HomeIsolatedTestCase):
         self.assertEqual(rc, 0)
 
     def test_remove_deletes_req_artifacts(self) -> None:
-        rc = self.run_cli(["--remove", "--base", str(self.TEST_DIR)])
+        rc = self.run_cli(["--remove"])
         self.assertEqual(rc, 0)
         self.assertFalse(
             (self.HOME / ".claude" / "commands" / "req" / "write.md").exists()
@@ -752,14 +718,14 @@ class TestRemoveCommand(HomeIsolatedTestCase):
         unrelated_skill = self.HOME / ".claude" / "skills" / "user-skill"
         unrelated_skill.mkdir(parents=True, exist_ok=True)
         (unrelated_skill / "SKILL.md").write_text("user\n", encoding="utf-8")
-        rc = self.run_cli(["--remove", "--base", str(self.TEST_DIR)])
+        rc = self.run_cli(["--remove"])
         self.assertEqual(rc, 0)
         self.assertTrue(unrelated.exists())
         self.assertTrue((unrelated_skill / "SKILL.md").exists())
 
     def test_remove_without_global_config_fails(self) -> None:
         (self.HOME / ".config" / "usereq" / "config.json").unlink()
-        rc = self.run_cli(["--remove", "--base", str(self.TEST_DIR)])
+        rc = self.run_cli(["--remove"])
         self.assertNotEqual(rc, 0)
 
 
@@ -769,22 +735,15 @@ class TestInstallationSummaryTable(HomeIsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-table-"))
-        for sub in ("docs", "guidelines", "tests", "src"):
+        for sub in ("docs", "tests", "src"):
             (self.TEST_DIR / sub).mkdir(exist_ok=True)
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
 
     def capture_install(self, *specs: str) -> str:
         argv = [
-            "--base",
+            "--prj-base",
             str(self.TEST_DIR),
-            "--docs-dir",
-            "docs",
-            "--guidelines-dir",
-            "guidelines",
-            "--tests-dir",
-            "tests",
-            "--src-dir",
-            "src",
         ]
         for spec in specs:
             argv.extend(["--provider", spec])
@@ -873,7 +832,7 @@ class TestUserLevelPathHelpers(unittest.TestCase):
 
 
 class TestGitCheckCommand(HomeIsolatedTestCase):
-    """SRS-311/SRS-312/SRS-391: --git-check with runtime git resolution."""
+    """SRS-311/SRS-312/SRS-391: --git-check executes git in --git-base."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -890,7 +849,7 @@ class TestGitCheckCommand(HomeIsolatedTestCase):
                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
                 patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
             ):
-                rc = cli.main(["--git-check"])
+                rc = cli.main(["--git-check", "--git-base", str(self.TEST_DIR)])
             self.assertEqual(rc, 0)
             self.assertEqual(mock_stdout.getvalue(), "")
             self.assertEqual(mock_stderr.getvalue(), "")
@@ -907,7 +866,7 @@ class TestGitCheckCommand(HomeIsolatedTestCase):
                 patch("sys.stdout", new_callable=io.StringIO),
                 patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
             ):
-                rc = cli.main(["--git-check"])
+                rc = cli.main(["--git-check", "--git-base", str(self.TEST_DIR)])
             self.assertNotEqual(rc, 0)
             self.assertEqual(
                 mock_stderr.getvalue().strip(), "ERROR: Git status unclear!"
@@ -915,10 +874,15 @@ class TestGitCheckCommand(HomeIsolatedTestCase):
         finally:
             os.chdir(prev_cwd)
 
-    def test_git_check_rejects_base(self) -> None:
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            rc = cli.main(["--git-check", "--base", str(self.TEST_DIR)])
-        self.assertNotEqual(rc, 0)
+    def test_git_check_requires_git_base(self) -> None:
+        """SRS-397/SRS-405: --git-check without --git-base exits with code 1."""
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
+        ):
+            rc = cli.main(["--git-check"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--git-base", mock_stderr.getvalue())
 
     def test_git_check_outside_git_repo_fails(self) -> None:
         non_git = Path(tempfile.mkdtemp(prefix="usereq-nongit-"))
@@ -927,7 +891,7 @@ class TestGitCheckCommand(HomeIsolatedTestCase):
         try:
             os.chdir(non_git)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-check"])
+                rc = cli.main(["--git-check", "--git-base", str(non_git)])
             self.assertNotEqual(rc, 0)
         finally:
             os.chdir(prev_cwd)
@@ -940,22 +904,14 @@ class TestDocsCheckCommand(HomeIsolatedTestCase):
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-docs-check-"))
         (self.TEST_DIR / "docs").mkdir(exist_ok=True)
-        (self.TEST_DIR / "guidelines").mkdir(exist_ok=True)
         (self.TEST_DIR / "tests").mkdir(exist_ok=True)
         (self.TEST_DIR / "src").mkdir(exist_ok=True)
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
         self.run_cli(
             [
-                "--base",
+                "--prj-base",
                 str(self.TEST_DIR),
-                "--docs-dir",
-                "docs",
-                "--guidelines-dir",
-                "guidelines",
-                "--tests-dir",
-                "tests",
-                "--src-dir",
-                "src",
                 "--provider",
                 "codex:prompts",
             ]
@@ -964,39 +920,34 @@ class TestDocsCheckCommand(HomeIsolatedTestCase):
     def test_docs_check_all_present_succeeds(self) -> None:
         for name in ("REQUIREMENTS.md", "WORKFLOW.md", "REFERENCES.md"):
             (self.TEST_DIR / "docs" / name).write_text("doc\n", encoding="utf-8")
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--docs-check"])
-            self.assertEqual(rc, 0)
-        finally:
-            os.chdir(prev_cwd)
+        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+            rc = cli.main(["--docs-check", "--prj-base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
 
     def test_docs_check_missing_requirements(self) -> None:
         (self.TEST_DIR / "docs" / "WORKFLOW.md").write_text("doc\n", encoding="utf-8")
         (self.TEST_DIR / "docs" / "REFERENCES.md").write_text("doc\n", encoding="utf-8")
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with (
-                patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
-            ):
-                rc = cli.main(["--docs-check"])
-            self.assertNotEqual(rc, 0)
-            self.assertIn("REQUIREMENTS.md", mock_stdout.getvalue())
-        finally:
-            os.chdir(prev_cwd)
-
-    def test_docs_check_rejects_base(self) -> None:
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            rc = cli.main(["--docs-check", "--base", str(self.TEST_DIR)])
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
+            rc = cli.main(["--docs-check", "--prj-base", str(self.TEST_DIR)])
         self.assertNotEqual(rc, 0)
+        self.assertIn("REQUIREMENTS.md", mock_stdout.getvalue())
+
+    def test_docs_check_requires_prj_base(self) -> None:
+        """SRS-396/SRS-405: --docs-check without --prj-base exits with code 1."""
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
+        ):
+            rc = cli.main(["--docs-check"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--prj-base", mock_stderr.getvalue())
 
 
 class TestGitWtNameCommand(HomeIsolatedTestCase):
-    """SRS-318/SRS-319/SRS-391: --git-wt-name uses runtime git root."""
+    """SRS-318/SRS-319/SRS-391: --git-wt-name uses --git-base."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -1012,7 +963,7 @@ class TestGitWtNameCommand(HomeIsolatedTestCase):
                 patch("usereq.cli.maybe_notify_newer_version", autospec=True),
                 patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
             ):
-                rc = cli.main(["--git-wt-name"])
+                rc = cli.main(["--git-wt-name", "--git-base", str(self.TEST_DIR)])
             self.assertEqual(rc, 0)
             value = mock_stdout.getvalue().strip()
         finally:
@@ -1029,14 +980,14 @@ class TestGitWtNameCommand(HomeIsolatedTestCase):
         try:
             os.chdir(non_git)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-name"])
+                rc = cli.main(["--git-wt-name", "--git-base", str(non_git)])
             self.assertNotEqual(rc, 0)
         finally:
             os.chdir(prev_cwd)
 
 
 class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
-    """SRS-320..SRS-332/SRS-335/SRS-391: worktree create/delete commands."""
+    """SRS-320..SRS-332/SRS-335/SRS-391: worktree create/delete with --git-base."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -1057,7 +1008,7 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "bad/name"])
+                rc = cli.main(["--git-wt-create", "bad/name", "--git-base", str(self.TEST_DIR)])
             self.assertNotEqual(rc, 0)
         finally:
             os.chdir(prev_cwd)
@@ -1067,7 +1018,7 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                cli.main(["--git-wt-create", "in valid"])
+                cli.main(["--git-wt-create", "in valid", "--git-base", str(self.TEST_DIR)])
             self.assertEqual(Path.cwd(), self.TEST_DIR)
         finally:
             os.chdir(prev_cwd)
@@ -1078,11 +1029,11 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "usereq-roundtrip-wt"])
+                rc = cli.main(["--git-wt-create", "usereq-roundtrip-wt", "--git-base", str(self.TEST_DIR)])
             self.assertEqual(rc, 0)
             self.assertTrue(wt_path.is_dir())
             self.assertEqual(Path.cwd(), self.TEST_DIR)
-            rc = cli.main(["--git-wt-delete", "usereq-roundtrip-wt"])
+            rc = cli.main(["--git-wt-delete", "usereq-roundtrip-wt", "--git-base", str(self.TEST_DIR)])
             self.assertEqual(rc, 0)
             self.assertFalse(wt_path.exists())
         finally:
@@ -1103,9 +1054,9 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "usereq-partial-full"])
+                rc = cli.main(["--git-wt-create", "usereq-partial-full", "--git-base", str(self.TEST_DIR)])
             self.assertEqual(rc, 0)
-            rc = cli.main(["--git-wt-delete", "usereq-partial"])
+            rc = cli.main(["--git-wt-delete", "usereq-partial", "--git-base", str(self.TEST_DIR)])
             self.assertNotEqual(rc, 0)
         finally:
             subprocess.run(
@@ -1131,7 +1082,7 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-delete", "does-not-exist"])
+                rc = cli.main(["--git-wt-delete", "does-not-exist", "--git-base", str(self.TEST_DIR)])
             self.assertNotEqual(rc, 0)
         finally:
             os.chdir(prev_cwd)
@@ -1145,7 +1096,7 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "usereq-venv-wt"])
+                rc = cli.main(["--git-wt-create", "usereq-venv-wt", "--git-base", str(self.TEST_DIR)])
             self.assertEqual(rc, 0)
             self.assertTrue((wt_path / ".venv" / "pyvenv.cfg").exists())
         finally:
@@ -1163,7 +1114,7 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
 
 
 class TestGitRepositoryPathCommands(HomeIsolatedTestCase):
-    """SRS-333/SRS-334/SRS-347/SRS-391: runtime path resolution commands."""
+    """SRS-333/SRS-334/SRS-391: --git-path resolves the repository root from --git-base."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -1171,55 +1122,45 @@ class TestGitRepositoryPathCommands(HomeIsolatedTestCase):
         make_git_repo(self.TEST_DIR)
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
-    def test_git_path_prints_runtime_git_root(self) -> None:
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with (
-                patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
-            ):
-                rc = cli.main(["--git-path"])
-            self.assertEqual(rc, 0)
-            self.assertEqual(mock_stdout.getvalue().strip(), str(self.TEST_DIR))
-        finally:
-            os.chdir(prev_cwd)
+    def test_git_path_prints_git_base_root(self) -> None:
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
+            rc = cli.main(["--git-path", "--git-base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            mock_stdout.getvalue().strip(), str(self.TEST_DIR.resolve())
+        )
 
-    def test_get_base_path_prints_cwd(self) -> None:
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(self.TEST_DIR)
-            with (
-                patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
-            ):
-                rc = cli.main(["--get-base-path"])
-            self.assertEqual(rc, 0)
-            self.assertEqual(mock_stdout.getvalue().strip(), str(self.TEST_DIR))
-        finally:
-            os.chdir(prev_cwd)
+    def test_git_path_requires_git_base(self) -> None:
+        """SRS-397/SRS-405: --git-path without --git-base exits with code 1."""
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
+        ):
+            rc = cli.main(["--git-path"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--git-base", mock_stderr.getvalue())
 
-    def test_git_path_rejects_base(self) -> None:
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            rc = cli.main(["--git-path", "--base", str(self.TEST_DIR)])
-        self.assertNotEqual(rc, 0)
-
-    def test_get_base_path_rejects_base(self) -> None:
-        with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-            rc = cli.main(["--get-base-path", "--base", str(self.TEST_DIR)])
-        self.assertNotEqual(rc, 0)
+    def test_git_path_rejects_removed_get_base_path(self) -> None:
+        """SRS-347: --get-base-path is no longer parsed."""
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("sys.stderr", new_callable=io.StringIO),
+        ):
+            with self.assertRaises(SystemExit):
+                cli.main(["--get-base-path"])
 
     def test_git_path_outside_git_repo_fails(self) -> None:
         non_git = Path(tempfile.mkdtemp(prefix="usereq-nongit-"))
         self.addCleanup(shutil.rmtree, non_git, ignore_errors=True)
-        prev_cwd = Path.cwd()
-        try:
-            os.chdir(non_git)
-            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-path"])
-            self.assertNotEqual(rc, 0)
-        finally:
-            os.chdir(prev_cwd)
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("sys.stderr", new_callable=io.StringIO),
+        ):
+            rc = cli.main(["--git-path", "--git-base", str(non_git)])
+        self.assertNotEqual(rc, 0)
 
 
 class TestStaticCheckConfig(HomeIsolatedTestCase):
@@ -1228,20 +1169,13 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-scfg-"))
-        for sub in ("docs", "guidelines", "tests", "src"):
+        for sub in ("docs", "tests", "src"):
             (self.TEST_DIR / sub).mkdir(exist_ok=True)
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
         self.base_argv = [
-            "--base",
+            "--prj-base",
             str(self.TEST_DIR),
-            "--docs-dir",
-            "docs",
-            "--guidelines-dir",
-            "guidelines",
-            "--tests-dir",
-            "tests",
-            "--src-dir",
-            "src",
         ]
 
     def test_enable_static_check_saved_to_global_config(self) -> None:
@@ -1275,7 +1209,7 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
         rc = self.run_cli(
             [
                 "--update",
-                "--base",
+                "--prj-base",
                 str(self.TEST_DIR),
                 "--enable-static-check",
                 "Python=Ruff",
@@ -1303,6 +1237,126 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
         self.assertEqual(len(data["static-check"]["Python"]), 1)
+
+
+class TestSetDirectoryCommands(HomeIsolatedTestCase):
+    """SRS-396..SRS-401/SRS-406: directory configuration commands."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-setdirs-"))
+        for sub in ("docs", "tests", "src", "app"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+
+    def read_config(self) -> dict:
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        return json.loads(config_path.read_text(encoding="utf-8"))
+
+    def test_set_docs_dir_persists_value(self) -> None:
+        rc = self.run_cli(
+            ["--prj-base", str(self.TEST_DIR), "--set-docs-dir", "docs"]
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.read_config()["docs-dir"], "docs")
+
+    def test_set_src_dir_persists_ordered_list(self) -> None:
+        rc = self.run_cli(
+            [
+                "--prj-base",
+                str(self.TEST_DIR),
+                "--set-src-dir",
+                "src",
+                "--set-src-dir",
+                "app",
+            ]
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.read_config()["src-dir"], ["src", "app"])
+
+    def test_set_tests_dir_persists_value(self) -> None:
+        rc = self.run_cli(
+            ["--prj-base", str(self.TEST_DIR), "--set-tests-dir", "tests"]
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.read_config()["tests-dir"], "tests")
+
+    def test_set_directory_preserves_unrelated_keys(self) -> None:
+        """SRS-401: unrelated configuration keys survive a directory update."""
+        self.run_cli(
+            [
+                "--prj-base",
+                str(self.TEST_DIR),
+                "--provider",
+                "codex:prompts",
+                "--enable-static-check",
+                "Python=Pylance",
+            ]
+        )
+        rc = self.run_cli(
+            ["--prj-base", str(self.TEST_DIR), "--set-docs-dir", "docs"]
+        )
+        self.assertEqual(rc, 0)
+        data = self.read_config()
+        self.assertEqual(data["docs-dir"], "docs")
+        self.assertEqual(data["providers"], ["codex:prompts"])
+        self.assertEqual(data["static-check"], {"Python": [{"module": "Pylance"}]})
+
+    def test_set_directory_requires_prj_base(self) -> None:
+        """SRS-396/SRS-405: --set-docs-dir without --prj-base exits with code 1."""
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            rc = self.run_cli(["--set-docs-dir", "docs"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--prj-base", mock_stderr.getvalue())
+
+
+class TestPrjBaseRequirements(HomeIsolatedTestCase):
+    """SRS-396/SRS-405: project commands require --prj-base."""
+
+    def test_install_requires_prj_base(self) -> None:
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            rc = self.run_cli(["--provider", "codex:prompts"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--prj-base", mock_stderr.getvalue())
+
+    def test_references_requires_prj_base(self) -> None:
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            rc = self.run_cli(["--references"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--prj-base", mock_stderr.getvalue())
+
+    def test_git_path_accepts_prj_base_independently(self) -> None:
+        """SRS-394: --prj-base is never required by nor persisted for git commands."""
+        project = Path(tempfile.mkdtemp(prefix="usereq-prj-"))
+        repo = Path(tempfile.mkdtemp(prefix="usereq-repo-"))
+        make_git_repo(repo)
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, repo, ignore_errors=True)
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            rc = cli.main(["--git-path", "--git-base", str(repo)])
+        self.assertEqual(rc, 0)
+        self.assertFalse(
+            (self.HOME / ".config" / "usereq" / "config.json").exists()
+        )
+
+    def test_removed_directory_flags_are_not_parsed(self) -> None:
+        """SRS-034: removed directory flags are rejected by the parser."""
+        for flag in (
+            "--docs-dir",
+            "--src-dir",
+            "--tests-dir",
+            "--guidelines-dir",
+            "--add-guidelines",
+            "--upgrade-guidelines",
+        ):
+            with (
+                patch("sys.stderr", new_callable=io.StringIO),
+                self.assertRaises(SystemExit),
+            ):
+                cli.main([flag, "value"])
 
 
 class TestUpgradeUninstall(unittest.TestCase):
