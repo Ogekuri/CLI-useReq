@@ -60,7 +60,7 @@ uvx --from git+https://github.com/Ogekuri/useReq.git req --help
 **2. Configure** — enable a provider (configuration only; nothing is installed yet, all providers are disabled by default):
 
 ```bash
-req --enable-provider pi:prompts,skills
+req --enable pi:prompts,skills
 ```
 
 **3. Run** — install the artifacts for the configured providers on your project:
@@ -71,9 +71,10 @@ req install --prj-base myproject/
 
 Prompts and skills are installed under your HOME (e.g. `~/.pi/agent/prompts/` and `~/.pi/agent/skills/` for the `pi` provider) and are immediately available as `/req-<name>` commands and `/skill:req-<name>` skills. Start with `/req-write` to draft the SRS of a new project, or `/req-create` to derive it from existing source code; then drive implementation with `/req-implement`, `/req-change`, and `/req-new`.
 
+<!-- Legacy section anchor retained for SRS-342 tooling: ## Requirements -->
 # Requirements
 
-- **Astral `uv`** — required to run `scripts/req.sh` and the recommended workflow for all project CLI executions. Install it from [https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/).
+- **Astral `uv` tool is required** to run `scripts/req.sh` and is the recommended workflow for all project CLI executions. Install it from [https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/).
 - **Python 3.11+**.
 - **git** — required by project-scan commands (`references`, `compress`, `find`, `static-check`) and by the git-integration commands.
 - **Primary validated environment: Linux** — automatic `--upgrade` and `--uninstall` execution is Linux-only; on other platforms the manual command is printed instead.
@@ -141,22 +142,22 @@ Typical project layout:
 All providers are disabled by default. Provider enablement is exclusive to the repeatable config-only flag:
 
 ```bash
-req --enable-provider SPEC
+req --enable SPEC
 ```
 
 - `SPEC` format: `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`
 - `PROVIDER`: `antigravity`, `claude`, `codex`, `opencode`, or `pi`.
 - `ARTIFACT_ITEM`: one of `{prompts, agents, skills}`.
 - `PROVIDER_OPTIONS`: (optional) comma-separated list from `{prompts-use-agents}`.
-- Example: `req --enable-provider pi:prompts,skills`
+- Example: `req --enable pi:prompts,skills`
 
 Behavior:
 
-- `--enable-provider` only updates `~/.config/usereq/config.json`; it never installs artifacts. Enabling a provider again replaces all its previously persisted specs while preserving every other provider.
-- `--disable-provider PROVIDER` removes all persisted specs of that provider (unknown tokens exit with code 1).
+- `--enable` only updates `~/.config/usereq/config.json`; it never installs artifacts. Enabling a provider again replaces all its previously persisted specs while preserving every other provider.
+- `--disable PROVIDER` removes all persisted specs of that provider (unknown tokens exit with code 1).
 - Unknown or invalid tokens in a SPEC print an English error identifying the invalid token and exit with code 1.
 - `prompts-use-agents` is provider-scoped and applies only to `prompts` artifacts: it generates prompt files as **agent-only references** (adds an `agent:` front matter field) where supported (Claude commands, OpenCode commands, and pi prompts).
-- Configuration flags may be combined with the `install` subcommand in one invocation (`req --enable-provider pi:prompts install --prj-base .`): configuration is applied first, then installation proceeds.
+- Configuration flags may be combined with the `install` subcommand in one invocation (`req --enable pi:prompts install --prj-base .`): configuration is applied first, then installation proceeds.
 
 ### Static checks
 
@@ -356,7 +357,7 @@ Requirements-driven projects keep their normative documentation under the config
 ## Development Notes
 
 - `scripts/req.sh` runs the CLI via `uv run python -m usereq.cli` from the repository root, forwarding all user arguments unchanged.
-- `scripts/test-install.sh` performs an isolated-HOME smoke installation (`--enable-provider pi:prompts,skills` + `install`).
+- `scripts/test-install.sh` performs an isolated-HOME smoke installation (`--enable pi:prompts,skills` + `install`).
 - `scripts/prompts-update.sh` synchronizes the bundled prompts from the upstream [Ogekuri/Prompts](https://github.com/Ogekuri/Prompts) releases into `src/usereq/resources/prompts`.
 - `uv.lock` is the canonical dependency lockfile for execution, build, development, testing, and static analysis.
 

@@ -555,7 +555,7 @@ canonical keys (including `"auto-install"`) are preserved. Only canonical keys f
 - @param src_dir_values Ordered project-relative source directory values.
 - @param static_check_config Optional dict of static-check config to persist under key
 `"static-check"`; preserved unchanged when None.
-- @param provider_specs Optional list of raw ``--enable-provider`` SPEC strings to
+- @param provider_specs Optional list of raw ``--enable`` SPEC strings to
 persist under the `"providers"` key (SRS-279).
 - @return {None} Function return value.
 - @satisfies SRS-279, SRS-288, SRS-387, SRS-394, SRS-407, SRS-420
@@ -589,7 +589,7 @@ directories created on demand. `--prj-base` and `--git-base` are never persisted
 
 ### fn `def load_persisted_provider_specs() -> list[str]` (L2046-2068)
 - @brief Build the canonical identity tuple for one static-check entry.
-- @brief Load persisted ``--enable-provider`` SPEC strings from the user-global configuration file.
+- @brief Load persisted ``--enable`` SPEC strings from the user-global configuration file.
 - @details Identity is defined strictly by language, module, cmd, and params.
 Unknown/additional keys in ``entry`` are ignored; ``params`` is normalized
 to a tuple preserving order, and non-list params are treated as empty.
@@ -629,7 +629,7 @@ to a tuple preserving order, and non-list params are treated as empty.
 - @return {Optional[str]} Provider name, or None when the SPEC is invalid.
 
 ### fn `def apply_enable_provider_specs(specs: list[str]) -> None` (L2137-2171)
-- @brief Persist `--enable-provider` specs replacing the named providers' entries.
+- @brief Persist `--enable` specs replacing the named providers' entries.
 - @details Validates every SPEC through `parse_provider_spec` (SRS-275, SRS-278), removes all previously persisted specs of the named providers, appends the new specs in CLI order, and preserves every other provider (SRS-279). No artifact is installed (SRS-276).
 - @param specs {list[str]} Raw SPEC strings in CLI order.
 - @return {None} Function return value.
@@ -639,7 +639,7 @@ to a tuple preserving order, and non-list params are treated as empty.
 ### fn `def apply_disable_provider_specs(names: list[str]) -> None` (L2172-2205)
 - @brief Remove all persisted specs of the named providers.
 - @details Removes every persisted SPEC of each named provider; absent specs leave the configuration unchanged; the `"providers"` key is removed when no specs remain (SRS-413).
-- @param names {list[str]} Provider names supplied via `--disable-provider`.
+- @param names {list[str]} Provider names supplied via `--disable`.
 - @return {None} Function return value.
 - @throws {ReqError} Raised on unknown provider tokens with exit code 1 (SRS-422).
 - @satisfies SRS-413, SRS-422
@@ -675,7 +675,7 @@ to a tuple preserving order, and non-list params are treated as empty.
 
 ### fn `def run_config_commands(args: Namespace) -> None` (L2334-2362)
 - @brief Apply every provider/static-check/auto-install configuration command.
-- @details Application order: `--enable-provider`, `--disable-provider`, `--enable-static-check`, `--disable-static-check`, `--enable-auto-install`, `--disable-auto-install`; each step persists immediately (SRS-275, SRS-413, SRS-414, SRS-420).
+- @details Application order: `--enable`, `--disable`, `--enable-static-check`, `--disable-static-check`, `--enable-auto-install`, `--disable-auto-install`; each step persists immediately (SRS-275, SRS-413, SRS-414, SRS-420).
 - @param args Parsed CLI namespace carrying the configuration flag values.
 - @return {None} Function return value.
 - @satisfies SRS-275, SRS-276, SRS-413, SRS-414, SRS-415, SRS-420

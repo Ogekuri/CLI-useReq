@@ -501,7 +501,7 @@ def build_parser() -> argparse.ArgumentParser:
     usage = (
         "req -c [-h] [--upgrade] [--uninstall] [--remove] [--update] --prj-base PRJ_BASE [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
-        "[--enable-provider SPEC] [--disable-provider PROVIDER] [--enable-auto-install] [--disable-auto-install] "
+        "[--enable SPEC] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
         "[--enable-static-check SPEC] [--disable-static-check SPEC] "
         "[--test-static-check {dummy,pylance,ruff,command} [FILES...]] "
@@ -588,7 +588,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug", action="store_true", help="Show debug logs for diagnostics."
     )
     parser.add_argument(
-        "--enable-provider",
+        "--enable",
         action="append",
         metavar="SPEC",
         dest="enable_provider",
@@ -602,7 +602,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--disable-provider",
+        "--disable",
         action="append",
         metavar="PROVIDER",
         dest="disable_provider",
@@ -1867,7 +1867,7 @@ def save_config(
     @param src_dir_values Ordered project-relative source directory values.
     @param static_check_config Optional dict of static-check config to persist under key
       `"static-check"`; preserved unchanged when None.
-    @param provider_specs Optional list of raw ``--enable-provider`` SPEC strings to
+    @param provider_specs Optional list of raw ``--enable`` SPEC strings to
       persist under the `"providers"` key (SRS-279).
     @details Writes the configuration payload to `~/.config/usereq/config.json`, creating
     missing parent directories on first write, via read-modify-write so unspecified
@@ -2045,7 +2045,7 @@ def _static_check_entry_identity(
 
 def load_persisted_provider_specs() -> list[str]:
     """!
-    @brief Load persisted ``--enable-provider`` SPEC strings from the user-global configuration file.
+    @brief Load persisted ``--enable`` SPEC strings from the user-global configuration file.
     @return List of raw SPEC strings; empty list if key is missing or config is unreadable.
     @details Reads the ``"providers"`` key from `~/.config/usereq/config.json` (SRS-064,
     SRS-279). All providers are disabled by default because the key defaults to an empty
@@ -2136,7 +2136,7 @@ def _persisted_provider_spec_provider(spec: str) -> Optional[str]:
 
 def apply_enable_provider_specs(specs: list[str]) -> None:
     """!
-    @brief Persist `--enable-provider` specs replacing the named providers' entries.
+    @brief Persist `--enable` specs replacing the named providers' entries.
     @param specs {list[str]} Raw SPEC strings in CLI order.
     @return {None} Function return value.
     @details Validates every SPEC through `parse_provider_spec` (SRS-275, SRS-278),
@@ -2172,7 +2172,7 @@ def apply_enable_provider_specs(specs: list[str]) -> None:
 def apply_disable_provider_specs(names: list[str]) -> None:
     """!
     @brief Remove all persisted specs of the named providers.
-    @param names {list[str]} Provider names supplied via `--disable-provider`.
+    @param names {list[str]} Provider names supplied via `--disable`.
     @return {None} Function return value.
     @details Removes every persisted SPEC of each named provider; absent specs leave the
     configuration unchanged; the `"providers"` key is removed when no specs remain
@@ -2336,7 +2336,7 @@ def run_config_commands(args: Namespace) -> None:
     @brief Apply every provider/static-check/auto-install configuration command.
     @param args Parsed CLI namespace carrying the configuration flag values.
     @return {None} Function return value.
-    @details Application order: `--enable-provider`, `--disable-provider`,
+    @details Application order: `--enable`, `--disable`,
     `--enable-static-check`, `--disable-static-check`, `--enable-auto-install`,
     `--disable-auto-install`; each step persists immediately (SRS-275, SRS-413, SRS-414,
     SRS-420).
@@ -3219,7 +3219,7 @@ def run(args: Namespace) -> None:
         parser = build_parser()
         parser.print_help()
         raise ReqError(
-            "Error: at least one enabled provider is required in ~/.config/usereq/config.json (configure it with --enable-provider SPEC)",
+            "Error: at least one enabled provider is required in ~/.config/usereq/config.json (configure it with --enable SPEC)",
             4,
         )
     if not any((enable_prompts, enable_agents, enable_skills)):

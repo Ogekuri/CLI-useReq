@@ -73,9 +73,9 @@
         - `resolve_absolute(...)`: resolve normalized values for containment checks [`src/usereq/cli.py`]
         - `update_directory_config(...)`: rewrite `~/.config/usereq/config.json` directory keys only [`src/usereq/cli.py`]
           - `get_global_config_path(...)`: resolve `~/.config/usereq/config.json` path [`src/usereq/cli.py`]
-    - `_is_provider_config_command(...)`: detect `--enable-provider`/`--disable-provider`/`--enable-static-check`/`--disable-static-check`/`--enable-auto-install`/`--disable-auto-install` command path [`src/usereq/cli.py`]
+    - `_is_provider_config_command(...)`: detect `--enable`/`--disable`/`--enable-static-check`/`--disable-static-check`/`--enable-auto-install`/`--disable-auto-install` command path [`src/usereq/cli.py`]
       - `run_config_commands(...)`: apply every provider/static-check/auto-install configuration command in flag order without installing artifacts (SRS-276, SRS-413, SRS-414, SRS-415, SRS-420) [`src/usereq/cli.py`]
-        - `apply_enable_provider_specs(...)`: validate and persist `--enable-provider` specs replacing the named providers' entries (SRS-279) [`src/usereq/cli.py`]
+        - `apply_enable_provider_specs(...)`: validate and persist `--enable` specs replacing the named providers' entries (SRS-279) [`src/usereq/cli.py`]
           - `parse_provider_spec(...)`: validate one SPEC string [`src/usereq/cli.py`]
           - `_read_config_payload(...)`: read the raw user-global configuration payload [`src/usereq/cli.py`]
           - `_write_config_payload(...)`: write the payload filtered to canonical keys [`src/usereq/cli.py`]
@@ -197,7 +197,7 @@
       - `load_config(...)`: load `docs-dir`, `tests-dir`, and `src-dir` from `~/.config/usereq/config.json` with per-key defaults when the file or key is absent [`src/usereq/cli.py`]
         - `get_global_config_path(...)`: resolve `~/.config/usereq/config.json` path [`src/usereq/cli.py`]
           - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
-      - `load_persisted_provider_specs(...)`: load persisted `--enable-provider` SPEC strings from `~/.config/usereq/config.json` `"providers"` key (SRS-279) [`src/usereq/cli.py`]
+      - `load_persisted_provider_specs(...)`: load persisted `--enable` SPEC strings from `~/.config/usereq/config.json` `"providers"` key (SRS-279) [`src/usereq/cli.py`]
       - `_read_config_payload(...)`: read the raw payload; the persisted `"static-check"` section is preserved unchanged and an absent key stays absent so the SRS-424 defaults keep tracking (SRS-301, SRS-415, SRS-424) [`src/usereq/cli.py`]
       - `ensure_doc_directory(...)`: validate the configured docs directory and create missing directories during non-update installation [`src/usereq/cli.py`]
       - `ensure_test_directory(...)`: validate the configured tests directory and create missing directories during non-update installation [`src/usereq/cli.py`]
@@ -218,7 +218,7 @@
       - `generate_guidelines_file_items(...)`: list home-relative guideline entries printed after installation [`src/usereq/cli.py`]
       - `md_to_toml(...)`: convert Markdown prompt templates to Antigravity TOML commands [`src/usereq/cli.py`]
       - `replace_tokens(...)`: apply token substitutions inside generated TOML command files [`src/usereq/cli.py`]
-      - `_build_provider_modules_map(...)`: derive ordered per-provider module-entry lines by merging applicable provider-scoped options per artifact item from the effective persisted `--enable-provider` specs [`src/usereq/cli.py`]
+      - `_build_provider_modules_map(...)`: derive ordered per-provider module-entry lines by merging applicable provider-scoped options per artifact item from the effective persisted `--enable` specs [`src/usereq/cli.py`]
       - `_format_install_table(...)`: render Unicode box-drawing installation summary table with prompt-column wrapping and non-wrapped per-artifact module-entry lines [`src/usereq/cli.py`]
       - `_colorize_table_border(...)`: apply bright-red ANSI styling to Unicode border glyphs before stdout emission [`src/usereq/cli.py`]
 - **External Boundaries**
@@ -272,4 +272,4 @@
 - `PROC:test-install-sh -> PROC:req-sh`
   - `mechanism`: `child-process spawn`
   - `endpoint/channel`: `scripts/req.sh`
-  - `payload`: `CLI argument vector for disposable installation under an isolated HOME, including `--enable-provider` specs for antigravity/claude/codex/opencode/pi, static-check enablement entries, and the `install` subcommand invocation`
+  - `payload`: `CLI argument vector for disposable installation under an isolated HOME, including `--enable` specs for antigravity/claude/codex/opencode/pi, static-check enablement entries, and the `install` subcommand invocation`
