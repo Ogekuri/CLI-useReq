@@ -403,7 +403,7 @@ RELEASE_CHECK_PROGRAM_NAME = TOOL_PROGRAM_NAME
 GITHUB_REPOSITORY_OWNER = "Ogekuri"
 """! @brief Hardcoded GitHub owner used by upgrade and release-check endpoints."""
 
-GITHUB_REPOSITORY_NAME = "useReq"
+GITHUB_REPOSITORY_NAME = "CLI-useReq"
 """! @brief Hardcoded GitHub repository used by upgrade and release-check endpoints."""
 
 RELEASE_CHECK_IDLE_CACHE_ROOT_DIRNAME = ".cache"
@@ -1187,8 +1187,9 @@ def resolve_github_owner_repository_from_active_remotes() -> tuple[str, str]:
 def resolve_latest_release_api_url() -> str:
     """!
     @brief Resolve latest-release GitHub API URL from hardcoded repository settings.
-        @return Fully-qualified URL `https://api.github.com/repos/Ogekuri/useReq/releases/latest`.
     @details Returns the static endpoint derived from `GITHUB_REPOSITORY_OWNER` and `GITHUB_REPOSITORY_NAME`.
+    @return {str} Fully-qualified URL `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest`.
+    @satisfies SRS-430
     """
     return GITHUB_RELEASES_LATEST_URL
 

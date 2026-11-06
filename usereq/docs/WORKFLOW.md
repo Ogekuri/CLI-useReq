@@ -47,7 +47,7 @@
       - `get_release_check_idle_file_path(...)`: resolve `$HOME/.cache/<program_name>/check_version_idle-time.json` target path [`src/usereq/cli.py`]
       - `read_release_check_idle_state(...)`: parse and validate persisted idle-state JSON fields [`src/usereq/cli.py`]
       - `should_execute_release_check(...)`: decide whether remote check is due using persisted `idle_until_timestamp` gating when forced-online override is disabled [`src/usereq/cli.py`]
-      - `resolve_latest_release_api_url()`: resolve hardcoded endpoint `https://api.github.com/repos/Ogekuri/useReq/releases/latest` [`src/usereq/cli.py`]
+      - `resolve_latest_release_api_url()`: resolve hardcoded endpoint `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` [`src/usereq/cli.py`]
       - `write_release_check_idle_state(...)`: persist successful-check timestamp and idle-until timestamp using fixed 3600-second delay after successful HTTP/JSON validation [`src/usereq/cli.py`]
         - `write_release_check_idle_state_payload(...)`: serialize canonical idle-state JSON keys [`src/usereq/cli.py`]
           - `format_unix_timestamp_utc(...)`: serialize Unix timestamps as UTC human-readable strings [`src/usereq/cli.py`]

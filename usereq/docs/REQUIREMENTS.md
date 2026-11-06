@@ -1,8 +1,8 @@
 ---
 title: "useReq Requirements"
 description: "Software Requirements Specification"
-date: "2026-04-12"
-version: 1.16
+date: "2026-11-06"
+version: 1.17
 author: "Ogekuri"
 scope:
   paths:
@@ -106,7 +106,8 @@ No explicit performance optimizations identified.
 - **SRS-280**: MUST implement the following behavior: The bare `install`, `uninstall`, and `show` subcommands MUST be accepted without the `--` prefix and MUST NOT require `--git-base`.
 - **SRS-281**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-282**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
-- **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git` only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
+- **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git` only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
+- **SRS-430**: MUST implement the following behavior: The startup release-check MUST query the GitHub latest-release endpoint `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest`.
 - **SRS-344**: MUST implement the following behavior: `--uninstall` on Linux MUST execute `uv tool uninstall usereq` and MUST run release-check cache cleanup per SRS-346; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
 - **SRS-345**: MUST persist startup release-check idle-state at `~/.cache/usereq/check_version_idle-time.json`; idle-state writes MUST create parent directories; `--ver`/`--version` MUST force the HTTP release-check and bypass idle gating.
 - **SRS-346**: MUST implement the following behavior: On Linux, `--uninstall` MUST delete `~/.cache/usereq/check_version_idle-time.json` when present and MUST remove `~/.cache/usereq` only when the directory is empty.

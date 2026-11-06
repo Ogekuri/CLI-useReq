@@ -95,7 +95,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
         resolved_url = cli.resolve_latest_release_api_url()
         self.assertEqual(
             resolved_url,
-            "https://api.github.com/repos/Ogekuri/useReq/releases/latest",
+            "https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest",
         )
 
     def test_newer_version_warning_is_bright_green(self) -> None:
@@ -235,7 +235,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
         request_object = urlopen_call.args[0]
         self.assertEqual(
             request_object.full_url,
-            "https://api.github.com/repos/Ogekuri/useReq/releases/latest",
+            "https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest",
         )
 
     def test_release_check_skips_network_when_idle_window_active(self) -> None:
@@ -542,7 +542,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 cli.TOOL_PROGRAM_NAME,
                 "--force",
                 "--from",
-                "git+https://github.com/Ogekuri/useReq.git",
+                "git+https://github.com/Ogekuri/CLI-useReq.git",
             ],
             check=False,
         )

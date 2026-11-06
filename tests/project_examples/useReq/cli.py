@@ -404,7 +404,7 @@ def run_upgrade() -> None:
         "usereq",
         "--force",
         "--from",
-        "git+https://github.com/Ogekuri/useReq.git",
+        "git+https://github.com/Ogekuri/CLI-useReq.git",
     ]
     try:
         result = subprocess.run(command, check=False)
@@ -498,7 +498,7 @@ def maybe_notify_newer_version(timeout_seconds: float = 1.0) -> None:
     """
 
     current_version = load_package_version()
-    url = "https://api.github.com/repos/Ogekuri/useReq/releases/latest"
+    url = "https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest"
 
     try:
         request = urllib.request.Request(
