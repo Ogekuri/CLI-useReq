@@ -1,6 +1,108 @@
 # Changelog
 
-## [0.67.0](https://github.com/Ogekuri/useReq/compare/v0.66.0..v0.67.0) - 2026-11-02
+## [0.68.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0) - 2026-11-06
+### ⛰️  Features
+- Update prompts.
+
+### 🐛  Bug Fixes
+- Fix version number.
+
+### 🚜  Changes
+- switch release-check and self-upgrade to PyPI with --github override [useReq] *(cli)*
+  - Startup release-check and --upgrade now use PyPI JSON API / uv tool install cli-usereq (SRS-343, SRS-430)
+  - Add --github flag forcing --upgrade to install from the GitHub repository (SRS-440)
+  - --ver/--version prints installed, PyPI latest, and GitHub latest lines with unknown fallback (SRS-441, SRS-442)
+  - README: PyPI primary channel with dedicated GitHub alternative section (SRS-443)
+  - Tests: PyPI endpoint, upgrade commands, and three-line version output (SRS-444)
+- add PyPI OIDC trusted publishing and rename workflow to release-pypi.yml [useReq] *(release)*
+  - Rename release-uvx.yml to release-pypi.yml; build+GitHub Release now run for every version tag (SRS-431, SRS-432)
+  - Add master-gated publish-pypi job using pypa/gh-action-pypi-publish with OIDC (SRS-433, SRS-434)
+  - Rename distribution to cli-usereq in pyproject/uv.lock; fix author (Ogekuri) and repository URLs (SRS-435-SRS-437)
+  - Update --upgrade/--uninstall uv tool commands to cli-usereq (SRS-343, SRS-344)
+  - Update tests for workflow gating, OIDC publishing, and packaging metadata (SRS-438, SRS-439)
+- point upgrade and release-check to Ogekuri/CLI-useReq [useReq] *(core)*
+  - Update hardcoded GitHub repository identity after repository rename.
+  - SRS: SRS-343 upgrade source URL updated; new SRS-430 pins release-check endpoint (v1.17).
+  - src/usereq/cli.py: GITHUB_REPOSITORY_NAME constant and resolve_latest_release_api_url docs updated.
+  - tests: expected upgrade/release-check URLs updated in test_update_check.py and project_examples fixture.
+  - docs: WORKFLOW.md endpoint node updated; REFERENCES.md regenerated.
+- BREAKING CHANGE: rename --enable-provider/--disable-provider to --enable/--disable [useReq] *(cli)*
+  - Rename the provider configuration flags to --enable SPEC and
+  - --disable PROVIDER with no back-compatibility: the legacy names are
+  - added to the SRS-034 removed-flags list and rejected by the parser
+  - Update REQUIREMENTS (SRS-034, 275-279, 291, 294, 284-287, 352, 366,
+  - 413, 422, 423), parser usage/help, config-command docstrings,
+  - scripts/test-install.sh, unit tests, WORKFLOW, and README
+  - Restore the SRS-342 README literals (Requirements section anchor and
+  - 'Astral uv tool is required' phrasing) uncovered as a pre-existing
+  - regression by the full test run
+- add trace-derived default checkers and pre-flight probes [useReq] *(static-check)*
+  - Derive the default static-check configuration from the external
+  - ~/config.json trace: C/C++ cppcheck+clang-format, JavaScript node --check,
+  - TypeScript eslint, Python Pylance+Ruff (SRS-424..SRS-426); a present
+  - "static-check" entry, including {}, suppresses the defaults
+  - Add pre-flight availability probe before every checker execution: Dummy
+  - always, Pylance/Ruff via module in the active interpreter, Command via
+  - shutil.which; unavailable checkers emit Result: FAIL with English evidence
+  - without aborting and remaining checks continue (SRS-427, SRS-428)
+  - Update SRS-244 (constructor no longer raises), SRS-254 (missing config
+  - warns and continues with defaults), tests, WORKFLOW, REFERENCES, README
+- BREAKING CHANGE: add provider lifecycle commands and auto-install [useReq] *(cli)*
+  - Rename --provider to config-only --enable-provider and add reciprocal
+  - --disable-provider; all providers disabled by default (SRS-275/276/278/279/413)
+  - Add --disable-static-check exact-entry/whole-language removal and make
+  - enable/disable static-check standalone config commands (SRS-414/415)
+  - Add bare install/uninstall/show subcommands; show prints configuration,
+  - provider enablement, and per-provider component installation tables
+  - (SRS-280/416/417/418/419)
+  - Add auto-install concept defaulting enabled with --enable-auto-install/
+  - --disable-auto-install persistence and post-upgrade provider reinstall
+  - (SRS-420/421/422)
+  - Update REQUIREMENTS/WORKFLOW/REFERENCES, README, test-install.sh, and unit
+  - tests (SRS-423)
+- BREAKING CHANGE: rename analysis commands to bare subcommands and remove --git-path [useReq] *(cli)*
+  - Rename ten analysis commands to bare subcommands without -- prefix: files-tokens,
+  - files-references, files-compress, files-find, tokens, references, compress, find,
+  - files-static-check, static-check (SRS-408); legacy --prefixed forms are rejected
+  - (SRS-409)
+  - Require both --prj-base and --git-base for every analysis subcommand (SRS-410)
+  - Remove --git-path command and run_git_path without back-compatibility (SRS-333/334)
+  - Update REQUIREMENTS (SRS-177..181, 234..237, 253..257, 330, 396, 397, 408..412),
+  - WORKFLOW, REFERENCES, README help/usage, and unit tests (SRS-412)
+  - Align project example tiktoken import with src pyright pragma
+- BREAKING CHANGE: mandatory --prj-base/--git-base, config dirs, fixed GUIDELINES_DIR [useReq] *(cli)*
+  - Remove --base, --here, --get-base-path, --docs-dir, --src-dir,
+  - --tests-dir, --guidelines-dir, --add-guidelines, --upgrade-guidelines.
+  - Add mandatory --prj-base for project file commands and --git-base for
+  - git commands; both are never persisted in the global configuration.
+  - Persist docs-dir/src-dir/tests-dir in ~/.config/usereq/config.json with
+  - defaults usereq/src/tests and add --set-docs-dir/--set-src-dir/
+  - --set-tests-dir.
+  - Resolve GUIDELINES_DIR as a fixed, non-configurable home-relative
+  - installed path and substitute home-relative guideline tokens; drop all
+  - guideline copy/upgrade logic.
+  - Update requirements SRS-034/064/253/256/288/301/311/313/314/318/320/
+  - 326/329/330/333/334/335/347/359-363/391, add SRS-392..SRS-407.
+  - Update README, test-install.sh, WORKFLOW.md, REFERENCES.md and the
+  - unit-test suites to the new CLI surface.
+- BREAKING CHANGE: user-level install, global config, drop models/vscode/github/kiro/gemini [useReq] *(cli)*
+  - Install prompts/agents/skills into user-level CLI dirs under HOME
+  - (claude ~/.claude, codex ~/.codex, antigravity ~/.antigravity,
+  - opencode ~/.config/opencode, pi ~/.pi/agent); nothing written to projects.
+  - Persist configuration only in ~/.config/usereq/config.json; remove .req.
+  - Remove model management: delete models.json/models-legacy.json,
+  - --preserve-models, enable-models/enable-tools/legacy options.
+  - Remove VS Code settings.json support and github/kiro providers.
+  - Replace Gemini CLI with Antigravity CLI.
+  - Git commands resolve repo root at runtime (git rev-parse --show-toplevel).
+  - --remove now deletes req-* artifacts from user-level provider dirs.
+  - Update requirements (SRS-381..391), workflow, references, README,
+  - scripts/test-install.sh (isolated HOME), and the full test suite.
+
+### 📚  Documentation
+- Update README.md file.
+
+## [0.67.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.66.0..v0.67.0) - 2026-11-02
 ### ⛰️  Features
 - Update prompts.
 - add prompts-update.sh syncing prompts from Ogekuri/Prompts [useReq] *(scripts)*
@@ -30,24 +132,24 @@
   - Narrow SRS-095 token set to %%GUIDELINES_FILES%%, %%GUIDELINES_PATH%%, %%ARGS%%.
   - Update tests to assert keyword preservation; regenerate REFERENCES.md.
 
-## [0.66.0](https://github.com/Ogekuri/useReq/compare/v0.65.0..v0.66.0) - 2026-04-19
+## [0.66.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.65.0..v0.66.0) - 2026-04-19
 ### 📚  Documentation
 - Update README.md file.
 
-## [0.65.0](https://github.com/Ogekuri/useReq/compare/v0.64.0..v0.65.0) - 2026-04-14
+## [0.65.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.64.0..v0.65.0) - 2026-04-14
 ### 🐛  Bug Fixes
 - Fix flowchart prompt.
 
-## [0.64.0](https://github.com/Ogekuri/useReq/compare/v0.63.0..v0.64.0) - 2026-04-14
+## [0.64.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.63.0..v0.64.0) - 2026-04-14
 ### 🐛  Bug Fixes
 - Fix flowchart prompt.
 
-## [0.63.0](https://github.com/Ogekuri/useReq/compare/v0.62.0..v0.63.0) - 2026-04-14
+## [0.63.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.62.0..v0.63.0) - 2026-04-14
 ### ⛰️  Features
 - Add flowchart prompt.
 - Update prompts.
 
-## [0.62.0](https://github.com/Ogekuri/useReq/compare/v0.61.0..v0.62.0) - 2026-04-13
+## [0.62.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.61.0..v0.62.0) - 2026-04-13
 ### 📚  Documentation
 - document artifact-scoped provider option syntax [useReq] *(cli)*
   - README-20260413-160945
@@ -55,7 +157,7 @@
   - document artifact-local enable-models and enable-tools usage
   - clarify provider-scoped prompts-use-agents and legacy options
 
-## [0.61.0](https://github.com/Ogekuri/useReq/compare/v0.60.0..v0.61.0) - 2026-04-13
+## [0.61.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.60.0..v0.61.0) - 2026-04-13
 ### 🐛  Bug Fixes
 - Fix scripts/test-install.sh script.
 
@@ -77,7 +179,7 @@
   - Update summary rendering for per-artifact option lines.
   - Refresh CLI tests, WORKFLOW.md, and REFERENCES.md.
 
-## [0.60.0](https://github.com/Ogekuri/useReq/compare/v0.59.0..v0.60.0) - 2026-04-13
+## [0.60.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.59.0..v0.60.0) - 2026-04-13
 ### 📚  Documentation
 - Update README.md file.
 - document pi.dev CLI and bundled models [useReq] *(readme)*
@@ -87,14 +189,14 @@
   - align model and tool documentation with models.json
 - Update README.md file.
 
-## [0.59.0](https://github.com/Ogekuri/useReq/compare/v0.58.0..v0.59.0) - 2026-04-12
+## [0.59.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.58.0..v0.59.0) - 2026-04-12
 ### 📚  Documentation
 - align CLI behavior with implementation [useReq] *(readme)*
   - document fresh-install defaults and --here config behavior
   - add pi provider coverage and update provider spec guidance
   - correct project-scan file selection and worktree copy details
 
-## [0.58.0](https://github.com/Ogekuri/useReq/compare/v0.56.0..v0.58.0) - 2026-04-12
+## [0.58.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.56.0..v0.58.0) - 2026-04-12
 ### ⛰️  Features
 - add pi provider generation and config support [useReq] *(cli)*
   - extend SRS with pi provider requirements and worktree mapping
@@ -122,28 +224,28 @@
 - Update CHANGELOG.md file.
 - Update README.md file.
 
-## [0.56.0](https://github.com/Ogekuri/useReq/compare/v0.55.0..v0.56.0) - 2026-04-03
+## [0.56.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.55.0..v0.56.0) - 2026-04-03
 ### 🐛  Bug Fixes
 - Fix prompts.
 
-## [0.55.0](https://github.com/Ogekuri/useReq/compare/v0.54.0..v0.55.0) - 2026-04-02
+## [0.55.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.54.0..v0.55.0) - 2026-04-02
 ### 🐛  Bug Fixes
 - Fix shell execution in prompts.
 
-## [0.53.0](https://github.com/Ogekuri/useReq/compare/v0.52.0..v0.53.0) - 2026-04-01
+## [0.53.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.52.0..v0.53.0) - 2026-04-01
 ### 🐛  Bug Fixes
 - Fix prompts.
 - Fix git repository.
 
-## [0.52.0](https://github.com/Ogekuri/useReq/compare/v0.51.0..v0.52.0) - 2026-04-01
+## [0.52.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.51.0..v0.52.0) - 2026-04-01
 ### 🐛  Bug Fixes
 - Fix prompts commits.
 
-## [0.51.0](https://github.com/Ogekuri/useReq/compare/v0.50.0..v0.51.0) - 2026-04-01
+## [0.51.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.50.0..v0.51.0) - 2026-04-01
 ### ⛰️  Features
 - Update prompts with markdown report.
 
-## [0.50.0](https://github.com/Ogekuri/useReq/compare/v0.49.0..v0.50.0) - 2026-03-30
+## [0.50.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.49.0..v0.50.0) - 2026-03-30
 ### 🚜  Changes
 - always persist version-check idle state [useReq] *(cli)*
   - Update SRS-350 and add SRS-351 for failure persistence.
@@ -164,19 +266,19 @@
   - Refresh WORKFLOW and REFERENCES docs.
   - Update release-check tests.
 
-## [0.49.0](https://github.com/Ogekuri/useReq/compare/v0.48.0..v0.49.0) - 2026-03-30
+## [0.49.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.48.0..v0.49.0) - 2026-03-30
 ### 🐛  Bug Fixes
 - Fix fix prompt.
 
-## [0.48.0](https://github.com/Ogekuri/useReq/compare/v0.47.0..v0.48.0) - 2026-03-29
+## [0.48.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.47.0..v0.48.0) - 2026-03-29
 ### 🐛  Bug Fixes
 - Update images.
 
-## [0.47.0](https://github.com/Ogekuri/useReq/compare/v0.46.0..v0.47.0) - 2026-03-29
+## [0.47.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.46.0..v0.47.0) - 2026-03-29
 ### ⛰️  Features
 - Update images.
 
-## [0.46.0](https://github.com/Ogekuri/useReq/compare/v0.45.0..v0.46.0) - 2026-03-27
+## [0.46.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.45.0..v0.46.0) - 2026-03-27
 ### 🚜  Changes
 - force online release-check for version flags [useReq] *(cli)*
   - update SRS-345 for forced online check on --ver/--version
@@ -184,7 +286,7 @@
   - add regression test for active-idle bypass on --version
   - update WORKFLOW and regenerate REFERENCES
 
-## [0.45.0](https://github.com/Ogekuri/useReq/compare/v0.44.0..v0.45.0) - 2026-03-18
+## [0.45.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.44.0..v0.45.0) - 2026-03-18
 ### ⛰️  Features
 - Update promts files.
 
@@ -225,11 +327,11 @@
   - Update CLI command descriptions for --git-path and --get-base-path.
   - Document config-driven output and missing-config error message.
 
-## [0.44.0](https://github.com/Ogekuri/useReq/compare/v0.43.0..v0.44.0) - 2026-03-18
+## [0.44.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.43.0..v0.44.0) - 2026-03-18
 ### ⛰️  Features
 - Update prompts.
 
-## [0.43.0](https://github.com/Ogekuri/useReq/compare/v0.42.0..v0.43.0) - 2026-03-18
+## [0.43.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.42.0..v0.43.0) - 2026-03-18
 ### 🚜  Changes
 - move release-check idle cache path [useReq] *(cli)*
   - Update SRS-344 and add SRS-345/SRS-346 for cache path and uninstall cleanup.
@@ -239,7 +341,7 @@
   - Add unit tests for new path, directory creation, and uninstall cleanup.
   - Update WORKFLOW.md and regenerate REFERENCES.md.
 
-## [0.42.0](https://github.com/Ogekuri/useReq/compare/v0.41.0..v0.42.0) - 2026-03-17
+## [0.42.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.41.0..v0.42.0) - 2026-03-17
 ### ⛰️  Features
 - Update .g.conf file.
 
@@ -251,7 +353,7 @@
   - Add CLI unit tests for Linux and non-Linux command paths.
   - Refresh WORKFLOW.md and regenerate REFERENCES.md traceability docs.
 
-## [0.41.0](https://github.com/Ogekuri/useReq/compare/v0.40.0..v0.41.0) - 2026-03-17
+## [0.41.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.40.0..v0.41.0) - 2026-03-17
 ### ⛰️  Features
 - Update prompts files.
 - Update prompts.
@@ -264,7 +366,7 @@
 - recreate SRS structure from repository evidence [useReq] *(requirements)*
   - Reorganized and normalized requirement statements.\n- Preserved all existing SRS IDs without renumbering.\n- Aligned requirement-line syntax to RFC2119 keyword-first form.\n- Updated SRS metadata date/version for this rewrite.
 
-## [0.40.0](https://github.com/Ogekuri/useReq/compare/v0.39.0..v0.40.0) - 2026-03-17
+## [0.40.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.39.0..v0.40.0) - 2026-03-17
 ### 🐛  Bug Fixes
 - ensure build module for release build [useReq] *(release-workflow)*
   - Fix CI release workflow failure: python -m build missing module.
@@ -272,7 +374,7 @@
   - Add regression test for build step command in workflow file.
   - Update WORKFLOW runtime model for release build trace.
 
-## [0.39.0](https://github.com/Ogekuri/useReq/compare/v0.38.0..v0.39.0) - 2026-03-17
+## [0.39.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.38.0..v0.39.0) - 2026-03-17
 ### ⛰️  Features
 - Update prompts files.
 
@@ -332,7 +434,7 @@
   - add Requirements note for generating requirements.txt via uv export
   - keep existing README structure and usage guidance unchanged
 
-## [0.38.0](https://github.com/Ogekuri/useReq/compare/v0.37.0..v0.38.0) - 2026-03-16
+## [0.38.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.37.0..v0.38.0) - 2026-03-16
 ### 🐛  Bug Fixes
 - remove pytest from requirements.txt [useReq] *(dependencies)*
   - Removed 'pytest' from requirements.txt; it is a test/dev dependency,
@@ -372,7 +474,7 @@
   - --test-static-check retains verbose output (fail_only defaults to False)
   - Updated WORKFLOW.md and REFERENCES.md to reflect changes
 
-## [0.37.0](https://github.com/Ogekuri/useReq/compare/v0.36.0..v0.37.0) - 2026-03-16
+## [0.37.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.36.0..v0.37.0) - 2026-03-16
 ### 🚜  Changes
 - BREAKING CHANGE: remove ruff.sh and pyright.sh accessory scripts [useReq] *(scripts)*
   - Remove SRS-266 (scripts/ruff.sh requirement)
@@ -390,7 +492,7 @@
   - WORKFLOW.md updated with new call-trace for load_full_config
   - REFERENCES.md regenerated
 
-## [0.36.0](https://github.com/Ogekuri/useReq/compare/v0.35.0..v0.36.0) - 2026-03-16
+## [0.36.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.35.0..v0.36.0) - 2026-03-16
 ### 🚜  Changes
 - enforce Command params-before-file order [useReq] *(static-check)*
   - Update SRS-244/SRS-253/SRS-256 for Command invocation order.
@@ -401,7 +503,7 @@
 ### 📚  Documentation
 - Update README.md document.
 
-## [0.35.0](https://github.com/Ogekuri/useReq/compare/v0.34.0..v0.35.0) - 2026-03-16
+## [0.35.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.34.0..v0.35.0) - 2026-03-16
 ### 🐛  Bug Fixes
 - preserve existing static-check entries [useReq] *(cli)*
   - Ensure --enable-static-check appends only non-duplicate entries and keeps existing ones.\nAdd regression test for non-update config with pre-existing JavaScript Command checker.\nUpdate runtime/reference docs.
@@ -420,7 +522,7 @@
 - align static-check merge behavior [useReq] *(readme)*
   - Document --enable-static-check merge semantics for existing config.\nClarify that existing entries are preserved, duplicates ignored, and new entries appended.
 
-## [0.34.0](https://github.com/Ogekuri/useReq/compare/v0.33.0..v0.34.0) - 2026-03-16
+## [0.34.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.33.0..v0.34.0) - 2026-03-16
 ### 🐛  Bug Fixes
 - Minor fixex in promtps.
 - Major fixes on prompts.
@@ -441,7 +543,7 @@
 ### ◀️  Revert
 - Roll back branch to 26f54c01 (26f54c01a215e861b350ce3d6244cafb3d1f0b80).
 
-## [0.33.0](https://github.com/Ogekuri/useReq/compare/v0.32.0..v0.33.0) - 2026-03-16
+## [0.33.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.32.0..v0.33.0) - 2026-03-16
 ### ⛰️  Features
 - Update prompt files.
 
@@ -451,7 +553,7 @@
 - update git worktree path transitions [useReq] *(cli)*
   - Update SRS for git-check output and worktree path behavior.\nImplement --git-wt-exit command and parser wiring.\nMake --git-wt-create cd into new worktree only on full success.\nMake --git-wt-delete cd to base-path before deletion and use git-only deletion.\nAdjust CLI tests for new behaviors and add --git-wt-exit coverage.\nRegenerate workflow and references docs.
 
-## [0.32.0](https://github.com/Ogekuri/useReq/compare/v0.31.0..v0.32.0) - 2026-03-16
+## [0.32.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.31.0..v0.32.0) - 2026-03-16
 ### 🐛  Bug Fixes
 - Rimosso .req path.
 - Rimosso .req path.
@@ -469,7 +571,7 @@
   - SRS-326-328: new --git-wt-delete command for worktree/branch removal
   - Updated requirements, workflow, references, and 13 new tests (1912 total pass)
 
-## [0.31.0](https://github.com/Ogekuri/useReq/compare/v0.30.0..v0.31.0) - 2026-03-08
+## [0.31.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.30.0..v0.31.0) - 2026-03-08
 ### 🚜  Changes
 - deduplicate identical --enable-static-check entries on update [useReq] *(static-check)*
   - SRS-251 updated: identical entries (same module, cmd, params) within one invocation are silently discarded
@@ -477,7 +579,7 @@
   - cli.py run(): dedup logic applied both when collecting new specs and when merging with existing config
   - test_static_check.py: 5 new tests covering dedup within invocation, different params, update preservation, and identical-entry discard
 
-## [0.30.0](https://github.com/Ogekuri/useReq/compare/v0.29.0..v0.30.0) - 2026-03-07
+## [0.30.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.29.0..v0.30.0) - 2026-03-07
 ### ⛰️  Features
 - Remove bell from prompts.
 
@@ -496,7 +598,7 @@
   - Align update-check tests with hardcoded URL/source and timing semantics.
   - Refresh WORKFLOW and REFERENCES docs from updated implementation.
 
-## [0.29.0](https://github.com/Ogekuri/useReq/compare/v0.28.0..v0.29.0) - 2026-03-07
+## [0.29.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.28.0..v0.29.0) - 2026-03-07
 ### 🚜  Changes
 - reduce release-check idle window to 300s [useReq] *(cli)*
   - Update SRS-271 default idle_window_seconds from 86400 to 300.
@@ -505,7 +607,7 @@
   - Update WORKFLOW runtime note for release-check cadence.
   - Regenerate REFERENCES to reflect symbol/value updates.
 
-## [0.28.0](https://github.com/Ogekuri/useReq/compare/v0.27.0..v0.28.0) - 2026-03-07
+## [0.28.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.27.0..v0.28.0) - 2026-03-07
 ### ⛰️  Features
 - Add bell to prompts.
 
@@ -555,15 +657,15 @@
   - All 108 tests pass. REQUIREMENTS.md bumped to v1.05 with 4 SRS entries
   - removed (SRS-277, SRS-281, SRS-282, SRS-283) and SRS-288 added.
 
-## [0.27.0](https://github.com/Ogekuri/useReq/compare/v0.26.0..v0.27.0) - 2026-03-07
+## [0.27.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.26.0..v0.27.0) - 2026-03-07
 ### 🐛  Bug Fixes
 - Fix scripts/test-install.sh script.
 
-## [0.26.0](https://github.com/Ogekuri/useReq/compare/v0.25.0..v0.26.0) - 2026-03-07
+## [0.26.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.25.0..v0.26.0) - 2026-03-07
 ### 🐛  Bug Fixes
 - include resources/common/*.json in package-data and remove stale kiro reference [useReq] *(packaging)*
 
-## [0.24.0](https://github.com/Ogekuri/useReq/compare/v0.23.0..v0.24.0) - 2026-03-06
+## [0.24.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.23.0..v0.24.0) - 2026-03-06
 ### 🐛  Bug Fixes
 - retry upgrade remote inspection from repo root [useReq] *(cli)*
   - retry git remote inspection in REPO_ROOT when cwd is outside repository
@@ -571,7 +673,7 @@
   - add deterministic reproducer unit test for non-repo cwd failure
   - update WORKFLOW and regenerate REFERENCES docs
 
-## [0.23.0](https://github.com/Ogekuri/useReq/compare/v0.22.0..v0.23.0) - 2026-03-06
+## [0.23.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.22.0..v0.23.0) - 2026-03-06
 ### 🚜  Changes
 - support .mjs extension [useReq] *(parser)*
   - Update SRS-131 to include JavaScript .mjs extension support.
@@ -579,7 +681,7 @@
   - Align static-check extension mapping with JavaScript .js and .mjs aliases.
   - Add regression tests for .mjs detection and source file collection paths.
 
-## [0.21.0](https://github.com/Ogekuri/useReq/compare/v0.20.0..v0.21.0) - 2026-03-06
+## [0.21.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.20.0..v0.21.0) - 2026-03-06
 ### 🚜  Changes
 - derive upgrade source from remotes [useReq] *(cli)*
   - Update SRS for dynamic --upgrade source and program-name-based --uninstall.
@@ -603,7 +705,7 @@
   - Emit bright-red diagnostic messages for release-check failures (including HTTP 403 details).
   - Adjust and extend tests for timeout, URL resolution, color output, and failure diagnostics.
 
-## [0.19.0](https://github.com/Ogekuri/useReq/compare/v0.18.0..v0.19.0) - 2026-03-06
+## [0.19.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.18.0..v0.19.0) - 2026-03-06
 ### 🚜  Changes
 - move update check before argument parsing and color warning [useReq] *(cli)*
   - Update SRS-050/SRS-052 and align SRS-029 with startup check behavior.
@@ -612,7 +714,7 @@
   - Refresh update-check tests for startup-order and red warning output.
   - Update WORKFLOW runtime call-trace and regenerate REFERENCES index.
 
-## [0.17.0](https://github.com/Ogekuri/useReq/compare/v0.16.0..v0.17.0) - 2026-03-06
+## [0.17.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.16.0..v0.17.0) - 2026-03-06
 ### ⛰️  Features
 - add manual dispatch trigger [useReq] *(release-workflow)*
   - append SRS-268 for manual release workflow dispatch
@@ -620,19 +722,19 @@
   - add test for release workflow trigger configuration
   - update WORKFLOW.md and regenerate REFERENCES.md
 
-## [0.15.0](https://github.com/Ogekuri/useReq/compare/v0.14.0..v0.15.0) - 2026-03-05
+## [0.15.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.14.0..v0.15.0) - 2026-03-05
 ### 🐛  Bug Fixes
 - Fix .gitignore file.
 - Remove .place-holder files.
 
-## [0.13.0](https://github.com/Ogekuri/useReq/compare/v0.12.0..v0.13.0) - 2026-03-05
+## [0.13.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.12.0..v0.13.0) - 2026-03-05
 ### 🐛  Bug Fixes
 - ensure release-check for standalone/project commands [useReq] *(cli)*
   - add reproducer tests for standalone update-check and version-only bypass
   - invoke online release-check for standalone and project-scan flows
   - refresh WORKFLOW.md and REFERENCES.md
 
-## [0.12.0](https://github.com/Ogekuri/useReq/compare/v0.11.0..v0.12.0) - 2026-03-05
+## [0.12.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.11.0..v0.12.0) - 2026-03-05
 ### 🐛  Bug Fixes
 - add English REQUIREMENS alias [useReq] *(docs)*
   - add docs/REQUIREMENS.md in English\n- point to docs/REQUIREMENTS.md as canonical SRS
@@ -652,7 +754,7 @@
 - align SRS IDs with true-state wrappers [useReq] *(requirements)*
   - reassign duplicate SRS-264 collision to SRS-265\n- align script-path requirements to scripts/ wrappers\n- document missing root doxygen.sh as current limitation\n- add wrapper requirements for scripts/ruff.sh and scripts/pyright.sh
 
-## [0.11.0](https://github.com/Ogekuri/useReq/compare/v0.10.0..v0.11.0) - 2026-03-05
+## [0.11.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.10.0..v0.11.0) - 2026-03-05
 ### ⛰️  Features
 - Add package.json file.
 - Update .req/models.json file.
@@ -685,14 +787,14 @@
 ### 📚  Documentation
 - Update src/usereq/resources/docs/Document_Source_Code_in_Doxygen_Style.md file.
 
-## [0.10.0](https://github.com/Ogekuri/useReq/compare/v0.9.0..v0.10.0) - 2026-03-04
+## [0.10.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.9.0..v0.10.0) - 2026-03-04
 ### ⛰️  Features
 - Update .req/models.json file.
 
 ### 📚  Documentation
 - Update README.md documenet.
 
-## [0.9.0](https://github.com/Ogekuri/useReq/compare/v0.8.0..v0.9.0) - 2026-03-04
+## [0.9.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.8.0..v0.9.0) - 2026-03-04
 ### ⛰️  Features
 - Update prompts.
 
@@ -710,11 +812,11 @@
 - regenerate runtime workflow model [useReq] *(core)*
   - rewrite docs/WORKFLOW.md with parser-stable schema\n- refresh execution unit metadata and lifecycle fields\n- update internal call-trace tree from src evidence\n- record external boundaries and communication-edge evidence
 
-## [0.8.0](https://github.com/Ogekuri/useReq/compare/v0.7.0..v0.8.0) - 2026-03-03
+## [0.8.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.7.0..v0.8.0) - 2026-03-03
 ### ⛰️  Features
 - Update readme prompt.
 
-## [0.7.0](https://github.com/Ogekuri/useReq/compare/v0.6.0..v0.7.0) - 2026-03-03
+## [0.7.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.6.0..v0.7.0) - 2026-03-03
 ### ⛰️  Features
 - Update prompts.
 
@@ -722,7 +824,7 @@
 - Update README.md doc.
 - Update README.md doc.
 
-## [0.6.0](https://github.com/Ogekuri/useReq/compare/v0.5.0..v0.6.0) - 2026-03-01
+## [0.6.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.5.0..v0.6.0) - 2026-03-01
 ### ⛰️  Features
 - Update prompts.
 - Update prompts.
@@ -739,11 +841,11 @@
   - Adjust parser/find/references tests to assert no human-readable label conversion.
   - Refresh WORKFLOW and regenerate REFERENCES documentation.
 
-## [0.5.0](https://github.com/Ogekuri/useReq/compare/v0.4.0..v0.5.0) - 2026-02-28
+## [0.5.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.4.0..v0.5.0) - 2026-02-28
 ### 📚  Documentation
 - Update README.md document.
 
-## [0.4.0](https://github.com/Ogekuri/useReq/compare/v0.3.0..v0.4.0) - 2026-02-28
+## [0.4.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.3.0..v0.4.0) - 2026-02-28
 ### ⛰️  Features
 - Update prompts with more checks.
 - Update prompts.
@@ -762,7 +864,7 @@
 - align project-scan CLI usage [useReq] *(readme)*
   - update --references, --compress, --find, and --static-check usage notes\n- document here-only behavior with implicit --here\n- document --base rejection for project-scan commands\n- clarify project-scan scope as git-tracked files under configured src-dir
 
-## [0.3.0](https://github.com/Ogekuri/useReq/compare/v0.2.0..v0.3.0) - 2026-02-25
+## [0.3.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.2.0..v0.3.0) - 2026-02-25
 ### ⛰️  Features
 - Update prompts.
 
@@ -773,7 +875,7 @@
 - sync configured model names [useReq] *(opencode)*
   - Align OpenCode configured model entries with models.json (gemini-3.1-pro-preview).
 
-## [0.2.0](https://github.com/Ogekuri/useReq/compare/v0.1.0..v0.2.0) - 2026-02-24
+## [0.2.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0) - 2026-02-24
 ### ⛰️  Features
 - update prompts. *(core)*
 - update models. *(core)*
@@ -837,7 +939,7 @@
 - align prompt and model tables with implementation [useReq] *(readme)*
   - add missing prompt coverage entries (readme, renumber)\n- add readme model rows across provider configured-model tables\n- correct OpenCode create/workflow model mapping
 
-## [0.1.0](https://github.com/Ogekuri/useReq/releases/tag/v0.1.0) - 2026-02-22
+## [0.1.0](https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0) - 2026-02-22
 ### ⛰️  Features
 - verbose commit. *(core)*
 - add worktree branch on all promts. *(core)*
@@ -1212,136 +1314,138 @@
 
 # History
 
-- \[0.1.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.1.0
-- \[0.2.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.2.0
-- \[0.3.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.3.0
-- \[0.4.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.4.0
-- \[0.5.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.5.0
-- \[0.6.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.6.0
-- \[0.7.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.7.0
-- \[0.8.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.8.0
-- \[0.9.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.9.0
-- \[0.10.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.10.0
-- \[0.11.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.11.0
-- \[0.12.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.12.0
-- \[0.13.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.13.0
-- \[0.14.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.14.0
-- \[0.15.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.15.0
-- \[0.16.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.16.0
-- \[0.17.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.17.0
-- \[0.18.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.18.0
-- \[0.19.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.19.0
-- \[0.20.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.20.0
-- \[0.21.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.21.0
-- \[0.22.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.22.0
-- \[0.23.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.23.0
-- \[0.24.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.24.0
-- \[0.25.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.25.0
-- \[0.26.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.26.0
-- \[0.27.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.27.0
-- \[0.28.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.28.0
-- \[0.29.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.29.0
-- \[0.30.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.30.0
-- \[0.31.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.31.0
-- \[0.32.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.32.0
-- \[0.33.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.33.0
-- \[0.34.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.34.0
-- \[0.35.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.35.0
-- \[0.36.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.36.0
-- \[0.37.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.37.0
-- \[0.38.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.38.0
-- \[0.39.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.39.0
-- \[0.40.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.40.0
-- \[0.41.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.41.0
-- \[0.42.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.42.0
-- \[0.43.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.43.0
-- \[0.44.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.44.0
-- \[0.45.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.45.0
-- \[0.46.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.46.0
-- \[0.47.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.47.0
-- \[0.48.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.48.0
-- \[0.49.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.49.0
-- \[0.50.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.50.0
-- \[0.51.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.51.0
-- \[0.52.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.52.0
-- \[0.53.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.53.0
-- \[0.54.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.54.0
-- \[0.55.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.55.0
-- \[0.56.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.56.0
-- \[0.58.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.58.0
-- \[0.59.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.59.0
-- \[0.60.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.60.0
-- \[0.61.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.61.0
-- \[0.62.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.62.0
-- \[0.63.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.63.0
-- \[0.64.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.64.0
-- \[0.65.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.65.0
-- \[0.66.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.66.0
-- \[0.67.0\]: https://github.com/Ogekuri/useReq/releases/tag/v0.67.0
+- \[0.1.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
+- \[0.2.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.2.0
+- \[0.3.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.3.0
+- \[0.4.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.4.0
+- \[0.5.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.5.0
+- \[0.6.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.6.0
+- \[0.7.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.7.0
+- \[0.8.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.8.0
+- \[0.9.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.9.0
+- \[0.10.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.10.0
+- \[0.11.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.11.0
+- \[0.12.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.12.0
+- \[0.13.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.13.0
+- \[0.14.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.14.0
+- \[0.15.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.15.0
+- \[0.16.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.16.0
+- \[0.17.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.17.0
+- \[0.18.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.18.0
+- \[0.19.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.19.0
+- \[0.20.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.20.0
+- \[0.21.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.21.0
+- \[0.22.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.22.0
+- \[0.23.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.23.0
+- \[0.24.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.24.0
+- \[0.25.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.25.0
+- \[0.26.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.26.0
+- \[0.27.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.27.0
+- \[0.28.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.28.0
+- \[0.29.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.29.0
+- \[0.30.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.30.0
+- \[0.31.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.31.0
+- \[0.32.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.32.0
+- \[0.33.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.33.0
+- \[0.34.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.34.0
+- \[0.35.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.35.0
+- \[0.36.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.36.0
+- \[0.37.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.37.0
+- \[0.38.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.38.0
+- \[0.39.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.39.0
+- \[0.40.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.40.0
+- \[0.41.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.41.0
+- \[0.42.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.42.0
+- \[0.43.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.43.0
+- \[0.44.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.44.0
+- \[0.45.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.45.0
+- \[0.46.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.46.0
+- \[0.47.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.47.0
+- \[0.48.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.48.0
+- \[0.49.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.49.0
+- \[0.50.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.50.0
+- \[0.51.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.51.0
+- \[0.52.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.52.0
+- \[0.53.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.53.0
+- \[0.54.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.54.0
+- \[0.55.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.55.0
+- \[0.56.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.56.0
+- \[0.58.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.58.0
+- \[0.59.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.59.0
+- \[0.60.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.60.0
+- \[0.61.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.61.0
+- \[0.62.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.62.0
+- \[0.63.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.63.0
+- \[0.64.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.64.0
+- \[0.65.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.65.0
+- \[0.66.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.66.0
+- \[0.67.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.67.0
+- \[0.68.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.0
 
-[0.1.0]: https://github.com/Ogekuri/useReq/releases/tag/v0.1.0
-[0.2.0]: https://github.com/Ogekuri/useReq/compare/v0.1.0..v0.2.0
-[0.3.0]: https://github.com/Ogekuri/useReq/compare/v0.2.0..v0.3.0
-[0.4.0]: https://github.com/Ogekuri/useReq/compare/v0.3.0..v0.4.0
-[0.5.0]: https://github.com/Ogekuri/useReq/compare/v0.4.0..v0.5.0
-[0.6.0]: https://github.com/Ogekuri/useReq/compare/v0.5.0..v0.6.0
-[0.7.0]: https://github.com/Ogekuri/useReq/compare/v0.6.0..v0.7.0
-[0.8.0]: https://github.com/Ogekuri/useReq/compare/v0.7.0..v0.8.0
-[0.9.0]: https://github.com/Ogekuri/useReq/compare/v0.8.0..v0.9.0
-[0.10.0]: https://github.com/Ogekuri/useReq/compare/v0.9.0..v0.10.0
-[0.11.0]: https://github.com/Ogekuri/useReq/compare/v0.10.0..v0.11.0
-[0.12.0]: https://github.com/Ogekuri/useReq/compare/v0.11.0..v0.12.0
-[0.13.0]: https://github.com/Ogekuri/useReq/compare/v0.12.0..v0.13.0
-[0.14.0]: https://github.com/Ogekuri/useReq/compare/v0.13.0..v0.14.0
-[0.15.0]: https://github.com/Ogekuri/useReq/compare/v0.14.0..v0.15.0
-[0.16.0]: https://github.com/Ogekuri/useReq/compare/v0.15.0..v0.16.0
-[0.17.0]: https://github.com/Ogekuri/useReq/compare/v0.16.0..v0.17.0
-[0.18.0]: https://github.com/Ogekuri/useReq/compare/v0.17.0..v0.18.0
-[0.19.0]: https://github.com/Ogekuri/useReq/compare/v0.18.0..v0.19.0
-[0.20.0]: https://github.com/Ogekuri/useReq/compare/v0.19.0..v0.20.0
-[0.21.0]: https://github.com/Ogekuri/useReq/compare/v0.20.0..v0.21.0
-[0.22.0]: https://github.com/Ogekuri/useReq/compare/v0.21.0..v0.22.0
-[0.23.0]: https://github.com/Ogekuri/useReq/compare/v0.22.0..v0.23.0
-[0.24.0]: https://github.com/Ogekuri/useReq/compare/v0.23.0..v0.24.0
-[0.25.0]: https://github.com/Ogekuri/useReq/compare/v0.24.0..v0.25.0
-[0.26.0]: https://github.com/Ogekuri/useReq/compare/v0.25.0..v0.26.0
-[0.27.0]: https://github.com/Ogekuri/useReq/compare/v0.26.0..v0.27.0
-[0.28.0]: https://github.com/Ogekuri/useReq/compare/v0.27.0..v0.28.0
-[0.29.0]: https://github.com/Ogekuri/useReq/compare/v0.28.0..v0.29.0
-[0.30.0]: https://github.com/Ogekuri/useReq/compare/v0.29.0..v0.30.0
-[0.31.0]: https://github.com/Ogekuri/useReq/compare/v0.30.0..v0.31.0
-[0.32.0]: https://github.com/Ogekuri/useReq/compare/v0.31.0..v0.32.0
-[0.33.0]: https://github.com/Ogekuri/useReq/compare/v0.32.0..v0.33.0
-[0.34.0]: https://github.com/Ogekuri/useReq/compare/v0.33.0..v0.34.0
-[0.35.0]: https://github.com/Ogekuri/useReq/compare/v0.34.0..v0.35.0
-[0.36.0]: https://github.com/Ogekuri/useReq/compare/v0.35.0..v0.36.0
-[0.37.0]: https://github.com/Ogekuri/useReq/compare/v0.36.0..v0.37.0
-[0.38.0]: https://github.com/Ogekuri/useReq/compare/v0.37.0..v0.38.0
-[0.39.0]: https://github.com/Ogekuri/useReq/compare/v0.38.0..v0.39.0
-[0.40.0]: https://github.com/Ogekuri/useReq/compare/v0.39.0..v0.40.0
-[0.41.0]: https://github.com/Ogekuri/useReq/compare/v0.40.0..v0.41.0
-[0.42.0]: https://github.com/Ogekuri/useReq/compare/v0.41.0..v0.42.0
-[0.43.0]: https://github.com/Ogekuri/useReq/compare/v0.42.0..v0.43.0
-[0.44.0]: https://github.com/Ogekuri/useReq/compare/v0.43.0..v0.44.0
-[0.45.0]: https://github.com/Ogekuri/useReq/compare/v0.44.0..v0.45.0
-[0.46.0]: https://github.com/Ogekuri/useReq/compare/v0.45.0..v0.46.0
-[0.47.0]: https://github.com/Ogekuri/useReq/compare/v0.46.0..v0.47.0
-[0.48.0]: https://github.com/Ogekuri/useReq/compare/v0.47.0..v0.48.0
-[0.49.0]: https://github.com/Ogekuri/useReq/compare/v0.48.0..v0.49.0
-[0.50.0]: https://github.com/Ogekuri/useReq/compare/v0.49.0..v0.50.0
-[0.51.0]: https://github.com/Ogekuri/useReq/compare/v0.50.0..v0.51.0
-[0.52.0]: https://github.com/Ogekuri/useReq/compare/v0.51.0..v0.52.0
-[0.53.0]: https://github.com/Ogekuri/useReq/compare/v0.52.0..v0.53.0
-[0.54.0]: https://github.com/Ogekuri/useReq/compare/v0.53.0..v0.54.0
-[0.55.0]: https://github.com/Ogekuri/useReq/compare/v0.54.0..v0.55.0
-[0.56.0]: https://github.com/Ogekuri/useReq/compare/v0.55.0..v0.56.0
-[0.58.0]: https://github.com/Ogekuri/useReq/compare/v0.56.0..v0.58.0
-[0.59.0]: https://github.com/Ogekuri/useReq/compare/v0.58.0..v0.59.0
-[0.60.0]: https://github.com/Ogekuri/useReq/compare/v0.59.0..v0.60.0
-[0.61.0]: https://github.com/Ogekuri/useReq/compare/v0.60.0..v0.61.0
-[0.62.0]: https://github.com/Ogekuri/useReq/compare/v0.61.0..v0.62.0
-[0.63.0]: https://github.com/Ogekuri/useReq/compare/v0.62.0..v0.63.0
-[0.64.0]: https://github.com/Ogekuri/useReq/compare/v0.63.0..v0.64.0
-[0.65.0]: https://github.com/Ogekuri/useReq/compare/v0.64.0..v0.65.0
-[0.66.0]: https://github.com/Ogekuri/useReq/compare/v0.65.0..v0.66.0
-[0.67.0]: https://github.com/Ogekuri/useReq/compare/v0.66.0..v0.67.0
+[0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
+[0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
+[0.3.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.2.0..v0.3.0
+[0.4.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.3.0..v0.4.0
+[0.5.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.4.0..v0.5.0
+[0.6.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.5.0..v0.6.0
+[0.7.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.6.0..v0.7.0
+[0.8.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.7.0..v0.8.0
+[0.9.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.8.0..v0.9.0
+[0.10.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.9.0..v0.10.0
+[0.11.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.10.0..v0.11.0
+[0.12.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.11.0..v0.12.0
+[0.13.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.12.0..v0.13.0
+[0.14.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.13.0..v0.14.0
+[0.15.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.14.0..v0.15.0
+[0.16.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.15.0..v0.16.0
+[0.17.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.16.0..v0.17.0
+[0.18.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.17.0..v0.18.0
+[0.19.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.18.0..v0.19.0
+[0.20.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.19.0..v0.20.0
+[0.21.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.20.0..v0.21.0
+[0.22.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.21.0..v0.22.0
+[0.23.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.22.0..v0.23.0
+[0.24.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.23.0..v0.24.0
+[0.25.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.24.0..v0.25.0
+[0.26.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.25.0..v0.26.0
+[0.27.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.26.0..v0.27.0
+[0.28.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.27.0..v0.28.0
+[0.29.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.28.0..v0.29.0
+[0.30.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.29.0..v0.30.0
+[0.31.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.30.0..v0.31.0
+[0.32.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.31.0..v0.32.0
+[0.33.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.32.0..v0.33.0
+[0.34.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.33.0..v0.34.0
+[0.35.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.34.0..v0.35.0
+[0.36.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.35.0..v0.36.0
+[0.37.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.36.0..v0.37.0
+[0.38.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.37.0..v0.38.0
+[0.39.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.38.0..v0.39.0
+[0.40.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.39.0..v0.40.0
+[0.41.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.40.0..v0.41.0
+[0.42.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.41.0..v0.42.0
+[0.43.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.42.0..v0.43.0
+[0.44.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.43.0..v0.44.0
+[0.45.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.44.0..v0.45.0
+[0.46.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.45.0..v0.46.0
+[0.47.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.46.0..v0.47.0
+[0.48.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.47.0..v0.48.0
+[0.49.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.48.0..v0.49.0
+[0.50.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.49.0..v0.50.0
+[0.51.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.50.0..v0.51.0
+[0.52.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.51.0..v0.52.0
+[0.53.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.52.0..v0.53.0
+[0.54.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.53.0..v0.54.0
+[0.55.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.54.0..v0.55.0
+[0.56.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.55.0..v0.56.0
+[0.58.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.56.0..v0.58.0
+[0.59.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.58.0..v0.59.0
+[0.60.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.59.0..v0.60.0
+[0.61.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.60.0..v0.61.0
+[0.62.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.61.0..v0.62.0
+[0.63.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.62.0..v0.63.0
+[0.64.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.63.0..v0.64.0
+[0.65.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.64.0..v0.65.0
+[0.66.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.65.0..v0.66.0
+[0.67.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.66.0..v0.67.0
+[0.68.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0
