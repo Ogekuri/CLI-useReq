@@ -124,8 +124,9 @@ Here the typical project's tree; configure `docs-dir`, `src-dir`, and `tests-dir
 ### Run useReq/req with uvx
 ```bash
 uvx --from git+https://github.com/Ogekuri/useReq.git req \
-  --prj-base myproject/ \
-  --provider pi:prompts
+  --enable-provider pi:prompts
+uvx --from git+https://github.com/Ogekuri/useReq.git req \
+  install --prj-base myproject/
 ```
 
 ### Install/Uninstall useReq/req with uv
@@ -142,16 +143,15 @@ uv tool uninstall usereq
 
 ### Quick Install
 
-1. Install on a project in path `project_path` (missing configured directories are created automatically on fresh install):
-- Typical Install (directory values come from `~/.config/usereq/config.json`, defaults: `usereq`, `src`, `tests`):
+1. Configure providers and static checks on a project in path `project_path` (configuration only; no artifact is installed):
+- Typical configuration (directory values come from `~/.config/usereq/config.json`, defaults: `usereq`, `src`, `tests`):
 ```
 req \
---prj-base "project_path" \
---provider pi:prompts \
---provider claude:prompts \
---provider codex:skills \
---provider antigravity:prompts \
---provider opencode:prompts \
+--enable-provider pi:prompts \
+--enable-provider claude:prompts \
+--enable-provider codex:skills \
+--enable-provider antigravity:prompts \
+--enable-provider opencode:prompts \
 --enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \
 --enable-static-check C=Command,clang-format,--dry-run,--Werror \
 --enable-static-check C++=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c++20 \
@@ -159,10 +159,14 @@ req \
 --enable-static-check Python=Pylance \
 --enable-static-check Python=Ruff
 ```
-2. Use `/req-write` or `/req-create` to create requirements
-3. Use `/req-implement` to implement source-code from requirements, or `/req-cover` to cover new requirements (documentation).
-4. Use `/req-workflow`, `/req-flowchart`, and/or `/req-references` to update project's documentation.
-5. Start to use `/req-change`, `/req-new`, and `/req-fix`.
+2. Install the configured providers (missing configured directories are created automatically on fresh install):
+```
+req install --prj-base "project_path"
+```
+3. Use `/req-write` or `/req-create` to create requirements
+4. Use `/req-implement` to implement source-code from requirements, or `/req-cover` to cover new requirements (documentation).
+5. Use `/req-workflow`, `/req-flowchart`, and/or `/req-references` to update project's documentation.
+6. Start to use `/req-change`, `/req-new`, and `/req-fix`.
 
 ### Usage
 - Run `req` to create or recreate useReq resources. Prompts, agents, and skills are installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`); nothing is written into the project repository.
@@ -177,25 +181,27 @@ req \
     - Configured directories must resolve under `--prj-base`.
     - On fresh installation, missing configured directories are created automatically.
   - `GUIDELINES_DIR` is fixed to `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines` and is not configurable; generated prompts and skills reference it through home-relative paths.
-  - Use one or more `--provider SPEC` parameters (at least one is required) to configure provider activation, artifact types, and options:
+  - Use one or more `--enable-provider SPEC` parameters to persist provider activation, artifact types, and options in `~/.config/usereq/config.json` (all providers are disabled by default; no artifact is installed):
     - `SPEC` format: `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`
     - `PROVIDER`: `antigravity`, `claude`, `codex`, `opencode`, or `pi`.
     - `ARTIFACT_ITEM`: one of `{prompts, agents, skills}`.
     - `PROVIDER_OPTIONS`: (optional) comma-separated list from `{prompts-use-agents}`.
-    - Example: `--provider pi:prompts,skills`
-  - Artifact types (specified within the `--provider` spec):
+    - Example: `--enable-provider pi:prompts,skills`
+  - Use `--disable-provider PROVIDER` to remove all persisted specs of a provider.
+  - Artifact types (specified within the `--enable-provider` spec):
     - `skills` artifact generates skill resources for the provider.
     - `prompts` artifact generates prompts/commands resources for the provider.
     - `agents` artifact generates agent resources for the provider.
-  - `--enable-static-check SPEC` Enable static check configuration for a language (repeatable). SPEC format: `LANG=MODULE[,CMD[,PARAM...]]`.
+  - `--enable-static-check SPEC` persists a static-check tool for a language in `~/.config/usereq/config.json` (repeatable, no `--prj-base` required). SPEC format: `LANG=MODULE[,CMD[,PARAM...]]`.
       - Supported `MODULE` values: `Dummy`, `Pylance`, `Ruff`, `Command` (case-insensitive).
       - Entries are merged into `~/.config/usereq/config.json` without replacing existing ones: existing entries are preserved, identity-duplicates are ignored, and only new non-duplicate entries are appended per language.
+  - `--disable-static-check SPEC` removes static-check entries: `LANG=MODULE[,CMD[,PARAM...]]` removes the exact matching entry; bare `LANG` removes the whole language key.
+  - Auto-install is enabled by default: after a successful `--upgrade`, the persisted providers are reinstalled (equivalent to `install`). Use `--disable-auto-install` / `--enable-auto-install` to persist `"auto-install": false` / `true` in `~/.config/usereq/config.json`.
 - Configuration is stored in a single user-global file: `~/.config/usereq/config.json`. No configuration files are written to the project home or git repository path.
 - You need to run `req` again if you add or remove requirement-related files in the documentation directory, or if the installed guidelines under `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines` change.
 - Provider-scoped option `prompts-use-agents` (in the optional `:PROVIDER_OPTIONS` segment) generates prompt files as **agent-only references** (adds an `agent:` front matter field) where supported (Claude commands, OpenCode commands, and pi prompts).
 - Add `--verbose` and `--debug` to get detailed and diagnostic output.
-- Add `--update` to update an existing installation (requires an existing `~/.config/usereq/config.json`).
-  - With `--update`, passing one or more `--provider` specs replaces persisted provider specs; without `--provider`, persisted specs are reused.
+- Add `--update` to update an existing installation from the persisted configuration (requires an existing `~/.config/usereq/config.json`); the `install` subcommand is the canonical form.
 - Add `-h` / `--help` to print command help and exit.
 - Add `--ver` / `--version` to print the installed package version and exit.
 - Add `--remove` to remove `req-*` artifacts generated by useReq from the user-level provider directories configured in the global configuration file.
@@ -235,6 +241,15 @@ The analysis commands are bare subcommands (no `--` prefix) and each one require
 
 - Run static analysis on source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (plus configured `tests-dir`, excluding `fixtures/`) using tools configured in `~/.config/usereq/config.json`.
   `static-check --prj-base PRJ_BASE --git-base GIT_BASE`
+
+- Install or update the providers persisted under `"providers"` in `~/.config/usereq/config.json` and print the installation report (requires `--prj-base`).
+  `install --prj-base PRJ_BASE`
+
+- Remove `req-*` artifacts of the providers persisted under `"providers"` in `~/.config/usereq/config.json`.
+  `uninstall`
+
+- Print the active configuration as tables: settings (including `auto-install`), provider enablement, per-enabled-provider component installation status, and enabled static checks.
+  `show`
 
 - Check repository integrity for `--git-base`: clean working tree and valid HEAD (requires `--git-base`).
   `--git-check`

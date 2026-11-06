@@ -48,8 +48,15 @@ PERSISTED_CONFIG_KEYS = (
     "src-dir",
     "providers",
     "static-check",
+    "auto-install",
 )
 """! @brief Canonical keys persisted in the user-global configuration file (SRS-288)."""
+
+AUTO_INSTALL_CONFIG_KEY = "auto-install"
+"""! @brief Configuration key storing the auto-install enabled flag (SRS-420)."""
+
+DEFAULT_AUTO_INSTALL = True
+"""! @brief Default auto-install state when the configuration stores no entry (SRS-420)."""
 
 DEFAULT_DOCS_DIR = "usereq"
 """! @brief Default docs-dir value stored when the configuration has no docs-dir (SRS-359)."""
@@ -459,11 +466,12 @@ def build_parser() -> argparse.ArgumentParser:
     usage = (
         "req -c [-h] [--upgrade] [--uninstall] [--remove] [--update] --prj-base PRJ_BASE [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
-        "[--provider PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]] "
+        "[--enable-provider SPEC] [--disable-provider PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
+        "[--enable-static-check SPEC] [--disable-static-check SPEC] "
         "[--test-static-check {dummy,pylance,ruff,command} [FILES...]] "
         "[--git-check] [--docs-check] [--git-wt-name] [--git-wt-create WT_NAME] [--git-wt-delete WT_NAME] "
-        "{files-tokens,files-references,files-compress,files-find,tokens,references,compress,find,files-static-check,static-check} ... "
+        "{files-tokens,files-references,files-compress,files-find,tokens,references,compress,find,files-static-check,static-check,install,uninstall,show} ... "
         f"({version})"
     )
     parser = argparse.ArgumentParser(
@@ -545,18 +553,44 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug", action="store_true", help="Show debug logs for diagnostics."
     )
     parser.add_argument(
-        "--provider",
+        "--enable-provider",
         action="append",
         metavar="SPEC",
-        dest="provider_specs",
+        dest="enable_provider",
         help=(
-            "Per-provider artifact and option configuration (repeatable). "
+            "Persist provider enablement in ~/.config/usereq/config.json without "
+            "installing (repeatable); run the 'install' subcommand to install. "
             "Format: PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]. "
             "PROVIDER: antigravity|claude|codex|opencode|pi. "
             "ARTIFACT_ITEM: one of prompts|agents|skills. "
-            "PROVIDER_OPTIONS: comma-separated from {prompts-use-agents}. "
-            "Artifacts are installed into user-level CLI directories under the user HOME."
+            "PROVIDER_OPTIONS: comma-separated from {prompts-use-agents}."
         ),
+    )
+    parser.add_argument(
+        "--disable-provider",
+        action="append",
+        metavar="PROVIDER",
+        dest="disable_provider",
+        help=(
+            "Remove all persisted specs of PROVIDER from "
+            "~/.config/usereq/config.json (repeatable); one of "
+            "antigravity|claude|codex|opencode|pi."
+        ),
+    )
+    parser.add_argument(
+        "--enable-auto-install",
+        action="store_true",
+        dest="enable_auto_install",
+        help=(
+            "Persist \"auto-install\": true in ~/.config/usereq/config.json; after a "
+            "successful --upgrade the persisted providers are reinstalled."
+        ),
+    )
+    parser.add_argument(
+        "--disable-auto-install",
+        action="store_true",
+        dest="disable_auto_install",
+        help="Persist \"auto-install\": false in ~/.config/usereq/config.json.",
     )
     parser.add_argument(
         "--enable-line-numbers",
@@ -582,7 +616,8 @@ def build_parser() -> argparse.ArgumentParser:
         dest="enable_static_check",
         default=None,
         help=(
-            "Configure a static-check tool for a language during install/update. "
+            "Persist a static-check tool for a language in ~/.config/usereq/config.json "
+            "without requiring --prj-base. "
             "SPEC format: LANG=MODULE[,CMD[,PARAM...]]. "
             "MODULE: Dummy, Pylance, Ruff, Command (case-insensitive). "
             "LANG: Python, C, C++, C#, Rust, JavaScript, TypeScript, Java, Go, Ruby, "
@@ -592,6 +627,17 @@ def build_parser() -> argparse.ArgumentParser:
             "Repeatable: multiple flags per language append multiple entries. "
             "Example: --enable-static-check Python=Pylance "
             "--enable-static-check C=Command,/usr/bin/cppcheck,--check-library"
+        ),
+    )
+    parser.add_argument(
+        "--disable-static-check",
+        action="append",
+        metavar="SPEC",
+        dest="disable_static_check",
+        help=(
+            "Remove static-check entries from ~/.config/usereq/config.json. "
+            "SPEC format: LANG=MODULE[,CMD[,PARAM...]] removes the exact matching "
+            "entry; bare LANG removes the whole language key."
         ),
     )
     parser.add_argument(
@@ -671,16 +717,26 @@ def build_parser() -> argparse.ArgumentParser:
         dest="enable_line_numbers",
         help="Enable line number prefixes (<n>:) in output (disabled by default).",
     )
+    install_options = argparse.ArgumentParser(add_help=False)
+    install_options.add_argument(
+        "--prj-base",
+        type=Path,
+        default=argparse.SUPPRESS,
+        dest="prj_base",
+        help="Absolute project base directory; mandatory for this subcommand.",
+    )
     subparsers = parser.add_subparsers(
         dest="command",
-        title="analysis subcommands",
+        title="subcommands",
         description=(
-            "Analysis subcommands; each requires both --prj-base and --git-base "
-            "(SRS-408, SRS-410). Legacy --prefixed forms are not accepted (SRS-409)."
+            "Analysis subcommands require both --prj-base and --git-base "
+            "(SRS-408, SRS-410); legacy --prefixed forms are not accepted (SRS-409). "
+            "Lifecycle subcommands install/uninstall/show require no --git-base (SRS-280)."
         ),
         metavar=(
             "{files-tokens,files-references,files-compress,files-find,tokens,"
-            "references,compress,find,files-static-check,static-check}"
+            "references,compress,find,files-static-check,static-check,"
+            "install,uninstall,show}"
         ),
     )
 
@@ -789,6 +845,34 @@ def build_parser() -> argparse.ArgumentParser:
             "Run static analysis on source and test files selected from the "
             "configured src-dir and tests-dir directories. Tools are loaded from "
             "the 'static-check' section of ~/.config/usereq/config.json."
+        ),
+    )
+
+    sub = subparsers.add_parser(
+        "install",
+        parents=[install_options],
+        usage="req install --prj-base PRJ_BASE",
+        help=(
+            "Install or update the providers persisted under \"providers\" in "
+            "~/.config/usereq/config.json and print the installation report."
+        ),
+    )
+
+    sub = subparsers.add_parser(
+        "uninstall",
+        usage="req uninstall",
+        help=(
+            "Remove req-* artifacts of the providers persisted under \"providers\" "
+            "in ~/.config/usereq/config.json."
+        ),
+    )
+
+    sub = subparsers.add_parser(
+        "show",
+        usage="req show",
+        help=(
+            "Print the active configuration, enabled providers with component "
+            "installation status, and enabled static-check entries as tables."
         ),
     )
     return parser
@@ -1747,30 +1831,26 @@ def save_config(
     @param test_dir_value Project-relative tests directory value.
     @param src_dir_values Ordered project-relative source directory values.
     @param static_check_config Optional dict of static-check config to persist under key
-      `"static-check"`; omitted from JSON when None or empty.
-    @param provider_specs Optional list of raw ``--provider`` SPEC strings to persist
-      under the `"providers"` key (SRS-279).
+      `"static-check"`; preserved unchanged when None.
+    @param provider_specs Optional list of raw ``--enable-provider`` SPEC strings to
+      persist under the `"providers"` key (SRS-279).
     @details Writes the configuration payload to `~/.config/usereq/config.json`, creating
-    missing parent directories on first write. Only canonical keys from
+    missing parent directories on first write, via read-modify-write so unspecified
+    canonical keys (including `"auto-install"`) are preserved. Only canonical keys from
     `PERSISTED_CONFIG_KEYS` are written; `--prj-base` and `--git-base` are never written
-    (SRS-288, SRS-387, SRS-394, SRS-407).
+    (SRS-288, SRS-387, SRS-394, SRS-407, SRS-420).
     @return {None} Function return value.
-    @satisfies SRS-279, SRS-288, SRS-387, SRS-394, SRS-407
+    @satisfies SRS-279, SRS-288, SRS-387, SRS-394, SRS-407, SRS-420
     """
-    config_path = get_global_config_path()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    payload: dict = {
-        "docs-dir": doc_dir_value,
-        "tests-dir": test_dir_value,
-        "src-dir": src_dir_values,
-    }
+    payload = _read_config_payload()
+    payload["docs-dir"] = doc_dir_value
+    payload["tests-dir"] = test_dir_value
+    payload["src-dir"] = src_dir_values
     if static_check_config:
         payload["static-check"] = static_check_config
     if provider_specs:
         payload["providers"] = provider_specs
-    config_path.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    _write_config_payload(payload)
 
 
 def update_directory_config(
@@ -1922,11 +2002,13 @@ def _static_check_entry_identity(
 
 def load_persisted_provider_specs() -> list[str]:
     """!
-    @brief Load persisted ``--provider`` SPEC strings from the user-global configuration file.
+    @brief Load persisted ``--enable-provider`` SPEC strings from the user-global configuration file.
     @return List of raw SPEC strings; empty list if key is missing or config is unreadable.
-    @details Reads the ``"providers"`` key from `~/.config/usereq/config.json` (SRS-280).
-    Returns ``[]`` on any read or parse error rather than raising.
-    @see SRS-279, SRS-280
+    @details Reads the ``"providers"`` key from `~/.config/usereq/config.json` (SRS-064,
+    SRS-279). All providers are disabled by default because the key defaults to an empty
+    list. Returns ``[]`` on any read or parse error rather than raising.
+    @see SRS-279, SRS-064
+    @satisfies SRS-064, SRS-279
     """
     config_path = get_global_config_path()
     if not config_path.is_file():
@@ -1939,6 +2021,305 @@ def load_persisted_provider_specs() -> list[str]:
     if isinstance(specs, list) and all(isinstance(s, str) for s in specs):
         return specs
     return []
+
+
+def _read_config_payload() -> dict:
+    """!
+    @brief Read the raw user-global configuration payload without key filtering.
+    @return {dict} Raw JSON dictionary; empty dict when the file is absent.
+    @throws {ReqError} Raised when the file exists but holds invalid JSON (exit code 11).
+    @details Single read path for configuration commands performing read-modify-write
+    updates (SRS-279, SRS-288, SRS-387, SRS-413, SRS-414, SRS-420).
+    @satisfies SRS-288, SRS-387
+    """
+    config_path = get_global_config_path()
+    if not config_path.is_file():
+        return {}
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ReqError(
+            f"Error: global configuration file {config_path} is not valid", 11
+        ) from exc
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_config_payload(payload: dict) -> None:
+    """!
+    @brief Write the user-global configuration payload filtered to canonical keys.
+    @param payload {dict} Full payload; only `PERSISTED_CONFIG_KEYS` entries are written.
+    @return {None} Function return value.
+    @details Creates missing parent directories on first write (SRS-387) and never
+    writes `--prj-base`/`--git-base` (SRS-394).
+    @satisfies SRS-288, SRS-387, SRS-394
+    """
+    config_path = get_global_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    filtered = {
+        key: value for key, value in payload.items() if key in PERSISTED_CONFIG_KEYS
+    }
+    config_path.write_text(
+        json.dumps(filtered, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def load_auto_install_enabled() -> bool:
+    """!
+    @brief Resolve the persisted auto-install flag with enabled default.
+    @return {bool} True unless the configuration stores exactly `false`.
+    @details `auto-install` defaults to enabled; unreadable configuration falls back to
+    the default (SRS-420, SRS-421).
+    @satisfies SRS-420, SRS-421
+    """
+    try:
+        payload = _read_config_payload()
+    except ReqError:
+        return DEFAULT_AUTO_INSTALL
+    return payload.get(AUTO_INSTALL_CONFIG_KEY, DEFAULT_AUTO_INSTALL) is not False
+
+
+def _persisted_provider_spec_provider(spec: str) -> Optional[str]:
+    """!
+    @brief Resolve the provider token of one persisted SPEC string.
+    @param spec {str} Raw persisted SPEC string.
+    @return {Optional[str]} Provider name, or None when the SPEC is invalid.
+    @details Invalid persisted SPECs are treated as unmatched and dropped by callers.
+    """
+    try:
+        return parse_provider_spec(spec)[0]
+    except ReqError:
+        return None
+
+
+def apply_enable_provider_specs(specs: list[str]) -> None:
+    """!
+    @brief Persist `--enable-provider` specs replacing the named providers' entries.
+    @param specs {list[str]} Raw SPEC strings in CLI order.
+    @return {None} Function return value.
+    @details Validates every SPEC through `parse_provider_spec` (SRS-275, SRS-278),
+    removes all previously persisted specs of the named providers, appends the new
+    specs in CLI order, and preserves every other provider (SRS-279). No artifact is
+    installed (SRS-276).
+    @throws {ReqError} Raised on invalid SPEC tokens with exit code 1 (SRS-278).
+    @satisfies SRS-275, SRS-276, SRS-278, SRS-279
+    """
+    validated: list[str] = []
+    named_providers: list[str] = []
+    for spec in specs:
+        provider_name = parse_provider_spec(spec)[0]
+        validated.append(spec)
+        if provider_name not in named_providers:
+            named_providers.append(provider_name)
+    payload = _read_config_payload()
+    persisted = payload.get("providers", [])
+    persisted_specs = (
+        persisted
+        if isinstance(persisted, list) and all(isinstance(s, str) for s in persisted)
+        else []
+    )
+    kept = [
+        spec
+        for spec in persisted_specs
+        if _persisted_provider_spec_provider(spec) not in named_providers
+    ]
+    payload["providers"] = kept + validated
+    _write_config_payload(payload)
+
+
+def apply_disable_provider_specs(names: list[str]) -> None:
+    """!
+    @brief Remove all persisted specs of the named providers.
+    @param names {list[str]} Provider names supplied via `--disable-provider`.
+    @return {None} Function return value.
+    @details Removes every persisted SPEC of each named provider; absent specs leave the
+    configuration unchanged; the `"providers"` key is removed when no specs remain
+    (SRS-413).
+    @throws {ReqError} Raised on unknown provider tokens with exit code 1 (SRS-422).
+    @satisfies SRS-413, SRS-422
+    """
+    for name in names:
+        if name not in VALID_PROVIDERS:
+            raise ReqError(f"Error: unknown provider '{name}'.", 1)
+    payload = _read_config_payload()
+    persisted = payload.get("providers", [])
+    persisted_specs = (
+        persisted
+        if isinstance(persisted, list) and all(isinstance(s, str) for s in persisted)
+        else []
+    )
+    disabled = set(names)
+    remaining = [
+        spec
+        for spec in persisted_specs
+        if _persisted_provider_spec_provider(spec) not in disabled
+    ]
+    if remaining:
+        payload["providers"] = remaining
+    else:
+        payload.pop("providers", None)
+    _write_config_payload(payload)
+
+
+def apply_enable_static_check_specs(specs: list[str]) -> None:
+    """!
+    @brief Persist `--enable-static-check` entries merged into the existing configuration.
+    @param specs {list[str]} Raw SPEC strings in CLI order.
+    @return {None} Function return value.
+    @details Parses each SPEC (SRS-260), deduplicates within the invocation (SRS-251),
+    validates Command executables (SRS-250), merges into the persisted `"static-check"`
+    object by exact `(language, module, cmd, params)` identity (SRS-301), and requires no
+    `--prj-base` (SRS-415).
+    @throws {ReqError} Raised on invalid language/module tokens or non-executable Command
+    `cmd` values with exit code 1.
+    @satisfies SRS-248, SRS-250, SRS-251, SRS-301, SRS-415
+    """
+    from .static_check import parse_enable_static_check as _parse_sc
+
+    new_entries: dict = {}
+    for spec in specs:
+        canonical_lang, lang_cfg = _parse_sc(spec)
+        identity = _static_check_entry_identity(canonical_lang, lang_cfg)
+        existing = new_entries.get(canonical_lang, [])
+        if not any(
+            _static_check_entry_identity(canonical_lang, entry) == identity
+            for entry in existing
+        ):
+            new_entries.setdefault(canonical_lang, []).append(lang_cfg)
+    _validate_enable_static_check_command_executables(new_entries, enforce=True)
+    payload = _read_config_payload()
+    existing_sc = payload.get("static-check", {})
+    merged = (
+        {lang: list(entries) for lang, entries in existing_sc.items()}
+        if isinstance(existing_sc, dict)
+        else {}
+    )
+    for lang, entries in new_entries.items():
+        identities = {
+            _static_check_entry_identity(lang, entry)
+            for entry in merged.get(lang, [])
+            if isinstance(entry, dict)
+        }
+        for entry in entries:
+            identity = _static_check_entry_identity(lang, entry)
+            if identity not in identities:
+                merged.setdefault(lang, []).append(entry)
+                identities.add(identity)
+    if merged:
+        payload["static-check"] = merged
+    else:
+        payload.pop("static-check", None)
+    _write_config_payload(payload)
+
+
+def apply_disable_static_check_specs(specs: list[str]) -> None:
+    """!
+    @brief Remove static-check entries selected by `--disable-static-check` SPECs.
+    @param specs {list[str]} SPEC strings; `LANG=MODULE[,CMD[,PARAM...]]` removes exact
+    identity matches, bare `LANG` removes the whole canonical language key.
+    @return {None} Function return value.
+    @details Empty language arrays are removed from the `"static-check"` object; requires
+    no `--prj-base` (SRS-414, SRS-415).
+    @throws {ReqError} Raised on unknown language or module tokens with exit code 1 (SRS-422).
+    @satisfies SRS-414, SRS-415, SRS-422
+    """
+    from .static_check import (
+        STATIC_CHECK_LANG_CANONICAL,
+        parse_enable_static_check as _parse_sc,
+    )
+
+    payload = _read_config_payload()
+    existing_sc = payload.get("static-check", {})
+    merged = (
+        {lang: list(entries) for lang, entries in existing_sc.items()}
+        if isinstance(existing_sc, dict)
+        else {}
+    )
+    for spec in specs:
+        if "=" in spec:
+            canonical_lang, lang_cfg = _parse_sc(spec)
+            identity = _static_check_entry_identity(canonical_lang, lang_cfg)
+            merged[canonical_lang] = [
+                entry
+                for entry in merged.get(canonical_lang, [])
+                if not (
+                    isinstance(entry, dict)
+                    and _static_check_entry_identity(canonical_lang, entry) == identity
+                )
+            ]
+        else:
+            canonical_lang = STATIC_CHECK_LANG_CANONICAL.get(spec.strip().lower())
+            if canonical_lang is None:
+                raise ReqError(
+                    f"Error: unknown static-check language '{spec}'.", 1
+                )
+            merged.pop(canonical_lang, None)
+    for lang in [key for key, entries in merged.items() if not entries]:
+        del merged[lang]
+    if merged:
+        payload["static-check"] = merged
+    else:
+        payload.pop("static-check", None)
+    _write_config_payload(payload)
+
+
+def apply_auto_install_config(enabled: bool) -> None:
+    """!
+    @brief Persist the auto-install enabled flag.
+    @param enabled {bool} Value persisted under `"auto-install"`.
+    @return {None} Function return value.
+    @details Read-modify-write preserving all unrelated canonical keys (SRS-420).
+    @satisfies SRS-420
+    """
+    payload = _read_config_payload()
+    payload[AUTO_INSTALL_CONFIG_KEY] = enabled
+    _write_config_payload(payload)
+
+
+def _is_provider_config_command(args: Namespace) -> bool:
+    """!
+    @brief Check if args request a provider/static-check/auto-install configuration command.
+    @param args Parsed CLI namespace.
+    @return True when any configuration flag is present.
+    @details Configuration commands only update `~/.config/usereq/config.json` and never
+    install artifacts (SRS-276, SRS-413, SRS-414, SRS-415, SRS-420).
+    """
+    return bool(
+        getattr(args, "enable_provider", None)
+        or getattr(args, "disable_provider", None)
+        or getattr(args, "enable_static_check", None)
+        or getattr(args, "disable_static_check", None)
+        or getattr(args, "enable_auto_install", False)
+        or getattr(args, "disable_auto_install", False)
+    )
+
+
+def run_config_commands(args: Namespace) -> None:
+    """!
+    @brief Apply every provider/static-check/auto-install configuration command.
+    @param args Parsed CLI namespace carrying the configuration flag values.
+    @return {None} Function return value.
+    @details Application order: `--enable-provider`, `--disable-provider`,
+    `--enable-static-check`, `--disable-static-check`, `--enable-auto-install`,
+    `--disable-auto-install`; each step persists immediately (SRS-275, SRS-413, SRS-414,
+    SRS-420).
+    @satisfies SRS-275, SRS-276, SRS-413, SRS-414, SRS-415, SRS-420
+    """
+    enable_provider = getattr(args, "enable_provider", None) or []
+    if enable_provider:
+        apply_enable_provider_specs(enable_provider)
+    disable_provider = getattr(args, "disable_provider", None) or []
+    if disable_provider:
+        apply_disable_provider_specs(disable_provider)
+    enable_sc = getattr(args, "enable_static_check", None) or []
+    if enable_sc:
+        apply_enable_static_check_specs(enable_sc)
+    disable_sc = getattr(args, "disable_static_check", None) or []
+    if disable_sc:
+        apply_disable_static_check_specs(disable_sc)
+    if getattr(args, "enable_auto_install", False):
+        apply_auto_install_config(True)
+    if getattr(args, "disable_auto_install", False):
+        apply_auto_install_config(False)
 
 
 def generate_guidelines_file_list() -> str:
@@ -2372,6 +2753,215 @@ def run_remove(args: Namespace) -> None:
     remove_generated_resources()
 
 
+def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
+    """!
+    @brief Render one Unicode box-drawing table from headers and rows.
+    @param headers {list[str]} Column header labels.
+    @param rows {list[list[str]]} Cell values per row; every row matches the header count.
+    @return {str} Multi-line table with `│` separators and `─` borders, no ANSI styling.
+    @details Pure deterministic formatting used by the `show` subcommand (SRS-416, SRS-417).
+    """
+    widths = [len(header) for header in headers]
+    for row in rows:
+        for index, cell in enumerate(row):
+            widths[index] = max(widths[index], len(cell))
+
+    def _line(cells: list[str]) -> str:
+        return (
+            "│ "
+            + " │ ".join(
+                cell.ljust(widths[index]) for index, cell in enumerate(cells)
+            )
+            + " │"
+        )
+
+    def _border(left: str, middle: str, right: str) -> str:
+        return left + middle.join("─" * (width + 2) for width in widths) + right
+
+    lines = [_border("┌", "┬", "┐"), _line(headers), _border("├", "┼", "┤")]
+    lines.extend(_line(row) for row in rows)
+    lines.append(_border("└", "┴", "┘"))
+    return "\n".join(lines)
+
+
+def _provider_artifact_installed(provider: str, artifact: str) -> bool:
+    """!
+    @brief Detect whether at least one `req-*` artifact exists for a provider component.
+    @param provider {str} Provider selector from `{antigravity, claude, codex, opencode, pi}`.
+    @param artifact {str} Artifact selector from `{prompts, agents, skills}`.
+    @return {bool} True when the provider/artifact user-level root contains a `req-*` entry.
+    @details Installation status detection for the `show` subcommand (SRS-417); unsupported
+    provider/artifact pairs and absent roots report `False`.
+    @satisfies SRS-417
+    """
+    try:
+        root = provider_artifact_root(provider, artifact)
+    except ReqError:
+        return False
+    if not root.is_dir():
+        return False
+    return any(entry.name.startswith("req-") for entry in root.iterdir())
+
+
+def run_install(args: Namespace) -> None:
+    """!
+    @brief Execute install: install or update the persisted providers.
+    @param args Parsed CLI namespace; requires the mandatory `--prj-base` argument.
+    @return {None} Function return value.
+    @details Delegates to the config-driven installation flow (SRS-035, SRS-064, SRS-418)
+    which requires at least one enabled provider and prints the installation summary
+    report (SRS-049).
+    @throws ReqError If `--prj-base` is absent or no provider is enabled.
+    @satisfies SRS-035, SRS-064, SRS-418
+    """
+    run(args)
+
+
+def run_uninstall_providers(args: Namespace) -> None:
+    """!
+    @brief Execute uninstall: remove artifacts of the configured providers.
+    @param args Parsed CLI namespace.
+    @return {None} Function return value.
+    @details Requires the user-global configuration file and removes `req-*` artifacts of
+    the providers persisted under `"providers"` (SRS-390, SRS-419).
+    @throws ReqError If the global configuration file is missing.
+    @satisfies SRS-419
+    """
+    if not get_global_config_path().is_file():
+        raise ReqError(
+            f"Error: global configuration file not found at {get_global_config_path()}",
+            11,
+        )
+    remove_generated_resources()
+
+
+def run_show(args: Namespace) -> None:
+    """!
+    @brief Execute show: print the active configuration as tables.
+    @param args Parsed CLI namespace.
+    @return {None} Function return value.
+    @details Prints the effective configuration table (`docs-dir`, `tests-dir`, `src-dir`,
+    `auto-install`), the provider enablement table, one dedicated component
+    installation-status table per enabled provider (SRS-417), and the enabled
+    static-check entries (SRS-416).
+    @throws ReqError If persisted provider SPECs are invalid.
+    @satisfies SRS-416, SRS-417, SRS-420
+    """
+    config = load_config()
+    doc_dir_value = str(config["docs-dir"])
+    test_dir_value = str(config["tests-dir"])
+    src_dir_value = ", ".join(str(item) for item in config["src-dir"])
+    auto_install_state = (
+        "enabled" if load_auto_install_enabled() else "disabled"
+    )
+    print("Active Configuration")
+    print(
+        _render_simple_table(
+            ["Setting", "Value"],
+            [
+                ["docs-dir", doc_dir_value],
+                ["tests-dir", test_dir_value],
+                ["src-dir", src_dir_value],
+                ["auto-install", auto_install_state],
+            ],
+        )
+    )
+
+    persisted_specs = load_persisted_provider_specs()
+    provider_configs = resolve_provider_configs(persisted_specs)
+    print()
+    print("Providers")
+    print(
+        _render_simple_table(
+            ["Provider", "Status"],
+            [
+                [
+                    name,
+                    "enabled" if provider_configs[name]["enabled"] else "disabled",
+                ]
+                for name in sorted(VALID_PROVIDERS)
+            ],
+        )
+    )
+    for name in sorted(VALID_PROVIDERS):
+        provider_cfg = provider_configs[name]
+        if not provider_cfg["enabled"]:
+            continue
+        print()
+        print(f"Provider {name}")
+        component_rows = [
+            [
+                artifact,
+                "yes" if provider_cfg[artifact] else "no",
+                (
+                    "installed"
+                    if _provider_artifact_installed(name, artifact)
+                    else "not installed"
+                ),
+            ]
+            for artifact in sorted(VALID_ARTIFACTS)
+        ]
+        print(
+            _render_simple_table(
+                ["Component", "Configured", "Status"], component_rows
+            )
+        )
+
+    sc_config = load_static_check_from_config()
+    sc_rows = [
+        [
+            lang,
+            str(entry.get("module", "")),
+            str(entry.get("cmd", "")),
+            " ".join(str(param) for param in entry.get("params", [])),
+        ]
+        for lang in sorted(sc_config)
+        for entry in sc_config.get(lang, [])
+        if isinstance(entry, dict)
+    ]
+    print()
+    print("Static Checks")
+    if sc_rows:
+        print(
+            _render_simple_table(
+                ["Language", "Module", "Cmd", "Params"], sc_rows
+            )
+        )
+    else:
+        print("(none)")
+
+
+def _maybe_auto_install_after_upgrade(argv_list: list[str]) -> None:
+    """!
+    @brief Run the provider installation flow after a successful `--upgrade`.
+    @param argv_list {list[str]} Raw CLI argument vector of the `--upgrade` invocation.
+    @return {None} Function return value.
+    @details Executes the `install` flow with persisted providers when `auto-install` is
+    enabled (SRS-420, SRS-421); prints an English stderr warning and skips when no
+    provider is enabled or `--prj-base` is absent.
+    @satisfies SRS-421
+    """
+    if not load_auto_install_enabled():
+        return
+    if not load_persisted_provider_specs():
+        print(
+            "Warning: no enabled providers in ~/.config/usereq/config.json; skipping auto-install after upgrade.",
+            file=sys.stderr,
+        )
+        return
+    try:
+        args = parse_args(argv_list)
+    except SystemExit:
+        return
+    if getattr(args, "prj_base", None) is None:
+        print(
+            "Warning: --prj-base not provided; skipping auto-install after upgrade.",
+            file=sys.stderr,
+        )
+        return
+    run_install(args)
+
+
 def run_set_directories(args: Namespace) -> None:
     """!
     @brief Persist `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir` values.
@@ -2470,24 +3060,26 @@ def _validate_enable_static_check_command_executables(
 
 def run(args: Namespace) -> None:
     """!
-    @brief Handles the main installation/update flow.
-    @details Requires `--prj-base` (SRS-396), loads the `docs-dir`, `tests-dir`, and `src-dir`
-    values from the user-global configuration with defaults `usereq`, `tests`, and `src`
-    (SRS-359, SRS-361, SRS-362), creates missing directories during non-update installation
-    (SRS-363), persists the effective directory configuration plus providers and static-check
-    entries (SRS-288, SRS-407), and orchestrates user-level provider artifact generation with
-    home-relative GUIDELINES_DIR token substitution (SRS-402, SRS-403).
-    @param args Parsed CLI namespace; must contain ``provider_specs`` list.
+    @brief Handles the main installation/update flow for persisted providers.
+    @details Requires `--prj-base` (SRS-396), loads the persisted `"providers"` specs from
+    `~/.config/usereq/config.json` (SRS-064, SRS-279) and requires at least one enabled
+    provider (SRS-035), loads the `docs-dir`, `tests-dir`, and `src-dir` values from the
+    user-global configuration with defaults `usereq`, `tests`, and `src` (SRS-359,
+    SRS-361, SRS-362), creates missing directories during non-update installation
+    (SRS-363), preserves the persisted static-check and auto-install configuration
+    (SRS-288, SRS-301, SRS-420, SRS-407), and orchestrates user-level provider artifact
+    generation with home-relative GUIDELINES_DIR token substitution (SRS-402, SRS-403).
+    @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError If `--prj-base` is absent, providers are missing, or configured paths are invalid.
-    @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-280, SRS-288, SRS-301, SRS-359, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388, SRS-396, SRS-402, SRS-403, SRS-407
+    @throws ReqError If `--prj-base` is absent, no provider is enabled, or configured paths are invalid.
+    @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-288, SRS-301, SRS-359, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388, SRS-396, SRS-402, SRS-403, SRS-407, SRS-418
     """
     global VERBOSE, DEBUG
-    VERBOSE = args.verbose
-    DEBUG = args.debug
+    VERBOSE = getattr(args, "verbose", False)
+    DEBUG = getattr(args, "debug", False)
 
     # Main flow: validates input, calculates paths, generates user-level resources.
-    if args.remove:
+    if getattr(args, "remove", False):
         run_remove(args)
         return
 
@@ -2509,7 +3101,8 @@ def run(args: Namespace) -> None:
     ):
         raise ReqError("Error: invalid src configuration values", 11)
 
-    create_missing_dirs = not args.update
+    update_active = getattr(args, "update", False)
+    create_missing_dirs = not update_active
     ensure_doc_directory(
         doc_dir_value, project_base, create_missing=create_missing_dirs
     )
@@ -2551,15 +3144,8 @@ def run(args: Namespace) -> None:
         if abs_src and not abs_src.resolve().is_relative_to(project_base):
             raise ReqError("Error: src-dir must be under the project base", 5)
 
-    # Resolve --provider specs: load persisted specs on --update, replace with CLI specs (SRS-275, SRS-280).
-    cli_provider_specs: list[str] = getattr(args, "provider_specs", None) or []
-    persisted_provider_specs: list[str] = []
-    if args.update:
-        persisted_provider_specs = load_persisted_provider_specs()
-    # CLI --provider replaces persisted specs when at least one is given (SRS-280).
-    effective_provider_specs = (
-        cli_provider_specs if cli_provider_specs else persisted_provider_specs
-    )
+    # Resolve persisted provider specs (SRS-064, SRS-279); installation is config-driven.
+    effective_provider_specs = load_persisted_provider_specs()
     # Validate all specs (will raise ReqError on invalid tokens, SRS-278).
     for spec_str in effective_provider_specs:
         parse_provider_spec(spec_str)
@@ -2587,7 +3173,7 @@ def run(args: Namespace) -> None:
             enable_pi,
         )
     ):
-        if args.update:
+        if update_active:
             raise ReqError(
                 "Error: the global configuration has an invalid provider/artifact update configuration",
                 11,
@@ -2595,11 +3181,11 @@ def run(args: Namespace) -> None:
         parser = build_parser()
         parser.print_help()
         raise ReqError(
-            "Error: at least one --provider spec is required to generate prompts",
+            "Error: at least one enabled provider is required in ~/.config/usereq/config.json (configure it with --enable-provider SPEC)",
             4,
         )
     if not any((enable_prompts, enable_agents, enable_skills)):
-        if args.update:
+        if update_active:
             raise ReqError(
                 "Error: the global configuration has an invalid provider/artifact update configuration",
                 11,
@@ -2607,57 +3193,12 @@ def run(args: Namespace) -> None:
         parser = build_parser()
         parser.print_help()
         raise ReqError(
-            "Error: at least one --provider spec with artifact types is required",
+            "Error: at least one enabled provider with artifact types is required in ~/.config/usereq/config.json",
             4,
         )
 
-    # Parse --enable-static-check specs and compute merged static-check config (SRS-248..SRS-252, SRS-301).
-    new_static_check: dict = {}
-    enable_static_check_specs = getattr(args, "enable_static_check", None) or []
-    if enable_static_check_specs:
-        from .static_check import parse_enable_static_check as _parse_sc
-
-        for spec in enable_static_check_specs:
-            canonical_lang, lang_cfg = _parse_sc(spec)
-            # SRS-251: discard identity-duplicate entries within one invocation.
-            identity = _static_check_entry_identity(canonical_lang, lang_cfg)
-            existing = new_static_check.get(canonical_lang, [])
-            has_duplicate = any(
-                _static_check_entry_identity(canonical_lang, entry) == identity
-                for entry in existing
-            )
-            if not has_duplicate:
-                new_static_check.setdefault(canonical_lang, []).append(lang_cfg)
-    _validate_enable_static_check_command_executables(
-        new_static_check,
-        enforce=(not args.update),
-    )
-
-    # Compute merged static-check: existing config + new non-duplicate entries (SRS-252, SRS-301).
-    # Preserve pre-existing static-check entries whenever the global configuration file
-    # already exists and the invocation includes at least one --enable-static-check spec.
-    should_merge_existing = (
-        args.update
-        or (bool(enable_static_check_specs) and get_global_config_path().is_file())
-    )
-    if should_merge_existing:
-        existing_sc = load_static_check_from_config()
-        merged_static_check: dict = {k: list(v) for k, v in existing_sc.items()}
-        for lang, entries in new_static_check.items():
-            existing_for_lang = merged_static_check.get(lang, [])
-            existing_identities = {
-                _static_check_entry_identity(lang, entry)
-                for entry in existing_for_lang
-                if isinstance(entry, dict)
-            }
-            for entry in entries:
-                # SRS-301: skip new entry if same (language, module, cmd, params) already exists.
-                identity = _static_check_entry_identity(lang, entry)
-                if identity not in existing_identities:
-                    merged_static_check.setdefault(lang, []).append(entry)
-                    existing_identities.add(identity)
-    else:
-        merged_static_check = new_static_check
+    # Preserve the persisted static-check configuration unchanged (SRS-301, SRS-415).
+    merged_static_check = load_static_check_from_config()
 
     # Persist the single user-global configuration file (SRS-279, SRS-288, SRS-407).
     save_config(
@@ -4161,6 +4702,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 0
         if "--upgrade" in argv_list:
             run_upgrade()
+            _maybe_auto_install_after_upgrade(argv_list)
             return 0
         if maybe_print_version(argv_list):
             return 0
@@ -4171,12 +4713,26 @@ def main(argv: Optional[list[str]] = None) -> int:
         if _is_directory_config_command(args):
             run_set_directories(args)
             return 0
-        # Directory configuration commands require --prj-base only (SRS-396, SRS-398..SRS-401).
-        if _is_directory_config_command(args):
-            run_set_directories(args)
+        # Provider/static-check/auto-install configuration commands persist to
+        # ~/.config/usereq/config.json and never install by themselves (SRS-276, SRS-413,
+        # SRS-414, SRS-415, SRS-420); when combined with the install subcommand they are
+        # applied first and installation proceeds afterwards.
+        if _is_provider_config_command(args):
+            run_config_commands(args)
+            if getattr(args, "command", None) is None:
+                return 0
+        # Bare subcommands (SRS-408, SRS-280).
+        command = getattr(args, "command", None)
+        if command == "install":
+            run_install(args)
+            return 0
+        if command == "uninstall":
+            run_uninstall_providers(args)
+            return 0
+        if command == "show":
+            run_show(args)
             return 0
         # Bare analysis subcommands (SRS-408); both bases are mandatory (SRS-410).
-        command = getattr(args, "command", None)
         if command is not None:
             _require_prj_base(args)
             _require_git_base_value(args)

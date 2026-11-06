@@ -122,16 +122,15 @@ else
         --prj-base "${FOLDER_PATH}" --set-docs-dir docs \
         --set-src-dir src --set-tests-dir tests
 
-    # @brief Prints the exact smoke-test installation command line.
-    # @details Mirrors the execution command for manual reproduction and keeps
-    # the Pi provider visible in installation logs.
+    # @brief Prints the exact smoke-test configuration command line.
+    # @details Persists providers and static-check tools in the disposable HOME
+    # configuration file; no artifact is installed at this stage.
     echo "${SCRIPT_PATH}/req.sh" \
-        --prj-base "${FOLDER_PATH}" \
-        --provider antigravity:prompts,skills \
-        --provider claude:prompts,agents,skills \
-        --provider codex:prompts,skills \
-        --provider opencode:prompts,agents,skills \
-        --provider "pi:prompts,skills" \
+        --enable-provider antigravity:prompts,skills \
+        --enable-provider claude:prompts,agents,skills \
+        --enable-provider codex:prompts,skills \
+        --enable-provider opencode:prompts,agents,skills \
+        --enable-provider "pi:prompts,skills" \
         --enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \
         --enable-static-check C=Command,clang-format,--dry-run,--Werror \
         --enable-static-check C++=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c++20 \
@@ -139,21 +138,30 @@ else
         --enable-static-check Python=Pylance \
         --enable-static-check Python=Ruff
 
-    # @brief Executes the smoke-test installation command.
-    # @details Installs the canonical provider/resource set, including Pi
-    # prompts and Pi skills, into user-level directories under the disposable
-    # HOME.
+    # @brief Executes the smoke-test configuration command.
+    # @details Writes the canonical provider and static-check configuration to the
+    # disposable `~/.config/usereq/config.json` without installing artifacts.
     "${SCRIPT_PATH}/req.sh" \
-        --prj-base "${FOLDER_PATH}" \
-        --provider antigravity:prompts,skills \
-        --provider claude:prompts,agents,skills \
-        --provider codex:prompts,skills \
-        --provider opencode:prompts,agents,skills \
-        --provider "pi:prompts,skills" \
+        --enable-provider antigravity:prompts,skills \
+        --enable-provider claude:prompts,agents,skills \
+        --enable-provider codex:prompts,skills \
+        --enable-provider opencode:prompts,agents,skills \
+        --enable-provider "pi:prompts,skills" \
         --enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \
         --enable-static-check C=Command,clang-format,--dry-run,--Werror \
         --enable-static-check C++=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c++20 \
         --enable-static-check C++=Command,clang-format,--dry-run,--Werror \
         --enable-static-check Python=Pylance \
         --enable-static-check Python=Ruff
+
+    # @brief Prints the exact smoke-test installation command line.
+    # @details Mirrors the execution command for manual reproduction and keeps
+    # the Pi provider visible in installation logs.
+    echo "${SCRIPT_PATH}/req.sh" install --prj-base "${FOLDER_PATH}"
+
+    # @brief Executes the smoke-test installation command.
+    # @details Installs the configured provider/resource set, including Pi
+    # prompts and Pi skills, into user-level directories under the disposable
+    # HOME, from the persisted configuration.
+    "${SCRIPT_PATH}/req.sh" install --prj-base "${FOLDER_PATH}"
 fi

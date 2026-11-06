@@ -32,18 +32,18 @@ from unittest.mock import patch
 from usereq import cli
 
 ALL_PROVIDERS_ALL_ARTIFACTS = [
-    "--provider",
+    "--enable-provider",
     "antigravity:prompts,skills",
-    "--provider",
+    "--enable-provider",
     "claude:prompts,agents,skills",
-    "--provider",
+    "--enable-provider",
     "codex:prompts,skills",
-    "--provider",
+    "--enable-provider",
     "opencode:prompts,agents,skills",
-    "--provider",
+    "--enable-provider",
     "pi:prompts,skills",
 ]
-"""Repeatable --provider specs that enable every provider with all artifact types."""
+"""Repeatable --enable-provider specs that enable every provider with all artifact types."""
 
 EXPECTED_PROMPTS = sorted(
     path.stem for path in (cli.RESOURCE_ROOT / "prompts").glob("*.md")
@@ -121,6 +121,7 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
                     str(cls.TEST_DIR),
                 ]
                 + ALL_PROVIDERS_ALL_ARTIFACTS
+                + ["install"]
             )
         cls.prompts_snapshot_after = {
             p.name: p.read_text(encoding="utf-8")
@@ -402,7 +403,8 @@ class TestProviderSpecMultiple(HomeIsolatedTestCase):
             str(self.TEST_DIR),
         ]
         for spec in specs:
-            argv.extend(["--provider", spec])
+            argv.extend(["--enable-provider", spec])
+        argv.append("install")
         return self.run_cli(argv)
 
     def test_exit_code_zero(self) -> None:
@@ -457,14 +459,14 @@ class TestProviderSpecPersistence(HomeIsolatedTestCase):
         ]
 
     def test_provider_specs_persisted_to_global_config(self) -> None:
-        self.run_cli(self.base_argv + ["--provider", "pi:prompts,skills"])
+        self.run_cli(self.base_argv + ["--enable-provider", "pi:prompts,skills", "install"])
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
         self.assertEqual(data["providers"], ["pi:prompts,skills"])
 
     def test_provider_specs_restored_on_update(self) -> None:
         """SRS-280: --update without --provider reuses persisted specs."""
-        self.run_cli(self.base_argv + ["--provider", "codex:prompts"])
+        self.run_cli(self.base_argv + ["--enable-provider", "codex:prompts", "install"])
         shutil.rmtree(self.HOME / ".codex")
         rc = self.run_cli(["--update", "--prj-base", str(self.TEST_DIR)])
         self.assertEqual(rc, 0)
@@ -473,15 +475,15 @@ class TestProviderSpecPersistence(HomeIsolatedTestCase):
         )
 
     def test_cli_provider_replaces_persisted_on_update(self) -> None:
-        """SRS-280: CLI --provider specs replace persisted entries."""
-        self.run_cli(self.base_argv + ["--provider", "codex:prompts"])
+        """SRS-279: --enable-provider replaces the named provider's specs, preserving others."""
+        self.run_cli(self.base_argv + ["--enable-provider", "codex:prompts", "install"])
         rc = self.run_cli(
-            ["--update", "--prj-base", str(self.TEST_DIR), "--provider", "claude:prompts"]
+            ["--prj-base", str(self.TEST_DIR), "--enable-provider", "claude:prompts", "install"]
         )
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["providers"], ["claude:prompts"])
+        self.assertEqual(data["providers"], ["codex:prompts", "claude:prompts"])
 
 
 class TestPromptsUseAgents(HomeIsolatedTestCase):
@@ -501,7 +503,7 @@ class TestPromptsUseAgents(HomeIsolatedTestCase):
 
     def test_claude_commands_are_agent_stubs(self) -> None:
         self.run_cli(
-            self.base_argv + ["--provider", "claude:prompts:prompts-use-agents"]
+            self.base_argv + ["--enable-provider", "claude:prompts:prompts-use-agents", "install"]
         )
         command = self.HOME / ".claude" / "commands" / "req" / "write.md"
         content = command.read_text(encoding="utf-8")
@@ -511,14 +513,14 @@ class TestPromptsUseAgents(HomeIsolatedTestCase):
 
     def test_opencode_commands_are_agent_stubs(self) -> None:
         self.run_cli(
-            self.base_argv + ["--provider", "opencode:prompts:prompts-use-agents"]
+            self.base_argv + ["--enable-provider", "opencode:prompts:prompts-use-agents", "install"]
         )
         command = self.HOME / ".config" / "opencode" / "command" / "req-write.md"
         content = command.read_text(encoding="utf-8")
         self.assertIn("agent: req-write", content)
 
     def test_pi_prompts_are_agent_stubs(self) -> None:
-        self.run_cli(self.base_argv + ["--provider", "pi:prompts:prompts-use-agents"])
+        self.run_cli(self.base_argv + ["--enable-provider", "pi:prompts:prompts-use-agents", "install"])
         prompt = self.HOME / ".pi" / "agent" / "prompts" / "req-write.prompt.md"
         content = prompt.read_text(encoding="utf-8")
         self.assertIn("agent: req-write", content)
@@ -528,10 +530,11 @@ class TestPromptsUseAgents(HomeIsolatedTestCase):
         self.run_cli(
             self.base_argv
             + [
-                "--provider",
+                "--enable-provider",
                 "claude:prompts:prompts-use-agents",
-                "--provider",
+                "--enable-provider",
                 "opencode:prompts",
+                "install",
             ]
         )
         claude_command = self.HOME / ".claude" / "commands" / "req" / "write.md"
@@ -557,7 +560,7 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
     def test_install_uses_default_directories_without_configuration(self) -> None:
         """SRS-359/SRS-361/SRS-362: defaults are usereq, tests, and src."""
         rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--provider", "codex:prompts"]
+            ["--prj-base", str(self.TEST_DIR), "--enable-provider", "codex:prompts", "install"]
         )
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
@@ -569,7 +572,7 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
     def test_install_creates_missing_directories(self) -> None:
         """SRS-363: installation creates configured directories under --prj-base."""
         rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--provider", "codex:prompts"]
+            ["--prj-base", str(self.TEST_DIR), "--enable-provider", "codex:prompts", "install"]
         )
         self.assertEqual(rc, 0)
         self.assertTrue((self.TEST_DIR / "usereq").is_dir())
@@ -580,7 +583,7 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
         """SRS-363: nested configured directories are created with their parents."""
         self.seed_directory_config(docs="req/docs")
         rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--provider", "codex:prompts"]
+            ["--prj-base", str(self.TEST_DIR), "--enable-provider", "codex:prompts", "install"]
         )
         self.assertEqual(rc, 0)
         self.assertTrue((self.TEST_DIR / "req" / "docs").is_dir())
@@ -589,7 +592,7 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
         """SRS-407: update reuses the persisted directory configuration."""
         self.seed_directory_config()
         self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--provider", "codex:prompts"]
+            ["--prj-base", str(self.TEST_DIR), "--enable-provider", "codex:prompts", "install"]
         )
         rc = self.run_cli(["--update", "--prj-base", str(self.TEST_DIR)])
         self.assertEqual(rc, 0)
@@ -621,7 +624,7 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         project = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
         rc = self.run_cli(
-            ["--prj-base", str(project), "--provider", "codex:prompts"]
+            ["--prj-base", str(project), "--enable-provider", "codex:prompts", "install"]
         )
         self.assertEqual(rc, 0)
         self.assertNotIn(
@@ -667,7 +670,7 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
         self.guidelines.mkdir(parents=True, exist_ok=True)
         (self.guidelines / "RFC2119.md").write_text("rfc\n", encoding="utf-8")
-        rc = self.run_cli(["--prj-base", str(project), "--provider", "codex:prompts"])
+        rc = self.run_cli(["--prj-base", str(project), "--enable-provider", "codex:prompts", "install"])
         self.assertEqual(rc, 0)
         self.assertFalse((project / "guidelines").exists())
         self.assertFalse((project / "usereq" / "guidelines").exists())
@@ -687,9 +690,9 @@ class TestRemoveCommand(HomeIsolatedTestCase):
             [
                 "--prj-base",
                 str(self.TEST_DIR),
-                "--provider",
+                "--enable-provider",
                 "claude:prompts,skills",
-                "--provider",
+                "--enable-provider",
                 "codex:prompts,skills",
             ]
         )
@@ -746,7 +749,8 @@ class TestInstallationSummaryTable(HomeIsolatedTestCase):
             str(self.TEST_DIR),
         ]
         for spec in specs:
-            argv.extend(["--provider", spec])
+            argv.extend(["--enable-provider", spec])
+        argv.append("install")
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(argv)
         self.assertEqual(rc, 0)
@@ -912,7 +916,7 @@ class TestDocsCheckCommand(HomeIsolatedTestCase):
             [
                 "--prj-base",
                 str(self.TEST_DIR),
-                "--provider",
+                "--enable-provider",
                 "codex:prompts",
             ]
         )
@@ -1154,7 +1158,7 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
         rc = self.run_cli(
             self.base_argv
             + [
-                "--provider",
+                "--enable-provider",
                 "codex:prompts",
                 "--enable-static-check",
                 "Python=Pylance",
@@ -1172,7 +1176,7 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
         self.run_cli(
             self.base_argv
             + [
-                "--provider",
+                "--enable-provider",
                 "codex:prompts",
                 "--enable-static-check",
                 "Python=Pylance",
@@ -1197,7 +1201,7 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
         rc = self.run_cli(
             self.base_argv
             + [
-                "--provider",
+                "--enable-provider",
                 "codex:prompts",
                 "--enable-static-check",
                 "Python=Pylance",
@@ -1259,7 +1263,7 @@ class TestSetDirectoryCommands(HomeIsolatedTestCase):
             [
                 "--prj-base",
                 str(self.TEST_DIR),
-                "--provider",
+                "--enable-provider",
                 "codex:prompts",
                 "--enable-static-check",
                 "Python=Pylance",
@@ -1287,7 +1291,7 @@ class TestPrjBaseRequirements(HomeIsolatedTestCase):
 
     def test_install_requires_prj_base(self) -> None:
         with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
-            rc = self.run_cli(["--provider", "codex:prompts"])
+            rc = self.run_cli(["--enable-provider", "codex:prompts", "install"])
         self.assertEqual(rc, 1)
         self.assertIn("--prj-base", mock_stderr.getvalue())
 
@@ -1390,6 +1394,286 @@ class TestUpgradeUninstall(unittest.TestCase):
             cli.run_uninstall()
         command = mock_run.call_args[0][0]
         self.assertEqual(command[:3], ["uv", "tool", "uninstall"])
+
+
+class TestProviderLifecycleCommands(HomeIsolatedTestCase):
+    """SRS-275/SRS-276/SRS-279/SRS-413/SRS-422: provider configuration commands."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-lifecycle-"))
+        for sub in ("docs", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
+
+    def _read_config(self) -> dict:
+        return json.loads(
+            (self.HOME / ".config" / "usereq" / "config.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def test_enable_provider_is_config_only(self) -> None:
+        """SRS-276: --enable-provider persists config and installs nothing."""
+        rc = self.run_cli(["--enable-provider", "pi:prompts,skills"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self._read_config()["providers"], ["pi:prompts,skills"])
+        self.assertFalse((self.HOME / ".pi" / "agent" / "skills").exists())
+
+    def test_enable_provider_replaces_named_provider_only(self) -> None:
+        """SRS-279: re-enabling replaces the named provider, preserving others."""
+        self.run_cli(["--enable-provider", "codex:prompts"])
+        self.run_cli(
+            ["--enable-provider", "pi:skills", "--enable-provider", "pi:prompts"]
+        )
+        self.assertEqual(
+            self._read_config()["providers"],
+            ["codex:prompts", "pi:skills", "pi:prompts"],
+        )
+
+    def test_disable_provider_removes_specs(self) -> None:
+        """SRS-413: --disable-provider removes all specs of the provider."""
+        self.run_cli(
+            ["--enable-provider", "codex:prompts", "--enable-provider", "pi:skills"]
+        )
+        rc = self.run_cli(["--disable-provider", "pi"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self._read_config()["providers"], ["codex:prompts"])
+
+    def test_disable_provider_absent_specs_keeps_config(self) -> None:
+        """SRS-413: disabling a provider without specs leaves the config unchanged."""
+        self.run_cli(["--enable-provider", "codex:prompts"])
+        rc = self.run_cli(["--disable-provider", "pi"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self._read_config()["providers"], ["codex:prompts"])
+
+    def test_disable_provider_unknown_token_fails(self) -> None:
+        """SRS-422: unknown provider token exits with code 1."""
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            rc = self.run_cli(["--disable-provider", "nope"])
+        self.assertEqual(rc, 1)
+        self.assertIn("unknown provider", mock_stderr.getvalue())
+
+    def test_enable_provider_invalid_spec_fails(self) -> None:
+        """SRS-278: invalid SPEC token exits with code 1."""
+        with patch("sys.stderr", new_callable=io.StringIO):
+            rc = self.run_cli(["--enable-provider", "pi:bogus"])
+        self.assertEqual(rc, 1)
+
+    def test_legacy_provider_flag_is_not_parsed(self) -> None:
+        """SRS-034: --provider is a removed legacy flag."""
+        with (
+            patch("sys.stderr", new_callable=io.StringIO),
+            self.assertRaises(SystemExit),
+        ):
+            cli.main(["--provider", "pi:prompts"])
+
+    def test_install_requires_enabled_provider(self) -> None:
+        """SRS-035: install without enabled providers exits with code 4."""
+        with (
+            patch("sys.stderr", new_callable=io.StringIO),
+            patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            rc = self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 4)
+
+
+class TestStaticCheckLifecycleCommands(HomeIsolatedTestCase):
+    """SRS-414/SRS-415/SRS-422: static-check configuration commands."""
+
+    def _read_config(self) -> dict:
+        return json.loads(
+            (self.HOME / ".config" / "usereq" / "config.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def test_enable_static_check_config_only(self) -> None:
+        """SRS-415: enable persists to config without --prj-base."""
+        rc = self.run_cli(["--enable-static-check", "Python=Pylance"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            self._read_config()["static-check"],
+            {"Python": [{"module": "Pylance"}]},
+        )
+
+    def test_disable_static_check_exact_entry(self) -> None:
+        """SRS-414: SPEC form removes only the identity-matching entry."""
+        self.run_cli(
+            [
+                "--enable-static-check",
+                "Python=Pylance",
+                "--enable-static-check",
+                "Python=Ruff",
+            ]
+        )
+        rc = self.run_cli(["--disable-static-check", "Python=Pylance"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            self._read_config()["static-check"],
+            {"Python": [{"module": "Ruff"}]},
+        )
+
+    def test_disable_static_check_whole_language(self) -> None:
+        """SRS-414: bare LANG removes the whole language key."""
+        self.run_cli(
+            ["--enable-static-check", "Python=Pylance", "--enable-static-check", "C=Dummy"]
+        )
+        rc = self.run_cli(["--disable-static-check", "Python"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self._read_config()["static-check"], {"C": [{"module": "Dummy"}]})
+
+    def test_disable_static_check_unknown_language_fails(self) -> None:
+        """SRS-422: unknown language token exits with code 1."""
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            rc = self.run_cli(["--disable-static-check", "Klingon"])
+        self.assertEqual(rc, 1)
+        self.assertIn("unknown static-check language", mock_stderr.getvalue())
+
+
+class TestAutoInstallLifecycle(HomeIsolatedTestCase):
+    """SRS-420/SRS-421: auto-install configuration and post-upgrade behavior."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-autoinstall-"))
+        for sub in ("docs", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
+
+    def _read_config(self) -> dict:
+        return json.loads(
+            (self.HOME / ".config" / "usereq" / "config.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def test_auto_install_defaults_enabled(self) -> None:
+        """SRS-420: auto-install is enabled when the config stores no entry."""
+        self.assertTrue(cli.load_auto_install_enabled())
+
+    def test_disable_and_enable_auto_install_persist(self) -> None:
+        """SRS-420: flags persist the auto-install boolean."""
+        rc = self.run_cli(["--disable-auto-install"])
+        self.assertEqual(rc, 0)
+        self.assertIs(self._read_config()["auto-install"], False)
+        rc = self.run_cli(["--enable-auto-install"])
+        self.assertEqual(rc, 0)
+        self.assertIs(self._read_config()["auto-install"], True)
+
+    def test_upgrade_auto_install_runs_install(self) -> None:
+        """SRS-421: successful --upgrade with auto-install triggers the install flow."""
+        self.run_cli(["--enable-provider", "pi:skills"])
+        with (
+            patch("usereq.cli.run_upgrade"),
+            patch("usereq.cli.run_install") as mock_install,
+        ):
+            rc = cli.main(["--upgrade", "--prj-base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
+        mock_install.assert_called_once()
+
+    def test_upgrade_auto_install_skipped_without_prj_base(self) -> None:
+        """SRS-421: missing --prj-base warns on stderr and skips the install flow."""
+        self.run_cli(["--enable-provider", "pi:skills"])
+        with (
+            patch("usereq.cli.run_upgrade"),
+            patch("usereq.cli.run_install") as mock_install,
+            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
+        ):
+            rc = cli.main(["--upgrade"])
+        self.assertEqual(rc, 0)
+        mock_install.assert_not_called()
+        self.assertIn("skipping auto-install", mock_stderr.getvalue())
+
+    def test_upgrade_auto_install_disabled_skips_install(self) -> None:
+        """SRS-420/SRS-421: disabled auto-install skips the install flow."""
+        self.run_cli(
+            ["--enable-provider", "pi:skills", "--disable-auto-install"]
+        )
+        with (
+            patch("usereq.cli.run_upgrade"),
+            patch("usereq.cli.run_install") as mock_install,
+        ):
+            rc = cli.main(["--upgrade", "--prj-base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
+        mock_install.assert_not_called()
+
+
+class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
+    """SRS-280/SRS-416/SRS-417/SRS-418/SRS-419: lifecycle subcommands."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-show-"))
+        for sub in ("docs", "tests", "src"):
+            (self.TEST_DIR / sub).mkdir(exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+        self.seed_directory_config()
+
+    def test_install_and_uninstall_roundtrip(self) -> None:
+        """SRS-418/SRS-419: install creates artifacts, uninstall removes them."""
+        self.run_cli(["--enable-provider", "pi:skills"])
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
+        self.assertEqual(rc, 0)
+        self.assertIn("Modules Installed", mock_stdout.getvalue())
+        skills_root = self.HOME / ".pi" / "agent" / "skills"
+        self.assertTrue(skills_root.is_dir())
+        rc = self.run_cli(["uninstall"])
+        self.assertEqual(rc, 0)
+        self.assertFalse(skills_root.exists())
+
+    def test_uninstall_without_config_fails(self) -> None:
+        """SRS-419: uninstall requires the global configuration file."""
+        (self.HOME / ".config" / "usereq" / "config.json").unlink()
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            rc = self.run_cli(["uninstall"])
+        self.assertEqual(rc, 11)
+        self.assertIn("not found", mock_stderr.getvalue())
+
+    def test_show_prints_configuration_and_status_tables(self) -> None:
+        """SRS-416/SRS-417: show prints configuration, provider, and status tables."""
+        self.run_cli(
+            [
+                "--enable-provider",
+                "pi:skills",
+                "--enable-static-check",
+                "Python=Ruff",
+            ]
+        )
+        self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["show"])
+        self.assertEqual(rc, 0)
+        output = mock_stdout.getvalue()
+        for token in (
+            "Active Configuration",
+            "docs-dir",
+            "tests-dir",
+            "src-dir",
+            "auto-install",
+            "enabled",
+            "Providers",
+            "Provider pi",
+            "Component",
+            "Configured",
+            "Status",
+            "installed",
+            "not installed",
+            "Static Checks",
+            "Ruff",
+        ):
+            self.assertIn(token, output)
+
+    def test_show_reports_not_installed_components(self) -> None:
+        """SRS-417: components without artifacts are reported as not installed."""
+        self.run_cli(["--enable-provider", "codex:prompts,skills"])
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["show"])
+        self.assertEqual(rc, 0)
+        self.assertIn("not installed", mock_stdout.getvalue())
 
 
 if __name__ == "__main__":

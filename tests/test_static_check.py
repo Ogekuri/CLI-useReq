@@ -1636,14 +1636,10 @@ class TestEnableStaticCheckExecutableValidation(GlobalConfigIsolatedTestCase):
             shutil.rmtree(self.tmp)
 
     def test_non_update_command_requires_executable_before_config_write(self) -> None:
-        """Non-update init with Command spec fails when cmd is not executable (SRS-250)."""
+        """Config command with Command spec fails when cmd is not executable (SRS-250)."""
         from usereq import cli
 
         argv = [
-            "--prj-base",
-            str(self.tmp),
-            "--provider",
-            "claude:prompts",
             "--enable-static-check",
             "C=Command,nonexistent_tool_xyz_12345",
         ]
@@ -1888,10 +1884,6 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         self.write_global_config(existing_payload)
 
         argv = [
-            "--prj-base",
-            str(self.tmp),
-            "--provider",
-            "claude:prompts",
             "--enable-static-check",
             "JavaScript=Command,node,--check",
         ]
