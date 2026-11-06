@@ -10,267 +10,213 @@
 > * **No Support or Feature Requests:** Please **do not** open issues, bug reports, or feature requests. They will not be addressed or accepted at this stage of development.
 > * **No Warranty:** This software is provided **"AS IS"**, without warranty of any kind, express or implied. You may use it strictly for **testing and evaluation purposes** at your own sole risk.
 
-# useReq/req (0.67.0)
+# useReq / req (0.67.0)
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-GPL--3.0-491?style=flat-square" alt="License: GPL-3.0">
   <img src="https://img.shields.io/badge/platform-Linux-6A7EC2?style=flat-square&logo=terminal&logoColor=white" alt="Platforms">
   <img src="https://img.shields.io/badge/docs-live-b31b1b" alt="Docs">
-<img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv">
 </p>
 
-<p align="center">
-<strong>The <u>req</u> script provides CLI prompts for requirements-driven software development.</strong><br>
-The defined prompts are exposed through provider-specific prompt, skill, and agent surfaces across supported CLIs and Agents (for example <b>/req-<name></b>, <b>/req:<name></b>, <b>/skill:req-<name></b>, or <b>/req-<name>.prompt</b>).<br>
-This allows them to be run both as a Python package (installed as <b>req</b>, <b>usereq</b>, or <b>use-req</b>) and directly using <b>uvx</b>.
-</p>
+**The `req` CLI provisions requirements-driven development prompts for LLM agents.**
 
-<p align="center">
-  <a href="#quick-start">Quick Start</a> |
-  <a href="#feature-highlights">Feature Highlights</a> |
-  <a href="#prompts-and-agents">Prompts and Agents</a> |
-  <a href="#default-workflow">Default Workflow</a> |
-  <a href="#supported-clis-agents-and-extensions">Supported CLIs, Agents, and Extensions</a> |
-  <a href="#known-issues">Known Issues</a> |
-  <a href="#note-on-git-usage">Note on Git usage</a>
-</p>
-<p align="center">
-<br>
-🚧 <strong>DRAFT:</strong> Proof-of-Concept (PoC) Version 📝 - Work in Progress 🏗️ 🚧<br>
-⚠️ <strong>IMPORTANT NOTICE</strong>: Created with <a href="https://www.npmjs.com/package/pi-usereq"><strong>PI-useReq/pi-usereq</strong></a> 🤖✨ ⚠️<br>
-<br>
-</p>
+In more detail: useReq packages a catalog of requirements-engineering prompts (write, create, change, implement, check, and more) and installs them as user-level prompts, commands, skills, and agents for the CLIs and agents you already use — exposed as `/req-<name>`, `/req:<name>`, `/skill:req-<name>`, `$req-<name>`, or `/req-<name>.prompt` depending on the provider. It also ships an embedded source-analysis toolkit (token counting, references, compression, construct extraction, static checks) that operates on your project across 20 programming languages, plus git-worktree helpers for parallel task execution. Everything is driven by one user-global configuration file (`~/.config/usereq/config.json`); nothing is written into your project repository. It runs as a Python package (installed as `req`, `usereq`, or `use-req`) or directly via `uvx`.
 
-## Requirements
+Quick index: [Feature Highlights](#feature-highlights) | [Quick Start](#quick-start) | [User's Guide](#users-guide) | [Acknowledgments](#acknowledgments)
 
-- Astral `uv` tool is required to run `scripts/req.sh` and project CLI workflows.
-- `uv.lock` is the canonical dependency lockfile for this repository; do not maintain a root `requirements.txt` file.
-- Primary validated environment: `linux` (automatic `--upgrade` and `--uninstall` execution is Linux-only).
-- Python 3.11+
+🚧 **Status: DRAFT — Proof-of-Concept (PoC) version, work in progress** 🚧
+⚠️ **IMPORTANT NOTICE**: Created with [PI-useReq/pi-usereq](https://www.npmjs.com/package/pi-usereq) 🤖✨ ⚠️
 
+# Feature Highlights
 
-## Feature Highlights
-- **Drives development through requirement changes**.
-- Keeps development under control.
-- Usable as skills, or agents, or prompts.
-- Creates a common interface for different vendor CLIs and Agents.
-- Creates **Software Requirements Specification** [*SRS*] file, optimized for LLM Agents, for new or existing projects.
-- Keeps source code documentation updated and optimized for LLM Agents reasoning.
-- Engineered for uninterrupted linear progression.
-- Use **git worktree** to parallelize tasks (only on clean git repositories)
-- Provide **source-code analysis tool**, that supports different programming languages: Python, C, C++, C#, Rust, JavaScript, TypeScript, Java, Go, Ruby, PHP, Swift, Kotlin, Scala, Lua, Shell, Perl, Haskell, Zig, Elixir.
-- Support **static-code analysis** with Pylance, Ruff or customizable Command-Line commands.
-- Support customizable guidelines.
-- Supports [Conventional Commit Standards](https://www.conventionalcommits.org/en/v1.0.0/) and is compatible with [release-changelog-builder-action](https://github.com/mikepenz/release-changelog-builder-action).
-- Compatible with [G/Git-Alias CLI](https://github.com/Ogekuri/G).
-- You will no longer need to read the codebase.
+The highlights below are what give the most value day-to-day:
 
+- **Drives development through requirement changes**, keeping the work under control with an uninterrupted linear progression.
+- **One catalog, many CLIs**: a single prompt/skill/agent catalog published to pi.dev, Antigravity, Claude Code, OpenAI Codex, and OpenCode through a common interface.
+- **LLM-optimized documentation**: creates and maintains a *Software Requirements Specification* (SRS) plus `WORKFLOW.md`, `REFERENCES.md`, and `FLOWCHART.md` for new or existing projects, tuned for LLM-agent reasoning.
+- **Embedded source analysis** for 20 languages (Python, C, C++, C#, Rust, JavaScript, TypeScript, Java, Go, Ruby, PHP, Swift, Kotlin, Scala, Lua, Shell, Perl, Haskell, Zig, Elixir): token counting, reference markdown, compression, and construct extraction.
+- **Configurable static analysis** with Pylance, Ruff, or arbitrary Command-Line checkers — sensible defaults included, with per-checker pre-flight validation that never blocks the run.
+- **Declarative provider configuration**: enable/disable providers and static checkers in one global config; `install`/`uninstall`/`show` lifecycle subcommands report exactly what is deployed where.
+- **Self-maintaining**: optional auto-install re-provisions your providers after every self-upgrade.
+- **Git worktree support** to parallelize tasks on clean repositories.
+- Compatible with [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and [release-changelog-builder-action](https://github.com/mikepenz/release-changelog-builder-action); integrates with [G/Git-Alias CLI](https://github.com/Ogekuri/G).
 
-## Prompts and Agents
-  | Prompt | Description |
-  | --- | --- |
-  | `write` | Produce a *SRS* draft based on the User Request description |
-  | `create` | Write a *Software Requirements Specification* using the project's source code |
-  | `recreate` | Reorganize and update the *Software Requirements Specification* based on source code analysis (preserve requirement IDs) |
-  | `renumber` | Deterministically renumber requirement IDs in the *Software Requirements Specification* without changing requirement text or order |
-  | `analyze` | Produce an analysis report |
-  | `change` | Update the requirements and implement the corresponding changes |
-  | `check` | Run the requirements check |
-  | `cover` | Implement minimal changes to cover uncovered existing requirements |
-  | `fix` | Fix a defect without changing the requirements |
-  | `implement` | Implement source code from requirements (from scratch) |
-  | `new` | Implement a new requirement and the corresponding source code changes |
-  | `refactor` | Perform a refactor without changing the requirements |
-  | `readme` | Write `README.md` from user-visible implementation evidence |
-  | `references` | Write a `REFERENCES.md` using the project's source code |
-  | `workflow` | Write a `WORKFLOW.md` using the project's source code |
-  | `flowchart` | Write a `FLOWCHART.md` using the project's source code |
+# Quick Start
 
+Get running in three steps: install the tool, configure one provider, and install the artifacts into your CLI.
 
-## Default Workflow
+**1. Install** (pick one):
 
-Click to zoom flowchart image.
-
-[![Flowchart](https://raw.githubusercontent.com/Ogekuri/useReq/refs/heads/master/images/flowchart-bw.svg)](https://raw.githubusercontent.com/Ogekuri/useReq/refs/heads/master/images/flowchart-bw.svg)
-
-
-## Quick Start
-
-### Prerequisites
-
-- Supported environment: `linux`
-- Python 3.11+
-- Install the `uv` tool from: [https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/)
-
-
-### Project's Tree
-
-Here the typical project's tree; configure `docs-dir`, `src-dir`, and `tests-dir` according to your project layout:
-
-```text
-.
-├── docs/
-│   ├── FLOWCHART.md
-│   ├── REQUIREMENTS.md
-│   ├── REFERENCES.md
-│   └── WORKFLOW.md
-├── src/
-│   └── Source code
-└── tests/
-    └── Unit tests suite
-```
-
-### Run useReq/req with uvx
 ```bash
-uvx --from git+https://github.com/Ogekuri/useReq.git req \
-  --enable-provider pi:prompts
-uvx --from git+https://github.com/Ogekuri/useReq.git req \
-  install --prj-base myproject/
+# persistent install (recommended)
+uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git
+
+# or run instantly without installing
+uvx --from git+https://github.com/Ogekuri/useReq.git req --help
 ```
 
-### Install/Uninstall useReq/req with uv
+**2. Configure** — enable a provider (configuration only; nothing is installed yet, all providers are disabled by default):
 
-#### Install
+```bash
+req --enable-provider pi:prompts,skills
+```
+
+**3. Run** — install the artifacts for the configured providers on your project:
+
+```bash
+req install --prj-base myproject/
+```
+
+Prompts and skills are installed under your HOME (e.g. `~/.pi/agent/prompts/` and `~/.pi/agent/skills/` for the `pi` provider) and are immediately available as `/req-<name>` commands and `/skill:req-<name>` skills. Start with `/req-write` to draft the SRS of a new project, or `/req-create` to derive it from existing source code; then drive implementation with `/req-implement`, `/req-change`, and `/req-new`.
+
+# Requirements
+
+- **Astral `uv`** — required to run `scripts/req.sh` and the recommended workflow for all project CLI executions. Install it from [https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/).
+- **Python 3.11+**.
+- **git** — required by project-scan commands (`references`, `compress`, `find`, `static-check`) and by the git-integration commands.
+- **Primary validated environment: Linux** — automatic `--upgrade` and `--uninstall` execution is Linux-only; on other platforms the manual command is printed instead.
+- `uv.lock` is the canonical dependency lockfile for this repository; no root `requirements.txt` is maintained.
+- Optional external binaries for the default static-check configuration: `cppcheck` and `clang-format` (C/C++), `node` (JavaScript), `eslint` (TypeScript). Python checking uses the bundled `Pylance` (pyright) and `Ruff` modules. Missing binaries are reported per check and never abort the run.
+
+# User's Guide
+
+## Install, Upgrade, and Uninstall
+
+### Tool installation
+
 ```bash
 uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git
 ```
 
-#### Uninstall
+This exposes the CLI as `req` (also callable as `use-req` / `usereq` or `python -m usereq`). After installation, verify with `req --version`.
+
+### Tool upgrade and auto-install
+
 ```bash
-uv tool uninstall usereq
+req --upgrade
 ```
 
-### Quick Install
+On Linux this executes `uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git`; on other platforms the manual command is printed and `uv` is not executed. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
 
-1. Configure providers and static checks on a project in path `project_path` (configuration only; no artifact is installed):
-- Typical configuration (directory values come from `~/.config/usereq/config.json`, defaults: `usereq`, `src`, `tests`):
+### Tool removal
+
+```bash
+req --uninstall     # executes `uv tool uninstall usereq` on Linux and cleans the release-check cache
 ```
-req \
---enable-provider pi:prompts \
---enable-provider claude:prompts \
---enable-provider codex:skills \
---enable-provider antigravity:prompts \
---enable-provider opencode:prompts \
---enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \
---enable-static-check C=Command,clang-format,--dry-run,--Werror \
---enable-static-check C++=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c++20 \
---enable-static-check C++=Command,clang-format,--dry-run,--Werror \
---enable-static-check Python=Pylance \
---enable-static-check Python=Ruff
+
+### Provider artifacts
+
+- `req install --prj-base PRJ_BASE` — installs or updates the providers persisted in the configuration and prints a Unicode installation summary report (per-provider `Prompts Installed` / `Modules Installed` columns). Requires at least one enabled provider, otherwise an English error is printed and the exit code is 4.
+- `req uninstall` — reciprocal of `install`: removes the `req-*` artifacts of the configured providers from the user-level provider directories.
+- `req --remove` — same artifact removal, flag form.
+- `req show` — prints the active configuration as tables: settings (including `auto-install`), provider enablement status, one dedicated per-provider table showing the installation status of the `prompts`, `agents`, and `skills` components detected on disk, and the enabled static-check entries.
+
+Artifacts are always installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`); nothing is ever written into the project repository.
+
+## Configuration
+
+All configuration lives in a single user-global file: `~/.config/usereq/config.json`. No configuration files are written to the project home or git repository path.
+
+Canonical keys: `docs-dir`, `tests-dir`, `src-dir`, `providers`, `static-check`, `auto-install`.
+
+### Project directories
+
+- `--set-docs-dir DOCS_DIR`, `--set-src-dir SRC_DIR` (repeatable), and `--set-tests-dir TESTS_DIR` persist project-relative directory values (each requires `--prj-base`; values must resolve under it).
+- Defaults when the configuration stores no value: `usereq` (docs), `src` (sources), `tests` (tests).
+- On fresh installation, missing configured directories (including parents) are created automatically under `--prj-base`.
+
+Typical project layout:
+
+```text
+.
+├── docs/            # or usereq/ by default: REQUIREMENTS.md, WORKFLOW.md, REFERENCES.md, FLOWCHART.md
+├── src/             # source code
+└── tests/           # unit test suite
 ```
-2. Install the configured providers (missing configured directories are created automatically on fresh install):
+
+### Providers
+
+All providers are disabled by default. Provider enablement is exclusive to the repeatable config-only flag:
+
+```bash
+req --enable-provider SPEC
 ```
-req install --prj-base "project_path"
+
+- `SPEC` format: `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`
+- `PROVIDER`: `antigravity`, `claude`, `codex`, `opencode`, or `pi`.
+- `ARTIFACT_ITEM`: one of `{prompts, agents, skills}`.
+- `PROVIDER_OPTIONS`: (optional) comma-separated list from `{prompts-use-agents}`.
+- Example: `req --enable-provider pi:prompts,skills`
+
+Behavior:
+
+- `--enable-provider` only updates `~/.config/usereq/config.json`; it never installs artifacts. Enabling a provider again replaces all its previously persisted specs while preserving every other provider.
+- `--disable-provider PROVIDER` removes all persisted specs of that provider (unknown tokens exit with code 1).
+- Unknown or invalid tokens in a SPEC print an English error identifying the invalid token and exit with code 1.
+- `prompts-use-agents` is provider-scoped and applies only to `prompts` artifacts: it generates prompt files as **agent-only references** (adds an `agent:` front matter field) where supported (Claude commands, OpenCode commands, and pi prompts).
+- Configuration flags may be combined with the `install` subcommand in one invocation (`req --enable-provider pi:prompts install --prj-base .`): configuration is applied first, then installation proceeds.
+
+### Static checks
+
+```bash
+req --enable-static-check SPEC    # repeatable, config-only, no --prj-base required
+req --disable-static-check SPEC   # reciprocal removal
 ```
-3. Use `/req-write` or `/req-create` to create requirements
-4. Use `/req-implement` to implement source-code from requirements, or `/req-cover` to cover new requirements (documentation).
-5. Use `/req-workflow`, `/req-flowchart`, and/or `/req-references` to update project's documentation.
-6. Start to use `/req-change`, `/req-new`, and `/req-fix`.
 
-### Usage
-- Run `req` to create or recreate useReq resources. Prompts, agents, and skills are installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`); nothing is written into the project repository.
-  - You can run `req` from any directory:
-    - `--prj-base <project-folder>` is mandatory for every command that reads or writes project files (install, `--update`, the analysis subcommands listed below, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, `--set-tests-dir`).
-    - `--git-base <git-repository-folder>` is mandatory for every git command (`--git-check`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`) and for every analysis subcommand listed below.
-    - `--prj-base` and `--git-base` are never persisted in `~/.config/usereq/config.json`.
-  - Directory configuration:
-    - `docs-dir`, `tests-dir`, and `src-dir` are persisted in `~/.config/usereq/config.json`.
-    - Defaults when the configuration stores no value: `usereq`, `tests`, and `src`.
-    - `--set-docs-dir DOCS_DIR`, `--set-src-dir SRC_DIR` (repeatable), and `--set-tests-dir TESTS_DIR` persist project-relative directory values and require `--prj-base`.
-    - Configured directories must resolve under `--prj-base`.
-    - On fresh installation, missing configured directories are created automatically.
-  - `GUIDELINES_DIR` is fixed to `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines` and is not configurable; generated prompts and skills reference it through home-relative paths.
-  - Use one or more `--enable-provider SPEC` parameters to persist provider activation, artifact types, and options in `~/.config/usereq/config.json` (all providers are disabled by default; no artifact is installed):
-    - `SPEC` format: `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`
-    - `PROVIDER`: `antigravity`, `claude`, `codex`, `opencode`, or `pi`.
-    - `ARTIFACT_ITEM`: one of `{prompts, agents, skills}`.
-    - `PROVIDER_OPTIONS`: (optional) comma-separated list from `{prompts-use-agents}`.
-    - Example: `--enable-provider pi:prompts,skills`
-  - Use `--disable-provider PROVIDER` to remove all persisted specs of a provider.
-  - Artifact types (specified within the `--enable-provider` spec):
-    - `skills` artifact generates skill resources for the provider.
-    - `prompts` artifact generates prompts/commands resources for the provider.
-    - `agents` artifact generates agent resources for the provider.
-  - `--enable-static-check SPEC` persists a static-check tool for a language in `~/.config/usereq/config.json` (repeatable, no `--prj-base` required). SPEC format: `LANG=MODULE[,CMD[,PARAM...]]`.
-      - Supported `MODULE` values: `Dummy`, `Pylance`, `Ruff`, `Command` (case-insensitive).
-      - Entries are merged into `~/.config/usereq/config.json` without replacing existing ones: existing entries are preserved, identity-duplicates are ignored, and only new non-duplicate entries are appended per language.
-  - `--disable-static-check SPEC` removes static-check entries: `LANG=MODULE[,CMD[,PARAM...]]` removes the exact matching entry; bare `LANG` removes the whole language key.
-  - Default static-check configuration (applied when the configuration stores no `"static-check"` entry; any present entry, including an empty object, suppresses the defaults): `C` and `C++` → `cppcheck` (per-language `--std`) + `clang-format --dry-run --Werror`; `JavaScript` → `node --check`; `TypeScript` → `eslint`; `Python` → `Pylance` and `Ruff` modules.
-  - Pre-flight: before executing any checker, availability is verified (`Dummy` always; `Pylance`/`Ruff` module in the active interpreter; `Command` binary on PATH). An unavailable checker yields `Result: FAIL` with evidence identifying the missing checker or binary and execution continues with the remaining checks.
-  - Auto-install is enabled by default: after a successful `--upgrade`, the persisted providers are reinstalled (equivalent to `install`). Use `--disable-auto-install` / `--enable-auto-install` to persist `"auto-install": false` / `true` in `~/.config/usereq/config.json`.
-- Configuration is stored in a single user-global file: `~/.config/usereq/config.json`. No configuration files are written to the project home or git repository path.
-- You need to run `req` again if you add or remove requirement-related files in the documentation directory, or if the installed guidelines under `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines` change.
-- Provider-scoped option `prompts-use-agents` (in the optional `:PROVIDER_OPTIONS` segment) generates prompt files as **agent-only references** (adds an `agent:` front matter field) where supported (Claude commands, OpenCode commands, and pi prompts).
-- Add `--verbose` and `--debug` to get detailed and diagnostic output.
-- Add `--update` to update an existing installation from the persisted configuration (requires an existing `~/.config/usereq/config.json`); the `install` subcommand is the canonical form.
-- Add `-h` / `--help` to print command help and exit.
-- Add `--ver` / `--version` to print the installed package version and exit.
-- Add `--remove` to remove `req-*` artifacts generated by useReq from the user-level provider directories configured in the global configuration file.
-- Add `--upgrade` to self-upgrade useReq via `uv`.
-- Add `--uninstall` to uninstall useReq via `uv`.
+- `SPEC` format: `LANG=MODULE[,CMD[,PARAM...]]`.
+- `MODULE`: `Dummy`, `Pylance`, `Ruff`, or `Command` (case-insensitive); for `Command`, `CMD` is the mandatory binary and the remaining tokens are `params`. Tokens containing commas must be wrapped in double quotes.
+- `LANG`: the 20 canonical language names, case-insensitive (Python, C, C++, C#, Rust, JavaScript, TypeScript, Java, Go, Ruby, PHP, Swift, Kotlin, Scala, Lua, Shell, Perl, Haskell, Zig, Elixir); aliases like `cpp`, `csharp`, `js`, `ts`, `sh` are accepted.
+- Enabling merges into the configuration without replacing existing entries: pre-existing entries are preserved, identity-duplicates (same language, module, cmd, params) are ignored.
+- Disabling: `LANG=MODULE[,CMD[,PARAM...]]` removes the exact matching entry; bare `LANG` removes the whole language key. Explicitly disabling everything persists an empty `"static-check"` object, which keeps the defaults switched off.
 
-### Embedded Utility
+Default static-check configuration (applied when the configuration stores no `"static-check"` entry; any present entry — including an empty object — suppresses the defaults):
 
-The analysis commands are bare subcommands (no `--` prefix) and each one requires both `--prj-base` and `--git-base`:
+| Language | Default checkers |
+| --- | --- |
+| C | `cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --std=c11`, `clang-format --dry-run --Werror` |
+| C++ | `cppcheck ... --std=c++20`, `clang-format --dry-run --Werror` |
+| JavaScript | `node --check` |
+| Python | `Pylance` (pyright), `Ruff` |
+| TypeScript | `eslint` |
 
-- Count tokens and chars for the given files.
-  `files-tokens --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]`
+Pre-flight: before executing any checker, availability is verified — `Dummy` always; `Pylance`/`Ruff` via their module in the active interpreter; `Command` via its binary on PATH. An unavailable checker yields `Result: FAIL` with evidence identifying the missing checker or binary, and execution continues with the remaining checks.
 
-- Generate LLM reference markdown for the given files.
-  `files-references --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]`
+A standalone testbed is available: `req --test-static-check {dummy,pylance,ruff,command <cmd>} [FILES...]`, where `[FILES]` may be files, directories (direct children only), or glob patterns including `**` recursive expansion.
 
-- Generate compressed output for the given files.
-  `files-compress --prj-base PRJ_BASE --git-base GIT_BASE [--enable-line-numbers] FILE [FILE ...]`
+## Command Reference
 
-- Find and extract specific constructs from the given files.
-  `files-find --prj-base PRJ_BASE --git-base GIT_BASE [--enable-line-numbers] TAG PATTERN FILE [FILE ...]`
+`req` can be run from any directory. Two path arguments drive location resolution:
 
-- Run static analysis on the given files using tools configured in `~/.config/usereq/config.json`.
-  `files-static-check --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]`
+- `--prj-base <project-folder>` — mandatory for every command that reads or writes project files (`install`, `--update`, the analysis subcommands, `--docs-check`, `--set-*-dir`).
+- `--git-base <git-repository-folder>` — mandatory for every git command and for every analysis subcommand.
+- `--prj-base` and `--git-base` are never persisted in `~/.config/usereq/config.json`.
 
-- Count tokens and chars for canonical docs files in configured `docs-dir` (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`).
-  `tokens --prj-base PRJ_BASE --git-base GIT_BASE`
+### Analysis subcommands
 
-- Generate LLM reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories.
-  `references --prj-base PRJ_BASE --git-base GIT_BASE`
+The analysis commands are bare subcommands (no `--` prefix) and each one requires both `--prj-base` and `--git-base`. Legacy `--`-prefixed forms are not accepted.
 
-- Generate compressed output for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories.
-  `compress --prj-base PRJ_BASE --git-base GIT_BASE [--enable-line-numbers]`
+| Subcommand | Purpose |
+| --- | --- |
+| `files-tokens --prj-base P --git-base G FILE [FILE ...]` | Count tokens and chars for the given files |
+| `files-references --prj-base P --git-base G FILE [FILE ...]` | Generate LLM reference markdown for the given files |
+| `files-compress --prj-base P --git-base G [--enable-line-numbers] FILE [FILE ...]` | Generate compressed output for the given files |
+| `files-find --prj-base P --git-base G [--enable-line-numbers] TAG PATTERN FILE [FILE ...]` | Find and extract specific constructs from the given files |
+| `files-static-check --prj-base P --git-base G FILE [FILE ...]` | Run static analysis on the given files |
+| `tokens --prj-base P --git-base G` | Count tokens/chars for canonical docs (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`) in configured `docs-dir` |
+| `references --prj-base P --git-base G` | Reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` |
+| `compress --prj-base P --git-base G [--enable-line-numbers]` | Compressed output for the same project selection |
+| `find --prj-base P --git-base G [--enable-line-numbers] TAG PATTERN` | Extract constructs from the same project selection |
+| `static-check --prj-base P --git-base G` | Static analysis on `src-dir` + `tests-dir` selections (excluding `fixtures/`) |
 
-- Find and extract specific constructs from source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories.
-  `find --prj-base PRJ_BASE --git-base GIT_BASE TAG PATTERN`
-
-- Run static analysis on source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (plus configured `tests-dir`, excluding `fixtures/`) using tools configured in `~/.config/usereq/config.json`.
-  `static-check --prj-base PRJ_BASE --git-base GIT_BASE`
-
-- Install or update the providers persisted under `"providers"` in `~/.config/usereq/config.json` and print the installation report (requires `--prj-base`).
-  `install --prj-base PRJ_BASE`
-
-- Remove `req-*` artifacts of the providers persisted under `"providers"` in `~/.config/usereq/config.json`.
-  `uninstall`
-
-- Print the active configuration as tables: settings (including `auto-install`), provider enablement, per-enabled-provider component installation status, and enabled static checks.
-  `show`
-
-- Check repository integrity for `--git-base`: clean working tree and valid HEAD (requires `--git-base`).
-  `--git-check`
-
-- Check canonical docs presence in configured `docs-dir`: `REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md` (requires `--prj-base`).
-  `--docs-check`
-
-- Create an isolated git worktree and branch with the provided name; also copies `.venv` (when present) into the new worktree context (requires `--git-base`).
-  `--git-wt-create WT_NAME`
-
-- Remove the git worktree and branch identified by name (force-removes the target worktree and deletes the branch; requires `--git-base`).
-  `--git-wt-delete WT_NAME`
+Notes:
 
 - Add `--enable-line-numbers` (before the subcommand token) to include `<n>:` prefixes in `files-compress`, `compress`, `files-find`, and `find` output.
+- `files-static-check` and `static-check` exit with code 0 when all checked files pass (or none are checked) and 1 when at least one file fails; passing checks produce no output (`fail_only` mode).
+- `static-check` includes files from both `src-dir` and `tests-dir`; if `tests-dir` is missing or invalid, test-directory inclusion is skipped without error.
 
-- Test static check configuration and execution (standalone).
-  `--test-static-check {dummy,pylance,ruff,command} [FILES...]`
-
-#### Supported <TAG> in `find` commands
+#### Supported &lt;TAG&gt; in `find` commands
 
 - **Python**: CLASS, FUNCTION, DECORATOR, IMPORT, VARIABLE
 - **C**: STRUCT, UNION, ENUM, TYPEDEF, MACRO, FUNCTION, IMPORT, VARIABLE
@@ -293,10 +239,50 @@ The analysis commands are bare subcommands (no `--` prefix) and each one require
 - **Zig**: FUNCTION, STRUCT, ENUM, UNION, CONSTANT, VARIABLE, IMPORT
 - **Elixir**: MODULE, FUNCTION, PROTOCOL, IMPL, STRUCT, IMPORT
 
+### Git and docs commands
+
+- `--git-check` — verify clean working tree and valid HEAD in the `--git-base` repository (requires `--git-base`).
+- `--docs-check` — verify existence of `REQUIREMENTS.md`, `WORKFLOW.md`, and `REFERENCES.md` in the configured `docs-dir` (requires `--prj-base`).
+- `--git-wt-name` — print a standardized worktree name `useReq-<PROJECT>-<BRANCH>-<TIMESTAMP>` (requires `--git-base`).
+- `--git-wt-create WT_NAME` — create an isolated git worktree and branch with the given name; copies `.venv` (when present) into the new worktree context (requires `--git-base`).
+- `--git-wt-delete WT_NAME` — force-remove the exact target worktree and branch by name (requires `--git-base`).
+
+### Other flags
+
+- `--update` — update an existing installation from the persisted configuration (requires an existing `~/.config/usereq/config.json`); the `install` subcommand is the canonical form.
+- `--remove` — remove `req-*` artifacts generated by useReq from the configured user-level provider directories.
+- `--verbose` / `--debug` — detailed and diagnostic output.
+- `--ver` / `--version` — print the installed package version and force an online release check.
+- `-h` / `--help` — print command help and exit.
+
+A startup release check queries the latest GitHub release (idle-gated to at most once per hour; once per day on API failures) and prints a bright-green stderr notice when a newer version is available.
+
+## Prompt Catalog
+
+| Prompt | Description |
+| --- | --- |
+| `write` | Produce a *SRS* draft based on the User Request description |
+| `create` | Write a *Software Requirements Specification* using the project's source code |
+| `recreate` | Reorganize and update the *SRS* based on source code analysis (preserve requirement IDs) |
+| `renumber` | Deterministically renumber requirement IDs in the *SRS* without changing requirement text or order |
+| `analyze` | Produce an analysis report |
+| `change` | Update the requirements and implement the corresponding changes |
+| `check` | Run the requirements check |
+| `cover` | Implement minimal changes to cover uncovered existing requirements |
+| `fix` | Fix a defect without changing the requirements |
+| `implement` | Implement source code from requirements (from scratch) |
+| `new` | Implement a new requirement and the corresponding source code changes |
+| `refactor` | Perform a refactor without changing the requirements |
+| `readme` | Write `README.md` from user-visible implementation evidence |
+| `references` | Write a `REFERENCES.md` using the project's source code |
+| `workflow` | Write a `WORKFLOW.md` using the project's source code |
+| `flowchart` | Write a `FLOWCHART.md` using the project's source code |
+
+# Documentation
+
 ## Supported CLIs, Agents, and Extensions
 
 ### High-Level Assessment
-
 
 - 🌟 **pi.dev CLI** 🌟 - Supports user-level prompt templates and Agent Skills from `~/.pi/agent/prompts/` and `~/.pi/agent/skills/`.
 - 🌟 **Antigravity CLI** 🌟 - Evolution of Gemini CLI; supports user-level TOML commands and skills.
@@ -304,8 +290,8 @@ The analysis commands are bare subcommands (no `--` prefix) and each one require
 - ⚖️ **Claude Code** ⚖️ - Only supports Claude/Anthropic models; supports user-level commands, agents, and skills from `~/.claude/`.
 - 🆗 **OpenAI Codex** 🆗 - Only supports OpenAI models; supports user-level prompts and skills from `~/.codex/`.
 
-
 ### useReq/req Support
+
 - ✅ pi.dev CLI
 - ✅ Antigravity CLI
 - ✅ Claude Code
@@ -316,7 +302,8 @@ The analysis commands are bare subcommands (no `--` prefix) and each one require
 
 GitHub Copilot and Kiro CLI are not supported: their prompt/agent/skill configuration is repository-scoped only and cannot be managed at user level.
 
-#### Skills Details
+### Skills Details
+
 - ✅ pi.dev CLI: [`/skill:req-create`]
   - useReq generates `~/.pi/agent/skills/req-create/SKILL.md`.
   - pi discovers user skills from `~/.pi/agent/skills/` and registers them as `/skill:name` commands.
@@ -326,7 +313,8 @@ GitHub Copilot and Kiro CLI are not supported: their prompt/agent/skill configur
 - ✅ Claude Code: [`/req-create`]
 - ✅ OpenCode: [`/req-create`]
 
-#### CLI Prompt Details
+### CLI Prompt Details
+
 - ✅ pi.dev CLI: [`/req-create.prompt`]
   - useReq generates `~/.pi/agent/prompts/req-create.prompt.md`.
   - pi prompt templates use the filename without `.md` as the command name, so the generated `.prompt` suffix remains part of the slash command.
@@ -336,7 +324,8 @@ GitHub Copilot and Kiro CLI are not supported: their prompt/agent/skill configur
 - ✅ Claude Code: [`/req:create`]
 - ✅ OpenCode: [`/req-create`]
 
-#### CLI Agents Details
+### CLI Agents Details
+
 - ❌ pi.dev CLI
   - useReq does not generate agents for provider `pi`; it emits prompts and skills only.
 - ❌ Antigravity CLI
@@ -345,12 +334,31 @@ GitHub Copilot and Kiro CLI are not supported: their prompt/agent/skill configur
 - ✔️ OpenCode: [`<TAB> ➡️ Req.Create ↩️`]
   - **Starts a new session** (`/new`) for every prompt.
 
+## Default Workflow
 
-## Known Issues
+Click to zoom flowchart image.
 
-- **Grok Code Fast 1** does not respect the TODO list and does not wait for user approval.
-  * Defect #3180 → [Bug: Grok Code Fast 1 not update to do list correctly #3180](https://github.com/Kilo-Org/kilocode/issues/3180)
+[![Flowchart](https://raw.githubusercontent.com/Ogekuri/useReq/refs/heads/master/images/flowchart-bw.svg)](https://raw.githubusercontent.com/Ogekuri/useReq/refs/heads/master/images/flowchart-bw.svg)
 
+## Guidelines
+
+`GUIDELINES_DIR` is fixed to `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines` and is not configurable. Generated prompts and skills reference it through home-relative paths; guideline files themselves are never copied, created, or modified in project or user directories. Re-run `req install` after the installed guidelines change.
+
+## Repository Documentation
+
+Requirements-driven projects keep their normative documentation under the configured `docs-dir`:
+
+- `REQUIREMENTS.md` — the Software Requirements Specification (SRS).
+- `WORKFLOW.md` — runtime model: execution units, call-trace trees, communication edges.
+- `REFERENCES.md` — structured symbol index of the source code.
+- `FLOWCHART.md` — workflow flowchart.
+
+## Development Notes
+
+- `scripts/req.sh` runs the CLI via `uv run python -m usereq.cli` from the repository root, forwarding all user arguments unchanged.
+- `scripts/test-install.sh` performs an isolated-HOME smoke installation (`--enable-provider pi:prompts,skills` + `install`).
+- `scripts/prompts-update.sh` synchronizes the bundled prompts from the upstream [Ogekuri/Prompts](https://github.com/Ogekuri/Prompts) releases into `src/usereq/resources/prompts`.
+- `uv.lock` is the canonical dependency lockfile for execution, build, development, testing, and static analysis.
 
 ## Note on Git usage
 
@@ -377,3 +385,24 @@ This section describes the Git behavior when executing the commands provided by 
 - Practical warnings:
   - Do not use destructive commands (e.g., `git reset --hard`, `git clean -fd`) to "clean" the repository without verifying the impact.
   - If you prefer to isolate changes, execute commands in a branch or a copy of the repository.
+
+## Known Issues
+
+- **Grok Code Fast 1** does not respect the TODO list and does not wait for user approval.
+  * Defect #3180 → [Bug: Grok Code Fast 1 not update to do list correctly #3180](https://github.com/Kilo-Org/kilocode/issues/3180)
+
+# License
+
+Copyright (C) Ogekuri.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License as published by the Free Software Foundation, version 3** (GPL-3.0), of which a full copy is provided in the [`LICENSE`](LICENSE) file of this repository.
+
+This program is distributed in the hope that it will be useful, but **without any warranty**; without even the implied warranty of merchantability or fitness for a particular purpose. See the LICENSE file for details.
+
+# Acknowledgments
+
+- **[Ogekuri/Prompts](https://github.com/Ogekuri/Prompts)** — upstream source of the bundled requirements-engineering prompt catalog (`src/usereq/resources/prompts`).
+- **[Astral](https://astral.sh)** — for `uv`, the Python package and project manager that powers installation, execution, and self-upgrade.
+- **[OpenAI tiktoken](https://github.com/openai/tiktoken)** — token counting for LLM context budgeting.
+- **[pyright](https://github.com/microsoft/pyright)** and **[ruff](https://github.com/astral-sh/ruff)** — the static-analysis engines exposed through the `Pylance` and `Ruff` modules.
+- **[tree-sitter](https://tree-sitter.github.io/tree-sitter/)** — inspiration for the multi-language source-analysis approach.
