@@ -106,8 +106,8 @@ No explicit performance optimizations identified.
 - **SRS-280**: MUST implement the following behavior: The bare `install`, `uninstall`, and `show` subcommands MUST be accepted without the `--` prefix and MUST NOT require `--git-base`.
 - **SRS-281**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-282**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
-- **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git` only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
-- **SRS-430**: MUST implement the following behavior: The startup release-check MUST query the GitHub latest-release endpoint `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest`.
+- **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install cli-usereq --force` from the PyPI index only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
+- **SRS-430**: MUST implement the following behavior: The startup release-check MUST query the PyPI JSON API endpoint `https://pypi.org/pypi/cli-usereq/json` and read `info.version` as the latest version.
 - **SRS-344**: MUST implement the following behavior: `--uninstall` on Linux MUST execute `uv tool uninstall cli-usereq` and MUST run release-check cache cleanup per SRS-346; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
 - **SRS-345**: MUST persist startup release-check idle-state at `~/.cache/usereq/check_version_idle-time.json`; idle-state writes MUST create parent directories; `--ver`/`--version` MUST force the HTTP release-check and bypass idle gating.
 - **SRS-346**: MUST implement the following behavior: On Linux, `--uninstall` MUST delete `~/.cache/usereq/check_version_idle-time.json` when present and MUST remove `~/.cache/usereq` only when the directory is empty.
@@ -141,6 +141,10 @@ No explicit performance optimizations identified.
 - **SRS-420**: MUST implement the following behavior: `auto-install` MUST default to enabled; `--disable-auto-install` MUST persist `"auto-install": false` and `--enable-auto-install` MUST persist `"auto-install": true` in `~/.config/usereq/config.json`.
 - **SRS-421**: MUST implement the following behavior: When `--upgrade` succeeds and `auto-install` is enabled, the CLI MUST execute the provider installation flow with persisted providers; when `--prj-base` is absent it MUST print an English stderr warning and skip.
 - **SRS-422**: MUST implement the following behavior: `--disable-static-check` and `--disable` with unknown language or provider tokens MUST print an English error and exit with code 1.
+- **SRS-440**: MUST implement the following behavior: `--upgrade --github` MUST install from `git+https://github.com/Ogekuri/CLI-useReq.git` instead of the PyPI index; without `--github`, `--upgrade` MUST install from the PyPI index.
+- **SRS-441**: MUST implement the following behavior: `--ver`/`--version` MUST print the installed version as the first line followed by `PyPI latest: <version>` and `GitHub latest: <version>` lines.
+- **SRS-442**: MUST implement the following behavior: `--ver`/`--version` MUST query the PyPI JSON API and the GitHub latest-release API bypassing idle gating; unfetchable versions MUST print `unknown`.
+- **SRS-443**: MUST implement the following behavior: `README.md` MUST present PyPI as the primary install/upgrade channel and a dedicated non-primary GitHub section covering GitHub installation and `--github` upgrades.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider prompts, agents, and skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
@@ -241,6 +245,7 @@ No explicit performance optimizations identified.
 - **SRS-423**: MUST include unit tests in `tests/test_cli.py` verifying `--enable`/`--disable` persistence, `--enable-auto-install`/`--disable-auto-install` persistence, `--disable-static-check` removal, `show` output, `install` dispatch, `uninstall` dispatch, and auto-install after successful `--upgrade`.
 - **SRS-438**: MUST include unit tests in `tests/test_release_workflow.py` verifying the `.github/workflows/release-pypi.yml` location, the SRS-433 OIDC publication steps, the SRS-434 master-only publication gating, and the SRS-432 build/release independence from master reachability.
 - **SRS-439**: MUST include unit tests in `tests/test_dependency_manifests.py` verifying the SRS-435 project name, the SRS-436 author, and the SRS-437 repository URLs in `pyproject.toml`.
+- **SRS-444**: MUST include unit tests in `tests/test_update_check.py` verifying the SRS-430 PyPI endpoint, the SRS-343/SRS-440 upgrade commands, and the SRS-441/SRS-442 `--ver` output.
 
 ## 5. Static Code Analysis Requirements
 

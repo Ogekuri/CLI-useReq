@@ -1380,7 +1380,29 @@ class TestUpgradeUninstall(unittest.TestCase):
             cli.run_upgrade()
         mock_run.assert_called_once()
         command = mock_run.call_args[0][0]
-        self.assertEqual(command[:4], ["uv", "tool", "install", "cli-usereq"])
+        self.assertEqual(command, ["uv", "tool", "install", "cli-usereq", "--force"])
+
+    def test_upgrade_with_github_on_linux_executes_uv_install_from_git(self) -> None:
+        with (
+            patch("usereq.cli.platform.system", return_value="Linux"),
+            patch("usereq.cli.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value.returncode = 0
+            cli.run_upgrade(use_github=True)
+        mock_run.assert_called_once()
+        command = mock_run.call_args[0][0]
+        self.assertEqual(
+            command,
+            [
+                "uv",
+                "tool",
+                "install",
+                "cli-usereq",
+                "--force",
+                "--from",
+                "git+https://github.com/Ogekuri/CLI-useReq.git",
+            ],
+        )
 
     def test_uninstall_on_linux_executes_uv_uninstall(self) -> None:
         with (

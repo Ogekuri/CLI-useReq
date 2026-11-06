@@ -421,12 +421,24 @@ GITHUB_RELEASES_LATEST_URL = (
     f"https://api.github.com/repos/{GITHUB_REPOSITORY_OWNER}/"
     f"{GITHUB_REPOSITORY_NAME}/releases/latest"
 )
-"""! @brief Hardcoded GitHub API endpoint for latest-release resolution."""
+"""! @brief Hardcoded GitHub API endpoint queried by `--ver`/`--version` for the GitHub latest version (SRS-442).
+@details Intermediate and test releases are published on GitHub; this endpoint resolves the
+latest GitHub release tag for display purposes only and is never used by the default
+`--upgrade` path, which installs from the PyPI index (SRS-343, SRS-440)."""
 
 GITHUB_UPGRADE_SOURCE = (
     f"git+https://github.com/{GITHUB_REPOSITORY_OWNER}/{GITHUB_REPOSITORY_NAME}.git"
 )
-"""! @brief Hardcoded git source used by uv self-upgrade command."""
+"""! @brief Hardcoded git source used only by `--upgrade --github` installs (SRS-440)."""
+
+PYPI_PROJECT_JSON_URL = "https://pypi.org/pypi/cli-usereq/json"
+"""! @brief Hardcoded PyPI JSON API endpoint for latest-version resolution (SRS-430).
+@details The startup release-check and `--ver`/`--version` read `info.version` from this
+endpoint; PyPI is the sole source for version verification and default self-upgrade
+(SRS-343, SRS-441, SRS-442)."""
+
+UNKNOWN_VERSION_LABEL = "unknown"
+"""! @brief Label printed by `--ver`/`--version` when a remote latest version cannot be fetched (SRS-442)."""
 
 FORCE_ONLINE_RELEASE_CHECK = False
 """! @brief Startup-scoped override that bypasses release-check idle-state gating when enabled."""
@@ -573,7 +585,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--upgrade", action="store_true", help="Upgrade the tool with uv."
+        "--upgrade", action="store_true", help="Upgrade the tool with uv from PyPI."
+    )
+    parser.add_argument(
+        "--github",
+        action="store_true",
+        help=(
+            "With --upgrade: install from the GitHub repository "
+            "git+https://github.com/Ogekuri/CLI-useReq.git instead of PyPI."
+        ),
     )
     parser.add_argument(
         "--uninstall", action="store_true", help="Uninstall the tool with uv."
@@ -943,26 +963,64 @@ def load_package_version() -> str:
     return match.group(1)
 
 
-def maybe_print_version(argv: list[str]) -> bool:
+def maybe_print_version(argv: list[str], pypi_latest: Optional[str] = None) -> bool:
     """!
-    @brief Handles --ver/--version by printing the version.
+    @brief Handles --ver/--version by printing installed, PyPI latest, and GitHub latest versions.
         @param argv Command line arguments to check.
-        @return True if version was printed, False otherwise.
-    @details Implements the maybe_print_version function behavior with deterministic control flow.
+        @param pypi_latest {Optional[str]} PyPI latest version already fetched by the startup
+        release-check; when None, a direct PyPI JSON API fetch is attempted (SRS-441, SRS-442).
+    @details When `--ver`/`--version` is present, prints the installed package version as the
+    first stdout line, then queries (or reuses) the PyPI JSON API `info.version` and the GitHub
+    latest-release `tag_name`, printing `PyPI latest: <version>` and `GitHub latest: <version>`
+    lines; fetch failures degrade to the `unknown` label without raising (SRS-441, SRS-442).
+    @return {bool} True if version output was printed, False otherwise.
+    @satisfies SRS-441, SRS-442
     """
     if "--ver" in argv or "--version" in argv:
         print(load_package_version())
+        if pypi_latest is None:
+            try:
+                pypi_latest = fetch_pypi_latest_version(RELEASE_CHECK_TIMEOUT_SECONDS)
+            except (
+                urllib.error.HTTPError,
+                urllib.error.URLError,
+                TimeoutError,
+                json.JSONDecodeError,
+                ValueError,
+            ):
+                pypi_latest = None
+        try:
+            github_latest: Optional[str] = fetch_github_latest_version(
+                RELEASE_CHECK_TIMEOUT_SECONDS
+            )
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+            ValueError,
+        ):
+            github_latest = None
+        print(f"PyPI latest: {pypi_latest if pypi_latest else UNKNOWN_VERSION_LABEL}")
+        print(
+            f"GitHub latest: {github_latest if github_latest else UNKNOWN_VERSION_LABEL}"
+        )
         return True
     return False
 
 
-def run_upgrade() -> None:
+def run_upgrade(use_github: bool = False) -> None:
     """!
-    @brief Executes the upgrade using uv.
-        @throws ReqError If upgrade fails.
-    @details Implements the run_upgrade function behavior with deterministic control flow.
+    @brief Executes the upgrade using uv from the PyPI index or the GitHub repository.
+        @param use_github {bool} When True, install from `GITHUB_UPGRADE_SOURCE` instead of the
+        PyPI index (`--upgrade --github`, SRS-440).
+    @details Builds `uv tool install cli-usereq --force` against the PyPI index by default
+    (SRS-343); appends `--from git+https://github.com/Ogekuri/CLI-useReq.git` only when
+    `use_github` is True (SRS-440). Executes the command only on Linux; on non-Linux platforms
+    prints the manual command and skips uv execution.
+    @throws ReqError If upgrade fails.
     @return {None} Function return value.
-    @satisfies SRS-343
+    @satisfies SRS-343, SRS-440
     """
     command = [
         "uv",
@@ -970,9 +1028,9 @@ def run_upgrade() -> None:
         "install",
         TOOL_PROGRAM_NAME,
         "--force",
-        "--from",
-        GITHUB_UPGRADE_SOURCE,
     ]
+    if use_github:
+        command += ["--from", GITHUB_UPGRADE_SOURCE]
     detected_system = platform.system() or "Unknown"
     if detected_system != "Linux":
         print(
@@ -1189,14 +1247,86 @@ def resolve_github_owner_repository_from_active_remotes() -> tuple[str, str]:
     )
 
 
-def resolve_latest_release_api_url() -> str:
+def resolve_pypi_latest_version_url() -> str:
     """!
-    @brief Resolve latest-release GitHub API URL from hardcoded repository settings.
-    @details Returns the static endpoint derived from `GITHUB_REPOSITORY_OWNER` and `GITHUB_REPOSITORY_NAME`.
-    @return {str} Fully-qualified URL `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest`.
+    @brief Resolve the PyPI JSON API URL for latest-version resolution.
+    @details Returns the static endpoint derived from the PyPI project `cli-usereq`.
+    @return {str} Fully-qualified URL `https://pypi.org/pypi/cli-usereq/json`.
     @satisfies SRS-430
     """
-    return GITHUB_RELEASES_LATEST_URL
+    return PYPI_PROJECT_JSON_URL
+
+
+def fetch_pypi_latest_version(
+    timeout_seconds: float = RELEASE_CHECK_TIMEOUT_SECONDS,
+) -> Optional[str]:
+    """!
+    @brief Fetch the latest published version of `cli-usereq` from the PyPI JSON API.
+        @param timeout_seconds {float} Timeout for the HTTP GET request.
+    @details Issues `GET https://pypi.org/pypi/cli-usereq/json` with JSON `Accept` headers,
+    parses `info.version`, and normalizes the value through `normalize_release_tag`.
+    Complexity: O(1). Side effects: one HTTP request.
+    @return {Optional[str]} Normalized latest version string; None when `info.version` is
+    absent or not a non-empty string.
+    @throws {urllib.error.HTTPError} When the endpoint answers with an HTTP error status.
+    @throws {urllib.error.URLError} On network-level failures.
+    @throws {TimeoutError} When the request exceeds `timeout_seconds`.
+    @throws {json.JSONDecodeError} When the response body is not valid JSON.
+    @satisfies SRS-430, SRS-442
+    """
+    request = urllib.request.Request(
+        resolve_pypi_latest_version_url(),
+        headers={
+            "Accept": "application/json",
+            "User-Agent": f"usereq/{load_package_version()}",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        body = response.read().decode("utf-8", errors="replace")
+    payload = json.loads(body)
+    info = payload.get("info")
+    if not isinstance(info, dict):
+        return None
+    version = info.get("version")
+    if not isinstance(version, str) or not version.strip():
+        return None
+    return normalize_release_tag(version)
+
+
+def fetch_github_latest_version(
+    timeout_seconds: float = RELEASE_CHECK_TIMEOUT_SECONDS,
+) -> Optional[str]:
+    """!
+    @brief Fetch the latest GitHub release version from the GitHub latest-release API.
+        @param timeout_seconds {float} Timeout for the HTTP GET request.
+    @details Issues `GET https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` with
+    GitHub JSON `Accept` headers, parses `tag_name`, and strips the optional `v` prefix through
+    `normalize_release_tag`. Complexity: O(1). Side effects: one HTTP request. Used only by
+    `--ver`/`--version` display (SRS-441, SRS-442); never by the startup release-check (SRS-430).
+    @return {Optional[str]} Normalized latest GitHub release version; None when `tag_name` is
+    absent or not a non-empty string.
+    @throws {urllib.error.HTTPError} When the endpoint answers with an HTTP error status.
+    @throws {urllib.error.URLError} On network-level failures.
+    @throws {TimeoutError} When the request exceeds `timeout_seconds`.
+    @throws {json.JSONDecodeError} When the response body is not valid JSON.
+    @satisfies SRS-442
+    """
+    request = urllib.request.Request(
+        GITHUB_RELEASES_LATEST_URL,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"usereq/{load_package_version()}",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        body = response.read().decode("utf-8", errors="replace")
+    payload = json.loads(body)
+    tag = payload.get("tag_name")
+    if not isinstance(tag, str) or not tag.strip():
+        return None
+    return normalize_release_tag(tag)
 
 
 def format_unix_timestamp_utc(timestamp_seconds: int) -> str:
@@ -1488,13 +1618,13 @@ def persist_failed_release_check_idle_state(
 
 def maybe_notify_newer_version(
     timeout_seconds: float = RELEASE_CHECK_TIMEOUT_SECONDS,
-) -> None:
+) -> Optional[str]:
     """!
-    @brief Executes idle-gated online version check and prints bright colored status messages.
+    @brief Executes idle-gated online PyPI version check and prints bright colored status messages.
         @param timeout_seconds Time to wait for the version check response.
-        @details Reads idle-state from `$HOME/.cache/usereq/check_version_idle-time.json`, skips remote requests when idle window is active unless startup context enables `FORCE_ONLINE_RELEASE_CHECK`, resolves latest-release URL from hardcoded repository settings when due, compares versions, prints a bright-green update message only for newer versions, persists a 3600-second idle-delay after successful HTTP/JSON validation, prints bright-red diagnostics on every failure, rewrites idle-state JSON on every failure, uses an 86400-second idle-delay for `HTTPError`, `URLError`, and `TimeoutError`, and uses the default 3600-second idle-delay for other release-check failures.
-    @return {None} Function return value.
-    @satisfies SRS-345, SRS-348, SRS-349, SRS-350, SRS-351
+        @details Reads idle-state from `$HOME/.cache/usereq/check_version_idle-time.json`, skips remote requests when idle window is active unless startup context enables `FORCE_ONLINE_RELEASE_CHECK`, fetches the latest version from the PyPI JSON API (SRS-430) when due, compares versions, prints a bright-green update message only for newer versions, persists a 3600-second idle-delay after successful HTTP/JSON validation, prints bright-red diagnostics on every failure, rewrites idle-state JSON on every failure, uses an 86400-second idle-delay for `HTTPError`, `URLError`, and `TimeoutError`, and uses the default 3600-second idle-delay for other release-check failures.
+    @return {Optional[str]} The fetched PyPI latest version on successful validation; None when the check is idle-gated or fails.
+    @satisfies SRS-345, SRS-348, SRS-349, SRS-350, SRS-351, SRS-430
     """
 
     current_version = load_package_version()
@@ -1518,68 +1648,10 @@ def maybe_notify_newer_version(
         idle_state,
         now_timestamp,
     ):
-        return
+        return None
 
     try:
-        url = resolve_latest_release_api_url()
-    except (ReqError, ValueError) as exc:
-        print(
-            f"{ANSI_BRIGHT_RED}Release-check error: {exc}{ANSI_RESET}",
-            file=sys.stderr,
-        )
-        persist_failed_release_check_idle_state(
-            file_path=idle_state_path,
-            now_timestamp=now_timestamp,
-            idle_state=idle_state,
-        )
-        return
-
-    try:
-        request = urllib.request.Request(
-            url,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "User-Agent": f"usereq/{current_version}",
-            },
-            method="GET",
-        )
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            body = response.read().decode("utf-8", errors="replace")
-        payload = json.loads(body)
-        tag = payload.get("tag_name")
-        if not isinstance(tag, str) or not tag.strip():
-            print(
-                (
-                    f"{ANSI_BRIGHT_RED}Release-check error: invalid response payload "
-                    "(missing 'tag_name')."
-                    f"{ANSI_RESET}"
-                ),
-                file=sys.stderr,
-            )
-            persist_failed_release_check_idle_state(
-                file_path=idle_state_path,
-                now_timestamp=now_timestamp,
-                idle_state=idle_state,
-            )
-            return
-
-        latest_version = normalize_release_tag(tag)
-        if is_newer_version(current_version, latest_version):
-            print(
-                (
-                    f"{ANSI_BRIGHT_GREEN}New version available: "
-                    f"installed {current_version}, latest {latest_version}."
-                    f"{ANSI_RESET}"
-                ),
-                file=sys.stderr,
-            )
-        try:
-            write_release_check_idle_state(idle_state_path, now_timestamp)
-        except OSError as exc:
-            print(
-                f"{ANSI_BRIGHT_RED}Release-check error: idle-state write failure ({exc}){ANSI_RESET}",
-                file=sys.stderr,
-            )
+        latest_version = fetch_pypi_latest_version(timeout_seconds)
     except urllib.error.HTTPError as exc:
         error_details = f"HTTP {exc.code}"
         raw_error_payload = exc.read().decode("utf-8", errors="replace")
@@ -1602,7 +1674,7 @@ def maybe_notify_newer_version(
             f"{ANSI_BRIGHT_RED}Release-check error: {error_details}{ANSI_RESET}",
             file=sys.stderr,
         )
-        return
+        return None
     except urllib.error.URLError as exc:
         print(
             f"{ANSI_BRIGHT_RED}Release-check error: network failure ({exc.reason}){ANSI_RESET}",
@@ -1614,7 +1686,7 @@ def maybe_notify_newer_version(
             idle_state=idle_state,
             idle_delay_seconds=RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS,
         )
-        return
+        return None
     except TimeoutError:
         print(
             f"{ANSI_BRIGHT_RED}Release-check error: timeout exceeded{ANSI_RESET}",
@@ -1626,7 +1698,7 @@ def maybe_notify_newer_version(
             idle_state=idle_state,
             idle_delay_seconds=RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS,
         )
-        return
+        return None
     except (json.JSONDecodeError, ValueError) as exc:
         print(
             f"{ANSI_BRIGHT_RED}Release-check error: invalid release payload ({exc}){ANSI_RESET}",
@@ -1637,7 +1709,41 @@ def maybe_notify_newer_version(
             now_timestamp=now_timestamp,
             idle_state=idle_state,
         )
-        return
+        return None
+
+    if latest_version is None:
+        print(
+            (
+                f"{ANSI_BRIGHT_RED}Release-check error: invalid response payload "
+                "(missing 'info.version')."
+                f"{ANSI_RESET}"
+            ),
+            file=sys.stderr,
+        )
+        persist_failed_release_check_idle_state(
+            file_path=idle_state_path,
+            now_timestamp=now_timestamp,
+            idle_state=idle_state,
+        )
+        return None
+
+    if is_newer_version(current_version, latest_version):
+        print(
+            (
+                f"{ANSI_BRIGHT_GREEN}New version available: "
+                f"installed {current_version}, latest {latest_version}."
+                f"{ANSI_RESET}"
+            ),
+            file=sys.stderr,
+        )
+    try:
+        write_release_check_idle_state(idle_state_path, now_timestamp)
+    except OSError as exc:
+        print(
+            f"{ANSI_BRIGHT_RED}Release-check error: idle-state write failure ({exc}){ANSI_RESET}",
+            file=sys.stderr,
+        )
+    return latest_version
 
 
 def ensure_doc_directory(
@@ -4740,8 +4846,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         global FORCE_ONLINE_RELEASE_CHECK
         previous_force_online_release_check = FORCE_ONLINE_RELEASE_CHECK
         FORCE_ONLINE_RELEASE_CHECK = force_online_release_check
+        pypi_latest_from_check: Optional[str] = None
         try:
-            maybe_notify_newer_version(timeout_seconds=RELEASE_CHECK_TIMEOUT_SECONDS)
+            pypi_latest_from_check = maybe_notify_newer_version(
+                timeout_seconds=RELEASE_CHECK_TIMEOUT_SECONDS
+            )
         finally:
             FORCE_ONLINE_RELEASE_CHECK = previous_force_online_release_check
         if not argv_list:
@@ -4751,10 +4860,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             run_uninstall()
             return 0
         if "--upgrade" in argv_list:
-            run_upgrade()
+            run_upgrade(use_github="--github" in argv_list)
             _maybe_auto_install_after_upgrade(argv_list)
             return 0
-        if maybe_print_version(argv_list):
+        if maybe_print_version(argv_list, pypi_latest=pypi_latest_from_check):
             return 0
         args = parse_args(argv_list)
         VERBOSE = getattr(args, "verbose", False)

@@ -39,8 +39,9 @@ class TestOnlineUpdateCheck(unittest.TestCase):
     def test_version_triggers_online_update_check(self) -> None:
         """Version-only command must still execute startup release-check."""
         with patch("usereq.cli.maybe_notify_newer_version", autospec=True) as notify_mock:
-            with patch("sys.stdout"):
-                exit_code = cli.main(["--version"])
+            with patch("usereq.cli.fetch_github_latest_version", return_value=None):
+                with patch("sys.stdout"):
+                    exit_code = cli.main(["--version"])
 
         self.assertEqual(exit_code, 0)
         notify_mock.assert_called_once_with(timeout_seconds=2.0)
@@ -68,7 +69,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
             }
             idle_path.write_text(json.dumps(idle_state), encoding="utf-8")
             response_mock = MagicMock()
-            response_mock.read.return_value = json.dumps({"tag_name": "v0.0.1"}).encode(
+            response_mock.read.return_value = json.dumps({"info": {"version": "0.0.1"}}).encode(
                 "utf-8"
             )
             urlopen_cm = MagicMock()
@@ -88,20 +89,25 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                             exit_code = cli.main(["--version"])
 
         self.assertEqual(exit_code, 0)
-        urlopen_mock.assert_called_once()
+        self.assertEqual(urlopen_mock.call_count, 2)
+        first_request = urlopen_mock.call_args_list[0].args[0]
+        self.assertEqual(
+            first_request.full_url,
+            "https://pypi.org/pypi/cli-usereq/json",
+        )
 
     def test_release_api_url_is_hardcoded(self) -> None:
-        """Release-check URL must resolve to the hardcoded repository endpoint."""
-        resolved_url = cli.resolve_latest_release_api_url()
+        """Release-check URL must resolve to the hardcoded PyPI JSON API endpoint."""
+        resolved_url = cli.resolve_pypi_latest_version_url()
         self.assertEqual(
             resolved_url,
-            "https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest",
+            "https://pypi.org/pypi/cli-usereq/json",
         )
 
     def test_newer_version_warning_is_bright_green(self) -> None:
         """Remote-newer detection must print a bright-green availability payload."""
         response_mock = MagicMock()
-        response_mock.read.return_value = json.dumps({"tag_name": "v9.9.9"}).encode("utf-8")
+        response_mock.read.return_value = json.dumps({"info": {"version": "9.9.9"}}).encode("utf-8")
         urlopen_cm = MagicMock()
         urlopen_cm.__enter__.return_value = response_mock
         urlopen_cm.__exit__.return_value = None
@@ -115,7 +121,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                         return_value=idle_path,
                     ):
                         with patch(
-                            "usereq.cli.resolve_latest_release_api_url",
+                            "usereq.cli.resolve_pypi_latest_version_url",
                             return_value=(
                                 "https://api.github.com/repos/ExampleOrg/ExampleRepo/releases/latest"
                             ),
@@ -152,7 +158,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                         return_value=idle_path,
                     ):
                         with patch(
-                            "usereq.cli.resolve_latest_release_api_url",
+                            "usereq.cli.resolve_pypi_latest_version_url",
                             return_value=(
                                 "https://api.github.com/repos/ExampleOrg/ExampleRepo/releases/latest"
                             ),
@@ -189,7 +195,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                         return_value=idle_path,
                     ):
                         with patch(
-                            "usereq.cli.resolve_latest_release_api_url",
+                            "usereq.cli.resolve_pypi_latest_version_url",
                             return_value=(
                                 "https://api.github.com/repos/ExampleOrg/ExampleRepo/releases/latest"
                             ),
@@ -212,7 +218,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
     def test_release_check_uses_hardcoded_url(self) -> None:
         """Release-check request must target the hardcoded GitHub endpoint URL."""
         response_mock = MagicMock()
-        response_mock.read.return_value = json.dumps({"tag_name": "v0.0.1"}).encode("utf-8")
+        response_mock.read.return_value = json.dumps({"info": {"version": "0.0.1"}}).encode("utf-8")
         urlopen_cm = MagicMock()
         urlopen_cm.__enter__.return_value = response_mock
         urlopen_cm.__exit__.return_value = None
@@ -235,7 +241,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
         request_object = urlopen_call.args[0]
         self.assertEqual(
             request_object.full_url,
-            "https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest",
+            "https://pypi.org/pypi/cli-usereq/json",
         )
 
     def test_release_check_skips_network_when_idle_window_active(self) -> None:
@@ -298,7 +304,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
     def test_release_check_executes_when_idle_until_expired(self) -> None:
         """Expired idle-until timestamp must allow a new remote release-check."""
         response_mock = MagicMock()
-        response_mock.read.return_value = json.dumps({"tag_name": "v0.0.1"}).encode("utf-8")
+        response_mock.read.return_value = json.dumps({"info": {"version": "0.0.1"}}).encode("utf-8")
         urlopen_cm = MagicMock()
         urlopen_cm.__enter__.return_value = response_mock
         urlopen_cm.__exit__.return_value = None
@@ -331,7 +337,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
     def test_successful_release_check_writes_idle_state_file(self) -> None:
         """Successful release check must persist timestamps and human-readable fields."""
         response_mock = MagicMock()
-        response_mock.read.return_value = json.dumps({"tag_name": "v0.0.1"}).encode("utf-8")
+        response_mock.read.return_value = json.dumps({"info": {"version": "0.0.1"}}).encode("utf-8")
         urlopen_cm = MagicMock()
         urlopen_cm.__enter__.return_value = response_mock
         urlopen_cm.__exit__.return_value = None
@@ -346,7 +352,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                         return_value=idle_path,
                     ):
                         with patch(
-                            "usereq.cli.resolve_latest_release_api_url",
+                            "usereq.cli.resolve_pypi_latest_version_url",
                             return_value=(
                                 "https://api.github.com/repos/ExampleOrg/ExampleRepo/releases/latest"
                             ),
@@ -393,7 +399,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                         return_value=idle_path,
                     ):
                         with patch(
-                            "usereq.cli.resolve_latest_release_api_url",
+                            "usereq.cli.resolve_pypi_latest_version_url",
                             return_value=(
                                 "https://api.github.com/repos/ExampleOrg/ExampleRepo/releases/latest"
                             ),
@@ -407,7 +413,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
             payload = json.loads(idle_path.read_text(encoding="utf-8"))
 
         written = "".join(call.args[0] for call in fake_stderr.write.call_args_list)
-        self.assertIn("invalid response payload (missing 'tag_name')", written)
+        self.assertIn("invalid response payload (missing 'info.version')", written)
         self.assertEqual(
             payload["idle_until_timestamp"],
             now_timestamp + cli.RELEASE_CHECK_IDLE_DELAY_SECONDS,
@@ -437,7 +443,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                         return_value=idle_path,
                     ):
                         with patch(
-                            "usereq.cli.resolve_latest_release_api_url",
+                            "usereq.cli.resolve_pypi_latest_version_url",
                             return_value=(
                                 "https://api.github.com/repos/ExampleOrg/ExampleRepo/releases/latest"
                             ),
@@ -480,7 +486,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                         return_value=idle_path,
                     ):
                         with patch(
-                            "usereq.cli.resolve_latest_release_api_url",
+                            "usereq.cli.resolve_pypi_latest_version_url",
                             return_value=(
                                 "https://api.github.com/repos/ExampleOrg/ExampleRepo/releases/latest"
                             ),
@@ -527,12 +533,30 @@ class TestOnlineUpdateCheck(unittest.TestCase):
             now_timestamp + cli.RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS,
         )
 
-    def test_upgrade_command_uses_hardcoded_owner_repository(self) -> None:
-        """Upgrade command must use hardcoded owner/repository uv source URL."""
+    def test_upgrade_command_installs_from_pypi_by_default(self) -> None:
+        """Default upgrade command must install from the PyPI index without --from."""
         result_mock = MagicMock(returncode=0)
 
         with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
             cli.run_upgrade()
+
+        run_mock.assert_called_once_with(
+            [
+                "uv",
+                "tool",
+                "install",
+                cli.TOOL_PROGRAM_NAME,
+                "--force",
+            ],
+            check=False,
+        )
+
+    def test_upgrade_command_with_github_installs_from_git_source(self) -> None:
+        """--upgrade --github must install from the GitHub git source (SRS-440)."""
+        result_mock = MagicMock(returncode=0)
+
+        with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
+            cli.run_upgrade(use_github=True)
 
         run_mock.assert_called_once_with(
             [
@@ -570,4 +594,97 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 cli.TOOL_PROGRAM_NAME,
             ],
             check=False,
+        )
+
+
+class TestVersionOutput(unittest.TestCase):
+    """SRS-441/SRS-442: --ver/--version three-line output with PyPI and GitHub latest."""
+
+    @staticmethod
+    def _urlopen_response(payload: dict) -> MagicMock:
+        """Build a urlopen context-manager mock returning one JSON payload."""
+        response_mock = MagicMock()
+        response_mock.read.return_value = json.dumps(payload).encode("utf-8")
+        cm = MagicMock()
+        cm.__enter__.return_value = response_mock
+        cm.__exit__.return_value = None
+        return cm
+
+    def test_version_output_prints_installed_pypi_and_github_latest(self) -> None:
+        """--ver must print installed, PyPI latest, and GitHub latest lines (SRS-441)."""
+        pypi_cm = self._urlopen_response({"info": {"version": "2.3.4"}})
+        github_cm = self._urlopen_response({"tag_name": "v3.4.5"})
+
+        def fake_urlopen(request, timeout=None):
+            if "pypi.org" in request.full_url:
+                return pypi_cm
+            return github_cm
+
+        with patch("usereq.cli.load_package_version", return_value="1.2.3"):
+            with patch(
+                "usereq.cli.urllib.request.urlopen", side_effect=fake_urlopen
+            ):
+                with patch("sys.stdout", new_callable=io.StringIO) as fake_stdout:
+                    printed = cli.maybe_print_version(["--ver"])
+
+        self.assertTrue(printed)
+        output_lines = fake_stdout.getvalue().strip().splitlines()
+        self.assertEqual(
+            output_lines,
+            [
+                "1.2.3",
+                "PyPI latest: 2.3.4",
+                "GitHub latest: 3.4.5",
+            ],
+        )
+
+    def test_version_output_prints_unknown_on_fetch_failure(self) -> None:
+        """Unfetchable latest versions must degrade to the unknown label (SRS-442)."""
+        with patch("usereq.cli.load_package_version", return_value="1.2.3"):
+            with patch(
+                "usereq.cli.urllib.request.urlopen",
+                side_effect=urllib.error.URLError("offline"),
+            ):
+                with patch("sys.stdout", new_callable=io.StringIO) as fake_stdout:
+                    with patch("sys.stderr"):
+                        printed = cli.maybe_print_version(["--version"])
+
+        self.assertTrue(printed)
+        output_lines = fake_stdout.getvalue().strip().splitlines()
+        self.assertEqual(
+            output_lines,
+            [
+                "1.2.3",
+                "PyPI latest: unknown",
+                "GitHub latest: unknown",
+            ],
+        )
+
+    def test_version_output_reuses_startup_pypi_latest_without_refetch(self) -> None:
+        """PyPI latest from the startup check must be reused without a second PyPI request."""
+        github_cm = self._urlopen_response({"tag_name": "v3.4.5"})
+
+        with patch("usereq.cli.load_package_version", return_value="1.2.3"):
+            with patch(
+                "usereq.cli.urllib.request.urlopen", return_value=github_cm
+            ) as urlopen_mock:
+                with patch("sys.stdout", new_callable=io.StringIO) as fake_stdout:
+                    printed = cli.maybe_print_version(
+                        ["--ver"], pypi_latest="2.3.4"
+                    )
+
+        self.assertTrue(printed)
+        output_lines = fake_stdout.getvalue().strip().splitlines()
+        self.assertEqual(
+            output_lines,
+            [
+                "1.2.3",
+                "PyPI latest: 2.3.4",
+                "GitHub latest: 3.4.5",
+            ],
+        )
+        urlopen_mock.assert_called_once()
+        self.assertIn(
+            "api.github.com",
+            urlopen_mock.call_args.args[0].full_url,
         )
