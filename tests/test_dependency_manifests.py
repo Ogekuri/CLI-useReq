@@ -357,6 +357,48 @@ def test_package_data_matches_actual_resource_files() -> None:
     )
 
 
+def test_pyproject_project_name_matches_pypi_trusted_publisher() -> None:
+    """@brief Verify pyproject.toml declares the PyPI trusted-publisher distribution name.
+    @details The OIDC trusted publisher for repository Ogekuri/CLI-useReq and workflow
+    release-pypi.yml is registered for PyPI project cli-usereq; the built distribution
+    name must match it for authenticated uploads.
+    @return {None} No return value.
+    @satisfies SRS-435, SRS-439
+    """
+
+    pyproject_data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    project_name = pyproject_data["project"]["name"]
+    assert project_name == "cli-usereq", (
+        f"pyproject.toml [project].name must be cli-usereq to match the registered "
+        f"PyPI trusted publisher, found: {project_name!r}"
+    )
+
+
+def test_pyproject_declares_ogekuri_author_and_repository_urls() -> None:
+    """@brief Verify pyproject.toml author and project URLs reference the real repository.
+    @details Author metadata must declare Ogekuri and Homepage/Repository URLs must
+    point to https://github.com/Ogekuri/CLI-useReq for compliant PyPI metadata.
+    @return {None} No return value.
+    @satisfies SRS-436, SRS-437, SRS-439
+    """
+
+    pyproject_data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    authors = pyproject_data["project"]["authors"]
+    author_names = {author.get("name") for author in authors}
+    assert "Ogekuri" in author_names, (
+        f"pyproject.toml [project].authors must declare Ogekuri, found: {sorted(author_names)}"
+    )
+
+    project_urls = pyproject_data["project"]["urls"]
+    expected_url = "https://github.com/Ogekuri/CLI-useReq"
+    assert project_urls.get("Homepage") == expected_url, (
+        f"[project.urls] Homepage must be {expected_url}, found: {project_urls.get('Homepage')!r}"
+    )
+    assert project_urls.get("Repository") == expected_url, (
+        f"[project.urls] Repository must be {expected_url}, found: {project_urls.get('Repository')!r}"
+    )
+
+
 def test_pyproject_does_not_define_unsupported_uv_forms_section() -> None:
     """@brief Ensure pyproject.toml does not declare unsupported uv settings keys.
     @details Guards req.sh uv-managed execution from settings-discovery warnings by

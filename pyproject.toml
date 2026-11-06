@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel", "build"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "usereq"
+name = "cli-usereq"
 version = "0.68.0"
 description = "Initialize a project with prompts, agents, and templates from the useReq repository."
 readme = "README.md"
@@ -17,7 +17,7 @@ dependencies = [
   "pyright",
 ]
 authors = [
-  { name = "Astral" }
+  { name = "Ogekuri" }
 ]
 keywords = ["astral", "uv", "project", "prompts", "templates"]
 classifiers = [
@@ -30,8 +30,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ogekuri/useReq"
-Repository = "https://github.com/ogekuri/useReq"
+Homepage = "https://github.com/Ogekuri/CLI-useReq"
+Repository = "https://github.com/Ogekuri/CLI-useReq"
 
 [project.scripts]
 use-req = "usereq.cli:main"

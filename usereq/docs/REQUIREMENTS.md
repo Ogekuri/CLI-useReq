@@ -35,7 +35,7 @@ useReq is a text-based CLI that initializes and updates repository resources for
 - Runtime: Python 3.11+.
 - Core libraries: `argparse`, `pathlib`, `json`, `re`, `os`, `shutil`, `subprocess`, `urllib`.
 - Tokenization: `tiktoken` (`cl100k_base` default).
-- Workflow automation: `.github/workflows/release-uvx.yml`.
+- Workflow automation: `.github/workflows/release-pypi.yml`.
 
 ### 1.4 Project Structure (evidence tree)
 ```text
@@ -45,7 +45,7 @@ useReq is a text-based CLI that initializes and updates repository resources for
 │   ├── REFERENCES.md
 │   └── WORKFLOW.md
 ├── .github/workflows/
-│   └── release-uvx.yml
+│   └── release-pypi.yml
 ├── src/usereq/
 │   ├── __init__.py
 │   ├── __main__.py
@@ -106,9 +106,9 @@ No explicit performance optimizations identified.
 - **SRS-280**: MUST implement the following behavior: The bare `install`, `uninstall`, and `show` subcommands MUST be accepted without the `--` prefix and MUST NOT require `--git-base`.
 - **SRS-281**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-282**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
-- **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git` only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
+- **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git` only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
 - **SRS-430**: MUST implement the following behavior: The startup release-check MUST query the GitHub latest-release endpoint `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest`.
-- **SRS-344**: MUST implement the following behavior: `--uninstall` on Linux MUST execute `uv tool uninstall usereq` and MUST run release-check cache cleanup per SRS-346; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
+- **SRS-344**: MUST implement the following behavior: `--uninstall` on Linux MUST execute `uv tool uninstall cli-usereq` and MUST run release-check cache cleanup per SRS-346; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
 - **SRS-345**: MUST persist startup release-check idle-state at `~/.cache/usereq/check_version_idle-time.json`; idle-state writes MUST create parent directories; `--ver`/`--version` MUST force the HTTP release-check and bypass idle gating.
 - **SRS-346**: MUST implement the following behavior: On Linux, `--uninstall` MUST delete `~/.cache/usereq/check_version_idle-time.json` when present and MUST remove `~/.cache/usereq` only when the directory is empty.
 - **SRS-348**: MUST execute the startup HTTP release-check only when the idle-state file is missing, the persisted `idle_until_timestamp` is expired, or `--ver`/`--version` is active; otherwise it MUST skip the request.
@@ -174,12 +174,19 @@ No explicit performance optimizations identified.
 - **SRS-128**: MUST implement the following behavior: The workflow MUST build Python package (sdist and wheel) in `dist/`.
 - **SRS-129**: MUST implement the following behavior: The workflow MUST create GitHub Release for the tag and load assets from `dist/`.
 - **SRS-130**: MUST implement the following behavior: The workflow MUST generate artifact certifications for files in `dist/`.
-- **SRS-268**: MUST implement the following behavior: The `.github/workflows/release-uvx.yml` workflow MUST define `workflow_dispatch` under `on` in addition to tag-push triggers so releases MAY be launched manually without altering automatic tag-trigger behavior.
+- **SRS-268**: MUST implement the following behavior: The `.github/workflows/release-pypi.yml` workflow MUST define `workflow_dispatch` under `on` in addition to tag-push triggers so releases MAY be launched manually without altering automatic tag-trigger behavior.
+- **SRS-431**: MUST implement the following behavior: The release automation workflow MUST be defined at `.github/workflows/release-pypi.yml` and the legacy `.github/workflows/release-uvx.yml` file MUST be absent from the repository.
+- **SRS-432**: MUST implement the following behavior: On canonical version-tag push, the workflow MUST execute package build, provenance attestation, and GitHub Release creation independently of `origin/master` reachability.
+- **SRS-433**: MUST implement the following behavior: The workflow MUST publish the built sdist and wheel to PyPI project `cli-usereq` through the official `pypa/gh-action-pypi-publish` GitHub Action authenticated via GitHub OIDC trusted publishing.
+- **SRS-434**: MUST implement the following behavior: The PyPI publish job MUST execute only when the tagged commit is reachable from `origin/master`; tags reachable only from `origin/develop` MUST skip PyPI publication.
 
 ### 3.5.1 Package Distribution and Resource Inclusion
 - **SRS-272**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST enumerate only `resources/prompts/*.md`, `resources/docs/*.md`, and `resources/prompts-version.txt`.
 - **SRS-273**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST NOT list glob patterns that reference non-existent directories under `src/usereq/resources/`.
 - **SRS-274**: MUST implement the following behavior: The built distribution (sdist and wheel) MUST include all files under `src/usereq/resources/` that are required for program operation, ensuring congruent behavior between local development execution, `uv`-installed package execution, and `uvx` live execution.
+- **SRS-435**: MUST implement the following behavior: `pyproject.toml` `[project].name` MUST be `cli-usereq`, matching the registered PyPI trusted-publisher project name for repository `Ogekuri/CLI-useReq` and workflow `release-pypi.yml`.
+- **SRS-436**: MUST implement the following behavior: `pyproject.toml` `[project].authors` MUST declare `Ogekuri` as the author.
+- **SRS-437**: MUST implement the following behavior: `pyproject.toml` `[project.urls]` `Homepage` and `Repository` MUST reference the `https://github.com/Ogekuri/CLI-useReq` repository.
 
 ### 3.6 Source Analysis Core
 - **SRS-131**: MUST implement the following behavior: The `usereq.source_analyzer` module MUST support 20 programming languages: C (`.c`), C++ (`.cpp`), C# (`.cs`), Elixir (`.ex`), Go (`.go`), Haskell (`.hs`), Java (`.java`), JavaScript (`.js`, `.mjs`), Kotlin (`.kt`), Lua (`.lua`), Perl (`.pl`), PHP (`.php`), Python (`.py`), Ruby (`.rb`), Rust (`.rs`), Scala (`.scala`), Shell (`.sh`), Swift (`.swift`), TypeScript (`.ts`), and Zig (`.zig`).
@@ -232,6 +239,8 @@ No explicit performance optimizations identified.
 - **SRS-374**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that a CLI installation generates representative `req-flowchart` prompt, agent, command, and skill artifacts from the packaged `flowchart.md` template.
 - **SRS-412**: MUST include unit tests in `tests/test_cli.py` and `tests/test_files_commands.py` verifying that SRS-408 subcommands dispatch correctly with both `--prj-base` and `--git-base`, and that legacy `--`-prefixed forms are rejected by the parser.
 - **SRS-423**: MUST include unit tests in `tests/test_cli.py` verifying `--enable`/`--disable` persistence, `--enable-auto-install`/`--disable-auto-install` persistence, `--disable-static-check` removal, `show` output, `install` dispatch, `uninstall` dispatch, and auto-install after successful `--upgrade`.
+- **SRS-438**: MUST include unit tests in `tests/test_release_workflow.py` verifying the `.github/workflows/release-pypi.yml` location, the SRS-433 OIDC publication steps, the SRS-434 master-only publication gating, and the SRS-432 build/release independence from master reachability.
+- **SRS-439**: MUST include unit tests in `tests/test_dependency_manifests.py` verifying the SRS-435 project name, the SRS-436 author, and the SRS-437 repository URLs in `pyproject.toml`.
 
 ## 5. Static Code Analysis Requirements
 

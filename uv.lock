@@ -448,7 +448,7 @@ wheels = [
 ]
 
 [[package]]
-name = "usereq"
+name = "cli-usereq"
 version = "0.68.0"
 source = { editable = "." }
 dependencies = [

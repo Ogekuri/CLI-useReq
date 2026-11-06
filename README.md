@@ -50,11 +50,17 @@ Get running in three steps: install the tool, configure one provider, and instal
 **1. Install** (pick one):
 
 ```bash
-# persistent install (recommended)
-uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git
+# persistent install from PyPI (recommended)
+uv tool install cli-usereq
 
-# or run instantly without installing
-uvx --from git+https://github.com/Ogekuri/useReq.git req --help
+# or persistent install tracking the git repository
+uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git
+
+# or run instantly without installing (PyPI release)
+uvx --from cli-usereq req --help
+
+# or run instantly without installing (git repository)
+uvx --from git+https://github.com/Ogekuri/CLI-useReq.git req --help
 ```
 
 **2. Configure** — enable a provider (configuration only; nothing is installed yet, all providers are disabled by default):
@@ -88,8 +94,10 @@ Prompts and skills are installed under your HOME (e.g. `~/.pi/agent/prompts/` an
 ### Tool installation
 
 ```bash
-uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git
+uv tool install cli-usereq
 ```
+
+PyPI is the canonical distribution channel (project [`cli-usereq`](https://pypi.org/project/cli-usereq/), published via OIDC trusted publishing by the `release-pypi.yml` workflow for `master` tags). The git repository remains a valid source: `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git`.
 
 This exposes the CLI as `req` (also callable as `use-req` / `usereq` or `python -m usereq`). After installation, verify with `req --version`.
 
@@ -99,12 +107,12 @@ This exposes the CLI as `req` (also callable as `use-req` / `usereq` or `python 
 req --upgrade
 ```
 
-On Linux this executes `uv tool install usereq --force --from git+https://github.com/Ogekuri/useReq.git`; on other platforms the manual command is printed and `uv` is not executed. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
+On Linux this executes `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git`; on other platforms the manual command is printed and `uv` is not executed. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
 
 ### Tool removal
 
 ```bash
-req --uninstall     # executes `uv tool uninstall usereq` on Linux and cleans the release-check cache
+req --uninstall     # executes `uv tool uninstall cli-usereq` on Linux and cleans the release-check cache
 ```
 
 ### Provider artifacts

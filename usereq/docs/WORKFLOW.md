@@ -27,12 +27,12 @@
   - `entrypoints`: `scripts/prompts-update.sh`
   - `defining_files`: `scripts/prompts-update.sh`
   - `threads`: `no explicit threads detected`
-- `PROC:gha-release-uvx`
+- `PROC:gha-release-pypi`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `GitHub Actions release workflow orchestration for tag-based and manual release execution`
-  - `entrypoints`: `.github/workflows/release-uvx.yml`
-  - `defining_files`: `.github/workflows/release-uvx.yml`
+  - `role`: `GitHub Actions release workflow orchestration for tag-based and manual release execution with master-only PyPI OIDC trusted publishing`
+  - `entrypoints`: `.github/workflows/release-pypi.yml`
+  - `defining_files`: `.github/workflows/release-pypi.yml`
   - `threads`: `no explicit threads detected`
 
 ## Execution Units
@@ -253,16 +253,18 @@
   - `prompts-update.sh(...)`: shell updater for bundled prompt templates (SRS-375..SRS-380) [`scripts/prompts-update.sh`]
     - external boundaries: `git clone`/`git checkout`/`git tag`/`git rev-parse` subprocesses with every interactive credential prompt disabled (`GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/true`) trying the anonymous HTTPS URLs first and the read-only SSH transport under `ssh BatchMode` last, one optional GitHub Releases API `curl` request with optional `GITHUB_TOKEN` bearer header, `find`/`cp -p` staging, `mktemp`/`rm -rf` temporary-directory lifecycle with `EXIT`-trap cleanup, stdin confirmation read, `src/usereq/resources/prompts` directory replacement and `src/usereq/resources/prompts-version.txt` marker write
 
-### `PROC:gha-release-uvx`
+### `PROC:gha-release-pypi`
 - **Type**: Process
 - **Parent Process**: `-`
-- **Entrypoint(s)**: `.github/workflows/release-uvx.yml` [`.github/workflows/release-uvx.yml`]
-- **Lifecycle/Trigger**: starts on GitHub Actions events (`push` on version tags and `workflow_dispatch`), evaluates release eligibility, and executes release build/publish jobs.
+- **Entrypoint(s)**: `.github/workflows/release-pypi.yml` [`.github/workflows/release-pypi.yml`]
+- **Lifecycle/Trigger**: starts on GitHub Actions events (`push` on version tags and `workflow_dispatch`), evaluates master reachability of the tagged commit, and executes release build plus master-only PyPI publication jobs.
 - **Internal Call-Trace Tree**
-  - `release-uvx.yml(...)`: workflow coordinator for release automation [`.github/workflows/release-uvx.yml`]
-    - `check-branch(...)`: verify tagged commit is reachable from `origin/master` before release [`.github/workflows/release-uvx.yml`]
-    - `build-release(...)`: run frozen-lock `uv run --with build` Python build, provenance attestation, and GitHub release publication when branch check passes [`.github/workflows/release-uvx.yml`]
-      - external boundaries: GitHub-hosted runners, checkout/setup actions, uv lock-resolved runtime/build tooling, GitHub release APIs
+  - `release-pypi.yml(...)`: workflow coordinator for release automation and PyPI OIDC trusted publishing [`.github/workflows/release-pypi.yml`]
+    - `check-branch(...)`: verify tagged commit reachability from `origin/master` and export the `is_master` output consumed by downstream gating [`.github/workflows/release-pypi.yml`]
+    - `build-release(...)`: run frozen-lock `uv run --with build` Python build, provenance attestation, `dist/` artifact upload, and GitHub release publication for every canonical version tag independently of master reachability [`.github/workflows/release-pypi.yml`]
+      - external boundaries: GitHub-hosted runners, checkout/setup actions, uv lock-resolved runtime/build tooling, GitHub release APIs, GitHub Actions artifact storage
+    - `publish-pypi(...)`: download the `dist` artifact and publish sdist/wheel to PyPI project `cli-usereq` through `pypa/gh-action-pypi-publish` with GitHub OIDC trusted publishing only when `is_master` is `true`; develop-only tags skip publication [`.github/workflows/release-pypi.yml`]
+      - external boundaries: GitHub Actions artifact storage, PyPI trusted-publisher OIDC exchange and upload endpoint
 
 ## Communication Edges
 - `PROC:req-sh -> PROC:main`

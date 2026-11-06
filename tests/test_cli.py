@@ -1380,7 +1380,7 @@ class TestUpgradeUninstall(unittest.TestCase):
             cli.run_upgrade()
         mock_run.assert_called_once()
         command = mock_run.call_args[0][0]
-        self.assertEqual(command[:4], ["uv", "tool", "install", "usereq"])
+        self.assertEqual(command[:4], ["uv", "tool", "install", "cli-usereq"])
 
     def test_uninstall_on_linux_executes_uv_uninstall(self) -> None:
         with (

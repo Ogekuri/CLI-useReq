@@ -394,11 +394,16 @@ RELEASE_CHECK_IDLE_DELAY_SECONDS = 3600
 RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS = 86400
 """! @brief Hardcoded startup release-check idle-delay in seconds for API rate limiting."""
 
-TOOL_PROGRAM_NAME = "usereq"
-"""! @brief Hardcoded configurable tool identifier used by uv install/uninstall commands."""
+TOOL_PROGRAM_NAME = "cli-usereq"
+"""! @brief Hardcoded uv tool requirement name matching the PyPI distribution name of this package (SRS-435).
+@details Used as the target of `uv tool install`/`uv tool uninstall` commands; it matches the
+`[project].name` distribution name registered in the PyPI trusted publisher for repository
+`Ogekuri/CLI-useReq` (SRS-343, SRS-344, SRS-433, SRS-435)."""
 
-RELEASE_CHECK_PROGRAM_NAME = TOOL_PROGRAM_NAME
-"""! @brief Program identifier used in release-check idle-state cache directory."""
+RELEASE_CHECK_PROGRAM_NAME = "usereq"
+"""! @brief Program identifier used in release-check idle-state cache directory.
+@details Fixes the idle-state cache path to `~/.cache/usereq/check_version_idle-time.json`
+independently of the PyPI distribution name `cli-usereq` (SRS-345, SRS-346)."""
 
 GITHUB_REPOSITORY_OWNER = "Ogekuri"
 """! @brief Hardcoded GitHub owner used by upgrade and release-check endpoints."""
