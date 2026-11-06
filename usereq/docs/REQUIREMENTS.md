@@ -2,7 +2,7 @@
 title: "useReq Requirements"
 description: "Software Requirements Specification"
 date: "2026-04-12"
-version: 1.12
+version: 1.13
 author: "Ogekuri"
 scope:
   paths:
@@ -126,6 +126,10 @@ No explicit performance optimizations identified.
 - **SRS-400**: MUST support `--set-tests-dir PATH` to persist the project-relative `tests-dir` value in `~/.config/usereq/config.json`.
 - **SRS-401**: MUST preserve all unrelated configuration keys when `--set-docs-dir`, `--set-src-dir`, or `--set-tests-dir` writes `~/.config/usereq/config.json`.
 - **SRS-407**: MUST persist the effective `docs-dir`, `tests-dir`, and `src-dir` values in `~/.config/usereq/config.json` during installation and update.
+- **SRS-408**: MUST implement the following behavior: The CLI MUST accept exactly these ten analysis subcommand tokens without the `--` prefix: `files-tokens`, `files-references`, `files-compress`, `files-find`, `tokens`, `references`, `compress`, `find`, `files-static-check`, `static-check`.
+- **SRS-409**: MUST NOT parse the legacy `--`-prefixed forms of the SRS-408 subcommands (`--files-tokens`, `--files-references`, `--files-compress`, `--files-find`, `--tokens`, `--references`, `--compress`, `--find`, `--files-static-check`, `--static-check`).
+- **SRS-410**: MUST require both `--prj-base` and `--git-base` for every SRS-408 subcommand; absent arguments MUST trigger the SRS-395 error behavior.
+- **SRS-411**: MUST implement the following behavior: The CLI help output MUST document every SRS-408 subcommand together with its mandatory `--prj-base` and `--git-base` arguments.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider prompts, agents, and skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
@@ -178,10 +182,10 @@ No explicit performance optimizations identified.
 ### 3.9 Source Compression
 
 ### 3.10 Construct Extraction and Command Operations
-- **SRS-177**: MUST implement the following behavior: The `--references` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
-- **SRS-179**: MUST implement the following behavior: The `--compress` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
-- **SRS-180**: MUST implement the following behavior: For `--references`, `--compress`, `--find`, and `--static-check`, `EXCLUDED_DIRS` MUST contain only directory names that are not already excluded by `.gitignore`.
-- **SRS-181**: MUST implement the following behavior: Source-file selection for `--references` and `--compress` MUST be derived from `git ls-files` relative paths and MUST NOT rely on recursive filesystem walking.
+- **SRS-177**: MUST implement the following behavior: The `references` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
+- **SRS-179**: MUST implement the following behavior: The `compress` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
+- **SRS-180**: MUST implement the following behavior: For `references`, `compress`, `find`, and `static-check`, `EXCLUDED_DIRS` MUST contain only directory names that are not already excluded by `.gitignore`.
+- **SRS-181**: MUST implement the following behavior: Source-file selection for `references` and `compress` MUST be derived from `git ls-files` relative paths and MUST NOT rely on recursive filesystem walking.
 
 ### 3.11 Doxygen Parsing and Field Emission
 - **SRS-213**: MUST implement the following behavior: The parser MUST recognize these Doxygen tags: @brief, @details, @param, @param[in], @param[out], @param[in,out], @return, @retval, @exception, @throws, @warning, @deprecated, @note, @see, @sa, @satisfies, @pre, @post.
@@ -199,10 +203,10 @@ No explicit performance optimizations identified.
 ### 4.1 Test and Verification Requirements
 - **SRS-231**: MUST implement the following behavior: Every file in `tests/fixtures/` MUST include one file-level Doxygen block with `@file`, `@brief`, and `@details`, and MUST retain at least five construct-level blocks with `@brief`, `@details`, `@param`, and `@return`.
 - **SRS-233**: MUST implement the following behavior: The project MUST include `tests/fixtures/`-based Doxygen tests that, for each fixture file, extract all the constructions present compatible with SRS-187, validate the Doxygen fields expected for each construct, and verify that the comment association→built is correct for both pre-built comments and post-built comments when allowed by the language syntax.
-- **SRS-234**: MUST verify in `tests/test_files_commands.py` that `--files-references` outputs Doxygen field bullets with original tags from SRS-213 (`@brief` ... `@post`) and never emits converted labels like `Brief:`.
-- **SRS-235**: MUST verify in `tests/test_files_commands.py` that `--references` outputs Doxygen field bullets with original tags from SRS-213 (`@brief` ... `@post`) and never emits converted labels like `Brief:`.
-- **SRS-236**: MUST verify command-level `--files-find` outputs Doxygen field bullets using original tags from SRS-213 (`@brief` ... `@post`) with SRS-220 placement and SRS-221 order, never converted labels.
-- **SRS-237**: MUST verify command-level `--find` outputs Doxygen field bullets using original tags from SRS-213 (`@brief` ... `@post`) with SRS-220 placement, SRS-221 order, and no converted labels.
+- **SRS-234**: MUST verify in `tests/test_files_commands.py` that `files-references` outputs Doxygen field bullets with original tags from SRS-213 (`@brief` ... `@post`) and never emits converted labels like `Brief:`.
+- **SRS-235**: MUST verify in `tests/test_files_commands.py` that `references` outputs Doxygen field bullets with original tags from SRS-213 (`@brief` ... `@post`) and never emits converted labels like `Brief:`.
+- **SRS-236**: MUST verify command-level `files-find` outputs Doxygen field bullets using original tags from SRS-213 (`@brief` ... `@post`) with SRS-220 placement and SRS-221 order, never converted labels.
+- **SRS-237**: MUST verify command-level `find` outputs Doxygen field bullets using original tags from SRS-213 (`@brief` ... `@post`) with SRS-220 placement, SRS-221 order, and no converted labels.
 - **SRS-405**: MUST include unit tests in `tests/test_cli.py` verifying that commands requiring `--prj-base` or `--git-base` exit with code 1 when the required argument is absent.
 - **SRS-406**: MUST include unit tests in `tests/test_cli.py` verifying that `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir` persist their keys and preserve unrelated configuration keys.
 - **SRS-284**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--provider PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]` parsing accepts valid specs and rejects unknown providers, artifacts, or options with exit code 1.
@@ -215,6 +219,7 @@ No explicit performance optimizations identified.
 - **SRS-297**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that each `Modules Installed` line preserves parsed artifact-local option order and appended applicable provider-option order, and emits only `artifact` when no options apply.
 - **SRS-298**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `Modules Installed` does not wrap module-entry lines and widths include the longest rendered module-entry line.
 - **SRS-374**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that a CLI installation generates representative `req-flowchart` prompt, agent, command, and skill artifacts from the packaged `flowchart.md` template.
+- **SRS-412**: MUST include unit tests in `tests/test_cli.py` and `tests/test_files_commands.py` verifying that SRS-408 subcommands dispatch correctly with both `--prj-base` and `--git-base`, and that legacy `--`-prefixed forms are rejected by the parser.
 
 ## 5. Static Code Analysis Requirements
 
@@ -238,11 +243,11 @@ No explicit performance optimizations identified.
 - **SRS-252**: MUST implement the following behavior: When `--enable-static-check` is used during installation or update, the global configuration file key `"static-check"` MUST be a JSON object keyed by canonical language name, and each language value MUST be a non-empty JSON array of entry objects with required `"module"` and optional `"cmd"`/`"params"` fields.
 
 ### 5.4 Static Analysis Execution Commands
-- **SRS-253**: MUST support `--files-static-check FILE [FILE ...]` as a standalone command that requires no `--prj-base`; for each FILE it MUST resolve the absolute path, detect the language, load the language array from `"static-check"`, and execute all configured entries sequentially with `fail_only` mode active and a dispatch context containing the `--prj-base` value when provided, otherwise the current working directory.
+- **SRS-253**: MUST support `files-static-check FILE [FILE ...]` as a subcommand per SRS-408 requiring `--prj-base` and `--git-base`; for each FILE it MUST resolve the absolute path, detect the language, load the language array from `"static-check"`, and execute all configured entries sequentially with `fail_only` mode active and a dispatch context containing the mandatory `--prj-base` value.
 - **SRS-254**: MUST implement the following behavior: When `--files-static-check` cannot locate `~/.config/usereq/config.json`, the command MUST print a warning to stderr and exit with code 0 without checking any files.
 - **SRS-255**: MUST implement the following behavior: The `--files-static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis.
-- **SRS-256**: MUST support `--static-check` as a project-scan command requiring `--prj-base`, with file selection from `git ls-files` under configured `src-dir` values and the `tests-dir` value plus SRS-131/SRS-180 filtering; all checks MUST execute with `fail_only` mode active and dispatch context containing `--prj-base`.
-- **SRS-257**: MUST implement the following behavior: The `--static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis; it MUST remain dispatched via `_is_project_scan_command`.
+- **SRS-256**: MUST support `static-check` as a project-scan subcommand per SRS-408 requiring `--prj-base` and `--git-base`, with file selection from `git ls-files` under configured `src-dir` values and the `tests-dir` value plus SRS-131/SRS-180 filtering; all checks MUST execute with `fail_only` mode active and dispatch context containing `--prj-base`.
+- **SRS-257**: MUST implement the following behavior: The `static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis.
 - **SRS-336**: MUST implement the following behavior: The `--static-check` command MUST load the `tests-dir` value from `~/.config/usereq/config.json` and append it to the `src-dir` list for file selection; if `tests-dir` is missing or invalid the command MUST skip test directory inclusion without error.
 ### 5.5 Static Analysis Dispatch Implementation Requirements
 - **SRS-258**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_LANG_CANONICAL` dict in `src/usereq/static_check.py` mapping lowercase language identifiers (including common aliases: `cpp` for C++, `csharp` for C#, `js` for JavaScript, `ts` for TypeScript, `sh` for Shell) to canonical language names from SRS-249.
@@ -266,8 +271,8 @@ No explicit performance optimizations identified.
 - **SRS-393**: MUST accept `--git-base PATH` as the sole command-line source of the git repository base used for git operations.
 - **SRS-394**: MUST NOT persist `--prj-base` or `--git-base` in `~/.config/usereq/config.json` and MUST NOT load them from it.
 - **SRS-395**: MUST print an English error to stderr and exit with code 1 when a dispatched command requires `--prj-base` or `--git-base` and that argument is absent.
-- **SRS-396**: MUST require `--prj-base` for installation, update, `--references`, `--compress`, `--tokens`, `--find`, `--static-check`, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir`.
-- **SRS-397**: MUST require `--git-base` for `--git-check`, `--git-path`, `--git-wt-name`, `--git-wt-create`, and `--git-wt-delete`.
+- **SRS-396**: MUST require `--prj-base` for installation, update, `references`, `compress`, `tokens`, `find`, `static-check`, `files-tokens`, `files-references`, `files-compress`, `files-find`, `files-static-check`, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir`.
+- **SRS-397**: MUST require `--git-base` for `--git-check`, `--git-wt-name`, `--git-wt-create`, and `--git-wt-delete`, and for every SRS-408 subcommand per SRS-410.
 - **SRS-310**: MUST implement the following behavior: When the global configuration file is loaded, ALL key-value parameters MUST be loaded and available to CLI command functions.
 
 ### 6.2 Git Check Command
@@ -299,10 +304,10 @@ No explicit performance optimizations identified.
 - **SRS-332**: MUST implement the following behavior: The `--git-wt-delete` command MUST NOT execute explicit file-system deletions of worktree content paths (for example `.req`, `.claude`, `.codex`), and MUST rely only on `git worktree remove` and `git branch -D`.
 
 ### 6.7 Git Repository Path Commands
-- **SRS-333**: MUST support `--git-path` as a command that requires the mandatory `--git-base` argument.
-- **SRS-334**: MUST print the git repository root resolved from the `--git-base` directory and MUST fail when that directory is not inside a git repository.
+- **SRS-333**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-334**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-347**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 
 ### 6.8 Git Integration Test Requirements
 - **SRS-329**: MUST include unit tests in `tests/test_cli.py` verifying that git-integration commands execute git operations with `--git-base` as working directory.
-- **SRS-330**: MUST include unit tests in `tests/test_cli.py` verifying the `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create` (including `.venv` copy behavior), `--git-wt-delete`, and `--git-path` commands behave per their respective requirements.
+- **SRS-330**: MUST include unit tests in `tests/test_cli.py` verifying the `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create` (including `.venv` copy behavior), and `--git-wt-delete` commands behave per their respective requirements.

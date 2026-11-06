@@ -16,12 +16,22 @@ class TestOnlineUpdateCheck(unittest.TestCase):
     """Verifies that command execution triggers online update checks."""
 
     def test_files_references_triggers_online_update_check(self) -> None:
-        """Standalone command --files-references must invoke release-check once."""
+        """Analysis subcommand files-references must invoke release-check once."""
         fixture = Path(__file__).resolve().parent / "fixtures" / "fixture_python.py"
+        repo_base = Path(__file__).resolve().parents[1]
 
         with patch("usereq.cli.maybe_notify_newer_version", autospec=True) as notify_mock:
             with patch("sys.stdout"):
-                exit_code = cli.main(["--files-references", str(fixture)])
+                exit_code = cli.main(
+                    [
+                        "files-references",
+                        "--prj-base",
+                        str(repo_base),
+                        "--git-base",
+                        str(repo_base),
+                        str(fixture),
+                    ]
+                )
 
         self.assertEqual(exit_code, 0)
         notify_mock.assert_called_once_with(timeout_seconds=2.0)

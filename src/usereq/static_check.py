@@ -5,7 +5,7 @@
   Exposes `run_static_check(argv)` as the primary entry point for `--test-static-check` called
   from cli.py. Also exposes `parse_enable_static_check`, `dispatch_static_check_for_file`,
   `STATIC_CHECK_LANG_CANONICAL`, and `STATIC_CHECK_EXT_TO_LANG` for `--enable-static-check`,
-  `--files-static-check`, and `--static-check` command support.
+  `files-static-check` and `static-check` subcommand support.
   Class hierarchy: StaticCheckBase (Dummy) -> StaticCheckPylance, StaticCheckRuff, StaticCheckCommand.
   File resolution supports: explicit file paths, glob patterns (with full `**` recursive expansion),
   and direct-children-only directory traversal. No custom `--recursive` flag; recursive traversal

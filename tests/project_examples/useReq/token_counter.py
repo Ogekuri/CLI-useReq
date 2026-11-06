@@ -8,7 +8,7 @@
 
 import os
 
-import tiktoken
+import tiktoken  # pyright: ignore[reportMissingImports]
 
 
 class TokenCounter:

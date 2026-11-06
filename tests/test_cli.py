@@ -1113,37 +1113,19 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
             os.chdir(prev_cwd)
 
 
-class TestGitRepositoryPathCommands(HomeIsolatedTestCase):
-    """SRS-333/SRS-334/SRS-391: --git-path resolves the repository root from --git-base."""
+class TestGitPathRemovedCommand(HomeIsolatedTestCase):
+    """SRS-333/SRS-334/SRS-347: --git-path is removed legacy behavior and is not parsed."""
 
-    def setUp(self) -> None:
-        super().setUp()
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-gitpath-"))
-        make_git_repo(self.TEST_DIR)
-        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
-
-    def test_git_path_prints_git_base_root(self) -> None:
+    def test_git_path_flag_is_not_parsed(self) -> None:
+        """SRS-333/SRS-334: --git-path must be rejected by the parser."""
         with (
             patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+            patch("sys.stderr", new_callable=io.StringIO),
         ):
-            rc = cli.main(["--git-path", "--git-base", str(self.TEST_DIR)])
-        self.assertEqual(rc, 0)
-        self.assertEqual(
-            mock_stdout.getvalue().strip(), str(self.TEST_DIR.resolve())
-        )
+            with self.assertRaises(SystemExit):
+                cli.main(["--git-path", "--git-base", str(tempfile.gettempdir())])
 
-    def test_git_path_requires_git_base(self) -> None:
-        """SRS-397/SRS-405: --git-path without --git-base exits with code 1."""
-        with (
-            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
-        ):
-            rc = cli.main(["--git-path"])
-        self.assertEqual(rc, 1)
-        self.assertIn("--git-base", mock_stderr.getvalue())
-
-    def test_git_path_rejects_removed_get_base_path(self) -> None:
+    def test_git_path_get_base_path_is_not_parsed(self) -> None:
         """SRS-347: --get-base-path is no longer parsed."""
         with (
             patch("usereq.cli.maybe_notify_newer_version", autospec=True),
@@ -1151,16 +1133,6 @@ class TestGitRepositoryPathCommands(HomeIsolatedTestCase):
         ):
             with self.assertRaises(SystemExit):
                 cli.main(["--get-base-path"])
-
-    def test_git_path_outside_git_repo_fails(self) -> None:
-        non_git = Path(tempfile.mkdtemp(prefix="usereq-nongit-"))
-        self.addCleanup(shutil.rmtree, non_git, ignore_errors=True)
-        with (
-            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-            patch("sys.stderr", new_callable=io.StringIO),
-        ):
-            rc = cli.main(["--git-path", "--git-base", str(non_git)])
-        self.assertNotEqual(rc, 0)
 
 
 class TestStaticCheckConfig(HomeIsolatedTestCase):
@@ -1321,26 +1293,43 @@ class TestPrjBaseRequirements(HomeIsolatedTestCase):
 
     def test_references_requires_prj_base(self) -> None:
         with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
-            rc = self.run_cli(["--references"])
+            rc = self.run_cli(["references"])
         self.assertEqual(rc, 1)
         self.assertIn("--prj-base", mock_stderr.getvalue())
 
-    def test_git_path_accepts_prj_base_independently(self) -> None:
-        """SRS-394: --prj-base is never required by nor persisted for git commands."""
+    def test_files_tokens_requires_git_base(self) -> None:
+        """SRS-410/SRS-405: analysis subcommands without --git-base exit with code 1."""
         project = Path(tempfile.mkdtemp(prefix="usereq-prj-"))
-        repo = Path(tempfile.mkdtemp(prefix="usereq-repo-"))
-        make_git_repo(repo)
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
-        self.addCleanup(shutil.rmtree, repo, ignore_errors=True)
+        target = project / "sample.py"
+        target.write_text("x = 1\n", encoding="utf-8")
         with (
             patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-            patch("sys.stdout", new_callable=io.StringIO),
+            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
         ):
-            rc = cli.main(["--git-path", "--git-base", str(repo)])
-        self.assertEqual(rc, 0)
-        self.assertFalse(
-            (self.HOME / ".config" / "usereq" / "config.json").exists()
-        )
+            rc = cli.main(["files-tokens", "--prj-base", str(project), str(target)])
+        self.assertEqual(rc, 1)
+        self.assertIn("--git-base", mock_stderr.getvalue())
+
+    def test_legacy_analysis_flags_are_not_parsed(self) -> None:
+        """SRS-409/SRS-412: legacy --prefixed analysis command forms are rejected."""
+        for legacy in (
+            ["--files-tokens", "f.py"],
+            ["--files-references", "f.py"],
+            ["--files-compress", "f.py"],
+            ["--files-find", "FUNCTION", "x", "f.py"],
+            ["--files-static-check", "f.py"],
+            ["--tokens"],
+            ["--references"],
+            ["--compress"],
+            ["--find", "FUNCTION", "x"],
+            ["--static-check"],
+        ):
+            with (
+                patch("sys.stderr", new_callable=io.StringIO),
+                self.assertRaises(SystemExit),
+            ):
+                cli.main(legacy)
 
     def test_removed_directory_flags_are_not_parsed(self) -> None:
         """SRS-034: removed directory flags are rejected by the parser."""

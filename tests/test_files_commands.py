@@ -1,5 +1,5 @@
-"""Tests for the --files-tokens, --files-references, --files-compress,
---references, --compress, --enable-line-numbers, and --tokens CLI commands.
+"""Tests for the files-tokens, files-references, files-compress, files-find,
+files-static-check, references, compress, tokens, and find CLI subcommands.
 
 Covers: CMD-001 through CMD-017.
 """
@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import tempfile
 import shutil
 import re
@@ -37,6 +38,26 @@ def _isolated_user_home(tmp_path, monkeypatch):
     monkeypatch.setattr(cli_module, "home_dir", lambda: home)
     yield home
 
+
+SUBCOMMAND_BASE_REPO = Path(tempfile.mkdtemp(prefix="usereq-subcmd-base-"))
+subprocess.run(["git", "init"], cwd=str(SUBCOMMAND_BASE_REPO), capture_output=True)
+subprocess.run(
+    ["git", "config", "user.email", "tests@example.com"],
+    cwd=str(SUBCOMMAND_BASE_REPO),
+    capture_output=True,
+)
+subprocess.run(
+    ["git", "config", "user.name", "tests"],
+    cwd=str(SUBCOMMAND_BASE_REPO),
+    capture_output=True,
+)
+"""Shared --prj-base/--git-base argument list for bare subcommand invocations (SRS-408, SRS-410)."""
+SUBCOMMAND_BASES = [
+    "--prj-base",
+    str(SUBCOMMAND_BASE_REPO),
+    "--git-base",
+    str(SUBCOMMAND_BASE_REPO),
+]
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 FIXTURE_FILES = sorted(FIXTURES_DIR.glob("fixture_*.*"))
@@ -413,7 +434,7 @@ def _assert_reference_doxygen_sequences(
     context_id: str,
 ) -> None:
     """! @brief Assert references output emits expected Doxygen lines in deterministic order.
-    @param output Full markdown payload from --files-references or --references.
+    @param output Full markdown payload from files-references or references.
     @param expected_sequences Ordered list of expected per-construct Doxygen bullet sequences.
     @param context_id Context marker for assertion diagnostics.
     """
@@ -741,7 +762,7 @@ class TestFilesTokensCommand:
             f.write("def hello():\n    return 'world'\n")
             path = f.name
         try:
-            rc = main(["--files-tokens", path])
+            rc = main(["files-tokens", *SUBCOMMAND_BASES, path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "Pack Summary" in captured.out
@@ -749,14 +770,14 @@ class TestFilesTokensCommand:
         finally:
             os.unlink(path)
 
-    def test_files_tokens_no_base_required(self, capsys):
-        """CMD-002: Must work without --prj-base."""
+    def test_files_tokens_with_mandatory_bases(self, capsys):
+        """CMD-002/SRS-410: Must work with mandatory --prj-base and --git-base."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
                                          delete=False) as f:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--files-tokens", path])
+            rc = main(["files-tokens", *SUBCOMMAND_BASES, path])
             assert rc == 0
         finally:
             os.unlink(path)
@@ -768,7 +789,7 @@ class TestFilesTokensCommand:
             f.write("x = 1\n")
             valid_path = f.name
         try:
-            rc = main(["--files-tokens", "/nonexistent.py", valid_path])
+            rc = main(["files-tokens", *SUBCOMMAND_BASES, "/nonexistent.py", valid_path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "skipping" in captured.err.lower() or "Warning" in captured.err
@@ -777,12 +798,12 @@ class TestFilesTokensCommand:
 
     def test_files_tokens_all_missing_errors(self, capsys):
         """CMD-003: All missing files must error."""
-        rc = main(["--files-tokens", "/nonexistent1.py", "/nonexistent2.py"])
+        rc = main(["files-tokens", *SUBCOMMAND_BASES, "/nonexistent1.py", "/nonexistent2.py"])
         assert rc != 0
 
 
 class TestFilesReferencesCommand:
-    """CMD-004, CMD-005: --files-references tests."""
+    """CMD-004, CMD-005: files-references tests."""
 
     def test_files_references_basic(self, capsys, monkeypatch):
         """CMD-004: Must output markdown."""
@@ -796,7 +817,7 @@ class TestFilesReferencesCommand:
             f.write("class Foo:\n    pass\n")
             path = f.name
         try:
-            rc = main(["--files-references", path])
+            rc = main(["files-references", *SUBCOMMAND_BASES, path])
             assert rc == 0
             captured = capsys.readouterr()
             expected_path = Path(
@@ -816,7 +837,7 @@ class TestFilesReferencesCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--files-references", path])
+            rc = main(["files-references", *SUBCOMMAND_BASES, path])
             assert rc == 0
         finally:
             os.unlink(path)
@@ -828,7 +849,7 @@ class TestFilesReferencesCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--verbose", "--files-references", path])
+            rc = main(["--verbose", "files-references", *SUBCOMMAND_BASES, path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "OK" in captured.err
@@ -849,7 +870,7 @@ class TestFilesReferencesCommand:
         """DOX-014: Every fixture must preserve total Doxygen field count in output."""
         source_counts = _count_effective_exportable_doxygen_tags(fixture_file)
 
-        rc = main(["--files-references", str(fixture_file)])
+        rc = main(["files-references", *SUBCOMMAND_BASES, str(fixture_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -859,21 +880,21 @@ class TestFilesReferencesCommand:
         _assert_doxygen_reference_counts(
             source_counts=source_counts,
             output_counts=output_counts,
-            context_id=f"--files-references::{fixture_file.name}",
+            context_id=f"files-references::{fixture_file.name}",
         )
         _assert_reference_doxygen_sequences(
             output=output,
             expected_sequences=_collect_expected_doxygen_sequences(fixture_file),
-            context_id=f"--files-references::{fixture_file.name}",
+            context_id=f"files-references::{fixture_file.name}",
         )
 
         _assert_no_legacy_annotation_lines(output)
         _assert_doxygen_markdown_order(output)
 
     def test_files_references_cli_log_emits_brief_and_param(self, capsys):
-        """DOX-014: --files-references must emit semantic Doxygen field content for `log()`."""
+        """DOX-014: files-references must emit semantic Doxygen field content for `log()`."""
         cli_file = Path(__file__).resolve().parents[1] / "src" / "usereq" / "cli.py"
-        rc = main(["--files-references", str(cli_file)])
+        rc = main(["files-references", *SUBCOMMAND_BASES, str(cli_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -897,7 +918,7 @@ class TestFilesReferencesCommand:
             encoding="utf-8",
         )
 
-        rc = main(["--files-references", str(source_file)])
+        rc = main(["files-references", *SUBCOMMAND_BASES, str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -912,11 +933,11 @@ class TestFilesReferencesCommand:
         capsys,
         repo_temp_dir,
     ):
-        """DOX-014: --files-references must extract brief/details/param/return/satisfies for cmd_major sample."""
+        """DOX-014: files-references must extract brief/details/param/return/satisfies for cmd_major sample."""
         source_file = repo_temp_dir / "cmd_major_sample.py"
         _write_cmd_major_sample(source_file)
 
-        rc = main(["--files-references", str(source_file)])
+        rc = main(["files-references", *SUBCOMMAND_BASES, str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_reference_definition_block_by_signature(
@@ -925,7 +946,7 @@ class TestFilesReferencesCommand:
         )
         _assert_cmd_major_doxygen_fields(
             block,
-            context_id="--files-references::cmd_major",
+            context_id="files-references::cmd_major",
         )
 
 
@@ -944,7 +965,7 @@ class TestFilesCompressCommand:
             f.write("# comment\nx = 1\n")
             path = f.name
         try:
-            rc = main(["--files-compress", path])
+            rc = main(["files-compress", *SUBCOMMAND_BASES, path])
             assert rc == 0
             captured = capsys.readouterr()
             expected_path = Path(
@@ -957,14 +978,14 @@ class TestFilesCompressCommand:
         finally:
             os.unlink(path)
 
-    def test_files_compress_no_base_required(self, capsys):
-        """CMD-007: Must work without --prj-base."""
+    def test_files_compress_with_mandatory_bases(self, capsys):
+        """CMD-007/SRS-410: Must work with mandatory --prj-base and --git-base."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
                                          delete=False) as f:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--files-compress", path])
+            rc = main(["files-compress", *SUBCOMMAND_BASES, path])
             assert rc == 0
         finally:
             os.unlink(path)
@@ -975,7 +996,7 @@ class TestFilesCompressCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--files-compress", path])
+            rc = main(["files-compress", *SUBCOMMAND_BASES, path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "1: x = 1" not in captured.out
@@ -989,7 +1010,7 @@ class TestFilesCompressCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--files-compress", path, "--enable-line-numbers"])
+            rc = main(["files-compress", *SUBCOMMAND_BASES, path, "--enable-line-numbers"])
             assert rc == 0
             captured = capsys.readouterr()
             assert "1: x = 1" in captured.out
@@ -1004,7 +1025,7 @@ class TestFilesCompressCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--verbose", "--files-compress", path])
+            rc = main(["--verbose", "files-compress", *SUBCOMMAND_BASES, path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "OK" in captured.err
@@ -1061,11 +1082,11 @@ class TestCollectSourceFiles:
 
 
 class TestReferencesCommand:
-    """CMD-008, CMD-009, CMD-014, CMD-015: --references tests."""
+    """CMD-008, CMD-009, CMD-014, CMD-015: references tests."""
 
     def test_requires_prj_base(self, capsys, repo_temp_dir):
-        """CMD-008: --references must require --prj-base."""
-        rc = main(["--references"])
+        """CMD-008/SRS-410: references must require --prj-base."""
+        rc = main(["references"])
         assert rc == 1
         captured = capsys.readouterr()
         assert "--prj-base" in captured.err
@@ -1080,7 +1101,7 @@ class TestReferencesCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_lib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
+        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert len(captured.out) > 0
@@ -1103,7 +1124,7 @@ class TestReferencesCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
+        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert captured.out.startswith("# Files Structure\n```")
@@ -1123,7 +1144,7 @@ class TestReferencesCommand:
                   "tests-dir": "tests/", "src-dir": ["lib"]}
         (req_dir / "config.json").write_text(json.dumps(config))
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
+        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
 
     @pytest.mark.parametrize(
@@ -1138,7 +1159,7 @@ class TestReferencesCommand:
         repo_temp_dir,
         monkeypatch,
     ):
-        """DOX-015: --references must preserve total Doxygen field count for each fixture."""
+        """DOX-015: references must preserve total Doxygen field count for each fixture."""
         src = repo_temp_dir / "src"
         src.mkdir()
 
@@ -1157,7 +1178,7 @@ class TestReferencesCommand:
         source_counts = _count_effective_exportable_doxygen_tags(copied_fixture)
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
+        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1168,12 +1189,12 @@ class TestReferencesCommand:
         _assert_doxygen_reference_counts(
             source_counts=source_counts,
             output_counts=output_counts,
-            context_id=f"--references::{fixture_file.name}",
+            context_id=f"references::{fixture_file.name}",
         )
         _assert_reference_doxygen_sequences(
             output=output,
             expected_sequences=_collect_expected_doxygen_sequences(copied_fixture),
-            context_id=f"--references::{fixture_file.name}",
+            context_id=f"references::{fixture_file.name}",
         )
 
         _assert_no_legacy_annotation_lines(output)
@@ -1185,7 +1206,7 @@ class TestReferencesCommand:
         repo_temp_dir,
         monkeypatch,
     ):
-        """DOX-015: --references must emit semantic Doxygen field content for `log()`."""
+        """DOX-015: references must emit semantic Doxygen field content for `log()`."""
         src = repo_temp_dir / "src"
         src.mkdir()
         cli_source = Path(__file__).resolve().parents[1] / "src" / "usereq" / "cli.py"
@@ -1202,7 +1223,7 @@ class TestReferencesCommand:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
+        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1220,7 +1241,7 @@ class TestReferencesCommand:
         repo_temp_dir,
         monkeypatch,
     ):
-        """DOX-015: --references must extract brief/details/param/return/satisfies for cmd_major sample."""
+        """DOX-015: references must extract brief/details/param/return/satisfies for cmd_major sample."""
         src = repo_temp_dir / "src"
         src.mkdir()
         source_file = src / "cmd_major_sample.py"
@@ -1236,7 +1257,7 @@ class TestReferencesCommand:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--references"])
+        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_reference_definition_block_by_signature(
@@ -1245,7 +1266,7 @@ class TestReferencesCommand:
         )
         _assert_cmd_major_doxygen_fields(
             block,
-            context_id="--references::cmd_major",
+            context_id="references::cmd_major",
         )
 
 
@@ -1254,7 +1275,7 @@ class TestCompressCommand:
 
     def test_requires_prj_base(self, capsys, repo_temp_dir):
         """CMD-010: --compress must require --prj-base."""
-        rc = main(["--compress"])
+        rc = main(["compress"])
         assert rc == 1
         captured = capsys.readouterr()
         assert "--prj-base" in captured.err
@@ -1269,7 +1290,7 @@ class TestCompressCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--compress"])
+        rc = main(["compress", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "@@@" in captured.out
@@ -1288,7 +1309,7 @@ class TestCompressCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--compress"])
+        rc = main(["compress", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: x = 1" not in captured.out
@@ -1306,7 +1327,7 @@ class TestCompressCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--compress", "--enable-line-numbers"])
+        rc = main(["compress", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "--enable-line-numbers"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: x = 1" in captured.out
@@ -1320,7 +1341,7 @@ class TestTokensCommand:
 
     def test_tokens_requires_prj_base(self, capsys, repo_temp_dir):
         """CMD-016: --tokens must require --prj-base."""
-        rc = main(["--tokens"])
+        rc = main(["tokens"])
         assert rc == 1
         captured = capsys.readouterr()
         assert "--prj-base" in captured.err
@@ -1335,7 +1356,7 @@ class TestTokensCommand:
         config = {"docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--tokens", "--prj-base", str(repo_temp_dir)])
+        rc = main(["tokens", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "REQUIREMENTS.md" in captured.out
@@ -1357,7 +1378,7 @@ class TestTokensCommand:
         config = {"docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--tokens", "--prj-base", str(repo_temp_dir)])
+        rc = main(["tokens", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "Pack Summary" in captured.out
@@ -1370,7 +1391,7 @@ class TestTokensCommand:
 
 
 class TestFindCommandVerbose:
-    """CMD-029: Verbose-gated progress output for --files-find and --find."""
+    """CMD-029: Verbose-gated progress output for files-find and find."""
 
     def test_files_find_default_suppresses_progress(self, capsys, repo_temp_dir, monkeypatch):
         monkeypatch.setattr(
@@ -1380,7 +1401,7 @@ class TestFindCommandVerbose:
         )
         src = repo_temp_dir / "a.py"
         src.write_text("def foo():\n    return 1\n", encoding="utf-8")
-        rc = main(["--files-find", "FUNCTION", "foo", str(src)])
+        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "foo", str(src)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "foo" in captured.out
@@ -1390,7 +1411,7 @@ class TestFindCommandVerbose:
     def test_files_find_verbose_outputs_progress(self, capsys, repo_temp_dir):
         src = repo_temp_dir / "a.py"
         src.write_text("def foo():\n    return 1\n", encoding="utf-8")
-        rc = main(["--verbose", "--files-find", "FUNCTION", "foo", str(src)])
+        rc = main(["--verbose", "files-find", *SUBCOMMAND_BASES, "FUNCTION", "foo", str(src)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "OK" in captured.err
@@ -1399,7 +1420,7 @@ class TestFindCommandVerbose:
     def test_files_find_enable_line_numbers(self, capsys, repo_temp_dir):
         src = repo_temp_dir / "a.py"
         src.write_text("def foo():\n    return 1\n", encoding="utf-8")
-        rc = main(["--files-find", "FUNCTION", "foo", str(src), "--enable-line-numbers"])
+        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "foo", str(src), "--enable-line-numbers"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: def foo():" in captured.out
@@ -1413,7 +1434,7 @@ class TestFindCommandVerbose:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--verbose", "--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "foo"])
+        rc = main(["--verbose", "find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "foo"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "OK" in captured.err
@@ -1429,21 +1450,21 @@ class TestFindCommandVerbose:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "foo", "--enable-line-numbers"])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "foo", "--enable-line-numbers"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: def foo():" in captured.out
 
     def test_find_requires_prj_base(self, capsys, repo_temp_dir):
-        """CMD-029: --find must require --prj-base."""
-        rc = main(["--find", "FUNCTION", "foo"])
+        """CMD-029/SRS-410: find must require --prj-base."""
+        rc = main(["find", "FUNCTION", "foo"])
         assert rc == 1
         captured = capsys.readouterr()
         assert "--prj-base" in captured.err
 
 
 class TestFindCommandsDoxygen:
-    """DOX-016, DOX-017: Doxygen extraction for --files-find and --find."""
+    """DOX-016, DOX-017: Doxygen extraction for files-find and find."""
 
     @pytest.mark.parametrize(
         "fixture_file",
@@ -1455,7 +1476,7 @@ class TestFindCommandsDoxygen:
         fixture_file: Path,
         capsys,
     ):
-        """DOX-016: --files-find equivalent flow must emit expected Doxygen fields for each fixture."""
+        """DOX-016: files-find equivalent flow must emit expected Doxygen fields for each fixture."""
         tag_filter = _build_language_tag_filter(fixture_file)
         pattern = _build_fixture_specific_pattern(fixture_file, tag_filter)
         expected_constructs = _collect_expected_find_constructs(
@@ -1470,7 +1491,7 @@ class TestFindCommandsDoxygen:
             _count_file_level_doxygen_tags(fixture_file),
         )
 
-        rc = main(["--files-find", tag_filter, pattern, str(fixture_file)])
+        rc = main(["files-find", *SUBCOMMAND_BASES, tag_filter, pattern, str(fixture_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1479,12 +1500,12 @@ class TestFindCommandsDoxygen:
         _assert_find_construct_listing_matches_expected(
             output=output,
             expected_constructs=expected_constructs,
-            context_id=f"--files-find::{fixture_file.name}",
+            context_id=f"files-find::{fixture_file.name}",
         )
         _assert_doxygen_reference_counts(
             source_counts=source_counts,
             output_counts=_count_output_doxygen_labels(output),
-            context_id=f"--files-find::{fixture_file.name}",
+            context_id=f"files-find::{fixture_file.name}",
         )
         for expected_construct in expected_constructs:
             _assert_find_construct_doxygen_block(output, expected_construct)
@@ -1495,14 +1516,14 @@ class TestFindCommandsDoxygen:
         capsys,
         repo_temp_dir,
     ):
-        """DOX-010: --files-find must omit Doxygen bullets when no Doxygen comment exists."""
+        """DOX-010: files-find must omit Doxygen bullets when no Doxygen comment exists."""
         source_file = repo_temp_dir / "plain.py"
         source_file.write_text(
             "def plain_function(value):\n    return value\n",
             encoding="utf-8",
         )
 
-        rc = main(["--files-find", "FUNCTION", "plain_function", str(source_file)])
+        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "plain_function", str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1521,7 +1542,7 @@ class TestFindCommandsDoxygen:
         capsys,
         repo_temp_dir,
     ):
-        """FND-005/FND-006/DOX-010: --files-find strips code comments while keeping Doxygen metadata."""
+        """FND-005/FND-006/DOX-010: files-find strips code comments while keeping Doxygen metadata."""
         source_file = repo_temp_dir / "sample.c"
         source_file.write_text(
             "/** @brief Increment value */\n"
@@ -1533,7 +1554,7 @@ class TestFindCommandsDoxygen:
             encoding="utf-8",
         )
 
-        rc = main(["--files-find", "FUNCTION", "^inc$", str(source_file)])
+        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "^inc$", str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1554,17 +1575,17 @@ class TestFindCommandsDoxygen:
         capsys,
         repo_temp_dir,
     ):
-        """DOX-016: --files-find must extract brief/details/param/return/satisfies for cmd_major sample."""
+        """DOX-016: files-find must extract brief/details/param/return/satisfies for cmd_major sample."""
         source_file = repo_temp_dir / "cmd_major_sample.py"
         _write_cmd_major_sample(source_file)
 
-        rc = main(["--files-find", "FUNCTION", "^cmd_major$", str(source_file)])
+        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "^cmd_major$", str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_construct_block_by_name(captured.out, "FUNCTION", "cmd_major")
         _assert_cmd_major_doxygen_fields(
             block,
-            context_id="--files-find::cmd_major",
+            context_id="files-find::cmd_major",
         )
 
     @pytest.mark.parametrize(
@@ -1579,7 +1600,7 @@ class TestFindCommandsDoxygen:
         repo_temp_dir,
         monkeypatch,
     ):
-        """DOX-017: --find must emit expected Doxygen fields for fixture-backed project scans."""
+        """DOX-017: find must emit expected Doxygen fields for fixture-backed project scans."""
         src = repo_temp_dir / "src"
         src.mkdir()
         copied_fixture = src / fixture_file.name
@@ -1609,7 +1630,7 @@ class TestFindCommandsDoxygen:
         )
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--find", tag_filter, pattern])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), tag_filter, pattern])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1618,12 +1639,12 @@ class TestFindCommandsDoxygen:
         _assert_find_construct_listing_matches_expected(
             output=output,
             expected_constructs=expected_constructs,
-            context_id=f"--find::{fixture_file.name}",
+            context_id=f"find::{fixture_file.name}",
         )
         _assert_doxygen_reference_counts(
             source_counts=source_counts,
             output_counts=_count_output_doxygen_labels(output),
-            context_id=f"--find::{fixture_file.name}",
+            context_id=f"find::{fixture_file.name}",
         )
         for expected_construct in expected_constructs:
             _assert_find_construct_doxygen_block(output, expected_construct)
@@ -1635,7 +1656,7 @@ class TestFindCommandsDoxygen:
         repo_temp_dir,
         monkeypatch,
     ):
-        """DOX-010: --find must omit Doxygen bullets when constructs have no Doxygen comments."""
+        """DOX-010: find must omit Doxygen bullets when constructs have no Doxygen comments."""
         src = repo_temp_dir / "src"
         src.mkdir()
         source_file = src / "plain.py"
@@ -1654,7 +1675,7 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "plain_function"])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "plain_function"])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1674,7 +1695,7 @@ class TestFindCommandsDoxygen:
         repo_temp_dir,
         monkeypatch,
     ):
-        """FND-005/FND-006/DOX-010: --find strips code comments while keeping Doxygen metadata."""
+        """FND-005/FND-006/DOX-010: find strips code comments while keeping Doxygen metadata."""
         src = repo_temp_dir / "src"
         src.mkdir()
         source_file = src / "sample.c"
@@ -1698,7 +1719,7 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "^inc$"])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "^inc$"])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1720,7 +1741,7 @@ class TestFindCommandsDoxygen:
         repo_temp_dir,
         monkeypatch,
     ):
-        """DOX-017: --find must extract brief/details/param/return/satisfies for cmd_major sample."""
+        """DOX-017: find must extract brief/details/param/return/satisfies for cmd_major sample."""
         src = repo_temp_dir / "src"
         src.mkdir()
         source_file = src / "cmd_major_sample.py"
@@ -1736,13 +1757,13 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--prj-base", str(repo_temp_dir), "--find", "FUNCTION", "^cmd_major$"])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "^cmd_major$"])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_construct_block_by_name(captured.out, "FUNCTION", "cmd_major")
         _assert_cmd_major_doxygen_fields(
             block,
-            context_id="--find::cmd_major",
+            context_id="find::cmd_major",
         )
 
 
@@ -1750,7 +1771,7 @@ class TestProjectExamplesDoxygenOccurrences:
     """DOX-018: Directory-wide Doxygen parity checks split by command semantics."""
 
     def test_project_examples_doxygen_occurrence_parity_two_phase_flow(self):
-        """DOX-018: Validate phase-specific parity for --files-references and --files-find."""
+        """DOX-018: Validate phase-specific parity for files-references and files-find."""
         files = _collect_project_examples_source_files()
         assert files, "No parser-compatible source files found in tests/project_examples"
 
@@ -1768,8 +1789,8 @@ class TestProjectExamplesDoxygenOccurrences:
             _merge_tag_counts(phase1_expected_directory, phase1_expected_counts)
             _print_file_tag_counts("PHASE1-BASELINE", filepath, phase1_expected_counts)
 
-            rc, references_stdout, _ = _run_cli_capture(["--files-references", str(filepath)])
-            assert rc == 0, f"phase1::{filepath.as_posix()}: --files-references failed"
+            rc, references_stdout, _ = _run_cli_capture(["files-references", *SUBCOMMAND_BASES, str(filepath)])
+            assert rc == 0, f"phase1::{filepath.as_posix()}: files-references failed"
             phase1_counts = _labels_to_tags_counts(
                 _count_output_doxygen_labels(references_stdout)
             )
@@ -1790,7 +1811,7 @@ class TestProjectExamplesDoxygenOccurrences:
             if not expected_find_constructs:
                 print(
                     f"[PHASE2-SKIP] {filepath.as_posix()} | "
-                    "no extractable constructs for --files-find"
+                    "no extractable constructs for files-find"
                 )
                 continue
             phase2_expected_counts = _count_find_source_doxygen_tags(
@@ -1802,9 +1823,9 @@ class TestProjectExamplesDoxygenOccurrences:
             )
             _merge_tag_counts(phase2_expected_directory, phase2_expected_counts)
             rc, files_find_stdout, _ = _run_cli_capture(
-                ["--files-find", tag_filter, ".*", str(filepath)]
+                ["files-find", *SUBCOMMAND_BASES, tag_filter, ".*", str(filepath)]
             )
-            assert rc == 0, f"phase2::{filepath.as_posix()}: --files-find failed"
+            assert rc == 0, f"phase2::{filepath.as_posix()}: files-find failed"
             phase2_counts = _labels_to_tags_counts(
                 _count_output_doxygen_labels(files_find_stdout)
             )
@@ -1846,17 +1867,17 @@ class TestProjectExamplesDoxygenOccurrences:
         for tag, _ in DOXYGEN_TAG_TO_LABEL_IN_ORDER:
             if int(expected_counts[tag]) > 0:
                 assert int(regex_counts[tag]) > 0, (
-                    f"--files-references::{filepath.as_posix()}: "
+                    f"files-references::{filepath.as_posix()}: "
                     f"regex extraction did not discover effective tag {tag}"
                 )
 
-        rc, stdout, _ = _run_cli_capture(["--files-references", str(filepath)])
-        assert rc == 0, f"--files-references failed for {filepath.as_posix()}"
+        rc, stdout, _ = _run_cli_capture(["files-references", *SUBCOMMAND_BASES, str(filepath)])
+        assert rc == 0, f"files-references failed for {filepath.as_posix()}"
         output_tag_counts = _labels_to_tags_counts(_count_output_doxygen_labels(stdout))
         _assert_tag_counts_match(
             expected=expected_counts,
             actual=output_tag_counts,
-            context_id=f"--files-references-regex::{filepath.as_posix()}",
+            context_id=f"files-references-regex::{filepath.as_posix()}",
         )
 
 
@@ -1896,23 +1917,23 @@ class TestProjectExamplesReferencesDoxygenParity:
         for tag, _ in DOXYGEN_TAG_TO_LABEL_IN_ORDER:
             if int(expected_counts[tag]) > 0:
                 assert int(regex_counts[tag]) > 0, (
-                    f"--references::{filepath.as_posix()}: "
+                    f"references::{filepath.as_posix()}: "
                     f"regex extraction did not discover effective tag {tag}"
                 )
 
         monkeypatch.chdir(repo_temp_dir)
-        rc, stdout, _ = _run_cli_capture(["--prj-base", str(repo_temp_dir), "--references"])
-        assert rc == 0, f"--references failed for {filepath.as_posix()}"
+        rc, stdout, _ = _run_cli_capture(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        assert rc == 0, f"references failed for {filepath.as_posix()}"
         output_tag_counts = _labels_to_tags_counts(_count_output_doxygen_labels(stdout))
         _assert_tag_counts_match(
             expected=expected_counts,
             actual=output_tag_counts,
-            context_id=f"--references-regex::{filepath.as_posix()}",
+            context_id=f"references-regex::{filepath.as_posix()}",
         )
 
 
 class TestProjectExamplesFilesFindDoxygenParity:
-    """DOX-020: Per-file Doxygen parity for --files-find using project_examples."""
+    """DOX-020: Per-file Doxygen parity for files-find using project_examples."""
 
     @pytest.mark.parametrize(
         "filepath",
@@ -1923,7 +1944,7 @@ class TestProjectExamplesFilesFindDoxygenParity:
         self,
         filepath: Path,
     ):
-        """DOX-020: --files-find must export all Doxygen fields from project_examples files."""
+        """DOX-020: files-find must export all Doxygen fields from project_examples files."""
         tag_filter = _build_language_tag_filter(filepath)
         constructs = _collect_expected_find_constructs(
             filepath=filepath,
@@ -1942,19 +1963,20 @@ class TestProjectExamplesFilesFindDoxygenParity:
         for tag, _ in DOXYGEN_TAG_TO_LABEL_IN_ORDER:
             if int(expected_counts[tag]) > 0:
                 assert int(regex_counts[tag]) > 0, (
-                    f"--files-find::{filepath.as_posix()}: "
+                    f"files-find::{filepath.as_posix()}: "
                     f"regex extraction did not discover effective tag {tag}"
                 )
 
         rc, stdout, _ = _run_cli_capture(
             [
-                "--files-find",
+                "files-find",
+                *SUBCOMMAND_BASES,
                 tag_filter,
                 ".*",
                 str(filepath),
             ]
         )
-        assert rc == 0, f"--files-find::{filepath.as_posix()}: failed for aggregate run"
+        assert rc == 0, f"files-find::{filepath.as_posix()}: failed for aggregate run"
         output_counts = _labels_to_tags_counts(_count_output_doxygen_labels(stdout))
         for construct in constructs:
             block = _extract_construct_block(
@@ -1965,19 +1987,19 @@ class TestProjectExamplesFilesFindDoxygenParity:
                 line_end=int(construct["line_end"]),
             )
             assert block, (
-                f"--files-find::{filepath.as_posix()}: missing block "
+                f"files-find::{filepath.as_posix()}: missing block "
                 f"for {construct['type_label']}:{construct['name']}"
             )
 
         _assert_tag_counts_match(
             expected=expected_counts,
             actual=output_counts,
-            context_id=f"--files-find-regex::{filepath.as_posix()}",
+            context_id=f"files-find-regex::{filepath.as_posix()}",
         )
 
 
 class TestProjectExamplesFindDoxygenParity:
-    """DOX-021: Per-file Doxygen parity for --find using project_examples."""
+    """DOX-021: Per-file Doxygen parity for find using project_examples."""
 
     @pytest.mark.parametrize(
         "filepath",
@@ -1990,7 +2012,7 @@ class TestProjectExamplesFindDoxygenParity:
         repo_temp_dir,
         monkeypatch,
     ):
-        """DOX-021: --find must export all Doxygen fields from project_examples files."""
+        """DOX-021: find must export all Doxygen fields from project_examples files."""
         if filepath.suffix not in SUPPORTED_EXTENSIONS:
             pytest.skip(f"Extension {filepath.suffix} not in SUPPORTED_EXTENSIONS for --find")
         src = repo_temp_dir / "src"
@@ -2025,21 +2047,23 @@ class TestProjectExamplesFindDoxygenParity:
         for tag, _ in DOXYGEN_TAG_TO_LABEL_IN_ORDER:
             if int(expected_counts[tag]) > 0:
                 assert int(regex_counts[tag]) > 0, (
-                    f"--find::{filepath.as_posix()}: "
+                    f"find::{filepath.as_posix()}: "
                     f"regex extraction did not discover effective tag {tag}"
                 )
 
         monkeypatch.chdir(repo_temp_dir)
         rc, stdout, _ = _run_cli_capture(
             [
+                "find",
                 "--prj-base",
                 str(repo_temp_dir),
-                "--find",
+                "--git-base",
+                str(repo_temp_dir),
                 tag_filter,
                 ".*",
             ]
         )
-        assert rc == 0, f"--find::{filepath.as_posix()}: failed for aggregate run"
+        assert rc == 0, f"find::{filepath.as_posix()}: failed for aggregate run"
         output_counts = _labels_to_tags_counts(_count_output_doxygen_labels(stdout))
         for construct in constructs:
             block = _extract_construct_block(
@@ -2050,7 +2074,7 @@ class TestProjectExamplesFindDoxygenParity:
                 line_end=int(construct["line_end"]),
             )
             assert block, (
-                f"--find::{filepath.as_posix()}: missing block "
+                f"find::{filepath.as_posix()}: missing block "
                 f"for {construct['type_label']}:{construct['name']}"
             )
 

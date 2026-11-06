@@ -167,8 +167,8 @@ req \
 ### Usage
 - Run `req` to create or recreate useReq resources. Prompts, agents, and skills are installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`); nothing is written into the project repository.
   - You can run `req` from any directory:
-    - `--prj-base <project-folder>` is mandatory for every command that reads or writes project files (install, `--update`, `--references`, `--compress`, `--tokens`, `--find`, `--static-check`, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, `--set-tests-dir`).
-    - `--git-base <git-repository-folder>` is mandatory for every git command (`--git-check`, `--git-path`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`).
+    - `--prj-base <project-folder>` is mandatory for every command that reads or writes project files (install, `--update`, the analysis subcommands listed below, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, `--set-tests-dir`).
+    - `--git-base <git-repository-folder>` is mandatory for every git command (`--git-check`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`) and for every analysis subcommand listed below.
     - `--prj-base` and `--git-base` are never persisted in `~/.config/usereq/config.json`.
   - Directory configuration:
     - `docs-dir`, `tests-dir`, and `src-dir` are persisted in `~/.config/usereq/config.json`.
@@ -204,35 +204,37 @@ req \
 
 ### Embedded Utility
 
-- Count tokens and chars for the given files (standalone, no --prj-base required).
-  `--files-tokens FILE [FILE ...]`
+The analysis commands are bare subcommands (no `--` prefix) and each one requires both `--prj-base` and `--git-base`:
 
-- Generate LLM reference markdown for the given files (standalone, no --prj-base required).
-  `--files-references FILE [FILE ...]`
+- Count tokens and chars for the given files.
+  `files-tokens --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]`
 
-- Generate compressed output for the given files (standalone, no --prj-base required).
-  `--files-compress FILE [FILE ...]`
+- Generate LLM reference markdown for the given files.
+  `files-references --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]`
 
-- Find and extract specific constructs from the given files (standalone, no --prj-base required).
-  `--files-find TAG PATTERN FILE [FILE ...]`
+- Generate compressed output for the given files.
+  `files-compress --prj-base PRJ_BASE --git-base GIT_BASE [--enable-line-numbers] FILE [FILE ...]`
 
-- Run static analysis on the given files using tools configured in `~/.config/usereq/config.json` (standalone, no --prj-base required).
-  `--files-static-check FILE [FILE ...]`
+- Find and extract specific constructs from the given files.
+  `files-find --prj-base PRJ_BASE --git-base GIT_BASE [--enable-line-numbers] TAG PATTERN FILE [FILE ...]`
 
-- Count tokens and chars for canonical docs files in configured `docs-dir` (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`; requires `--prj-base`).
-  `--tokens`
+- Run static analysis on the given files using tools configured in `~/.config/usereq/config.json`.
+  `files-static-check --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]`
 
-- Generate LLM reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (requires `--prj-base`).
-  `--references`
+- Count tokens and chars for canonical docs files in configured `docs-dir` (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`).
+  `tokens --prj-base PRJ_BASE --git-base GIT_BASE`
 
-- Generate compressed output for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (requires `--prj-base`).  
-  `--compress`
+- Generate LLM reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories.
+  `references --prj-base PRJ_BASE --git-base GIT_BASE`
 
-- Find and extract specific constructs from source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (requires `--prj-base`).
-  `--find TAG PATTERN`
+- Generate compressed output for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories.
+  `compress --prj-base PRJ_BASE --git-base GIT_BASE [--enable-line-numbers]`
 
-- Run static analysis on source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (plus configured `tests-dir`, excluding `fixtures/`) using tools configured in `~/.config/usereq/config.json` (requires `--prj-base`).
-  `--static-check`
+- Find and extract specific constructs from source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories.
+  `find --prj-base PRJ_BASE --git-base GIT_BASE TAG PATTERN`
+
+- Run static analysis on source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` directories (plus configured `tests-dir`, excluding `fixtures/`) using tools configured in `~/.config/usereq/config.json`.
+  `static-check --prj-base PRJ_BASE --git-base GIT_BASE`
 
 - Check repository integrity for `--git-base`: clean working tree and valid HEAD (requires `--git-base`).
   `--git-check`
@@ -246,16 +248,12 @@ req \
 - Remove the git worktree and branch identified by name (force-removes the target worktree and deletes the branch; requires `--git-base`).
   `--git-wt-delete WT_NAME`
 
-- Print the git repository root resolved from `--git-base`; the command fails when `--git-base` is not inside a git repository (requires `--git-base`).
-  `--git-path`
-
-
-- Add `--enable-line-numbers` to include `<n>:` prefixes in `--files-compress`, `--compress`, `--files-find`, and `--find` output.
+- Add `--enable-line-numbers` (before the subcommand token) to include `<n>:` prefixes in `files-compress`, `compress`, `files-find`, and `find` output.
 
 - Test static check configuration and execution (standalone).
   `--test-static-check {dummy,pylance,ruff,command} [FILES...]`
 
-#### Supported <TAG> in `--find` commands
+#### Supported <TAG> in `find` commands
 
 - **Python**: CLASS, FUNCTION, DECORATOR, IMPORT, VARIABLE
 - **C**: STRUCT, UNION, ENUM, TYPEDEF, MACRO, FUNCTION, IMPORT, VARIABLE
