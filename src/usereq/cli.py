@@ -22,6 +22,7 @@ import textwrap
 import time
 import urllib.error
 import urllib.request
+import copy
 import yaml
 from argparse import Namespace
 from pathlib import Path
@@ -66,6 +67,40 @@ DEFAULT_TESTS_DIR = "tests"
 
 DEFAULT_SRC_DIRS = ("src",)
 """! @brief Default src-dir list stored when the configuration has no src-dir (SRS-362)."""
+
+DEFAULT_STATIC_CHECK: dict = {
+    "C": [
+        {
+            "module": "Command",
+            "cmd": "cppcheck",
+            "params": [
+                "--error-exitcode=1",
+                "--enable=warning,style,performance,portability",
+                "--std=c11",
+            ],
+        },
+        {"module": "Command", "cmd": "clang-format", "params": ["--dry-run", "--Werror"]},
+    ],
+    "C++": [
+        {
+            "module": "Command",
+            "cmd": "cppcheck",
+            "params": [
+                "--error-exitcode=1",
+                "--enable=warning,style,performance,portability",
+                "--std=c++20",
+            ],
+        },
+        {"module": "Command", "cmd": "clang-format", "params": ["--dry-run", "--Werror"]},
+    ],
+    "JavaScript": [{"module": "Command", "cmd": "node", "params": ["--check"]}],
+    "Python": [{"module": "Pylance"}, {"module": "Ruff"}],
+    "TypeScript": [{"module": "Command", "cmd": "eslint"}],
+}
+"""! @brief Default static-check configuration applied when the configuration stores no
+`"static-check"` entry; a present entry, including an empty object, suppresses these
+defaults (SRS-424, SRS-425, SRS-426). The `pyright` and `ruff` checkers from the external
+configuration trace map to the native `Pylance` and `Ruff` modules (SRS-338, SRS-339)."""
 
 GUIDELINES_DIR_RELATIVE_TO_HOME = (
     Path(".pi")
@@ -1948,19 +1983,27 @@ def load_config() -> dict[str, str | list[str]]:
 def load_static_check_from_config() -> dict:
     """!
     @brief Load the `"static-check"` section from the user-global configuration file without validation errors.
-    @return Dict of static-check config (canonical-lang -> list[config-dict]); empty dict if absent or
-      if the global config file is missing/invalid.
-    @details Reads `~/.config/usereq/config.json` silently; returns `{}` on any read or
-    parse error. Does NOT raise `ReqError`; caller decides whether absence is an error.
-    @see SRS-252, SRS-253, SRS-256
+    @return Dict of static-check config (canonical-lang -> list[config-dict]).
+    @details Reads `~/.config/usereq/config.json` silently. When the payload stores no
+    `"static-check"` entry (including a missing or unreadable file), returns a deep copy of
+    `DEFAULT_STATIC_CHECK` (SRS-424); a present entry, including an empty or invalid object,
+    suppresses the defaults and is normalized like before: per-language entries that are
+    not non-empty arrays of objects are dropped. Does NOT raise `ReqError`; caller decides
+    whether absence is an error.
+    @see SRS-252, SRS-253, SRS-256, SRS-424, SRS-425, SRS-426
+    @satisfies SRS-424, SRS-425, SRS-426
     """
     config_path = get_global_config_path()
-    if not config_path.is_file():
-        return {}
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
+    payload: dict = {}
+    if config_path.is_file():
+        try:
+            loaded = json.loads(config_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            loaded = {}
+        if isinstance(loaded, dict):
+            payload = loaded
+    if "static-check" not in payload:
+        return copy.deepcopy(DEFAULT_STATIC_CHECK)
     sc = payload.get("static-check")
     if not isinstance(sc, dict):
         return {}
@@ -2204,10 +2247,7 @@ def apply_enable_static_check_specs(specs: list[str]) -> None:
             if identity not in identities:
                 merged.setdefault(lang, []).append(entry)
                 identities.add(identity)
-    if merged:
-        payload["static-check"] = merged
-    else:
-        payload.pop("static-check", None)
+    payload["static-check"] = merged
     _write_config_payload(payload)
 
 
@@ -2217,10 +2257,11 @@ def apply_disable_static_check_specs(specs: list[str]) -> None:
     @param specs {list[str]} SPEC strings; `LANG=MODULE[,CMD[,PARAM...]]` removes exact
     identity matches, bare `LANG` removes the whole canonical language key.
     @return {None} Function return value.
-    @details Empty language arrays are removed from the `"static-check"` object; requires
-    no `--prj-base` (SRS-414, SRS-415).
+    @details Empty language arrays are removed from the `"static-check"` object and the
+    `"static-check"` key is persisted even when empty so explicit configuration suppresses
+    the SRS-424 defaults; requires no `--prj-base` (SRS-414, SRS-415).
     @throws {ReqError} Raised on unknown language or module tokens with exit code 1 (SRS-422).
-    @satisfies SRS-414, SRS-415, SRS-422
+    @satisfies SRS-414, SRS-415, SRS-422, SRS-424
     """
     from .static_check import (
         STATIC_CHECK_LANG_CANONICAL,
@@ -2255,10 +2296,7 @@ def apply_disable_static_check_specs(specs: list[str]) -> None:
             merged.pop(canonical_lang, None)
     for lang in [key for key, entries in merged.items() if not entries]:
         del merged[lang]
-    if merged:
-        payload["static-check"] = merged
-    else:
-        payload.pop("static-check", None)
+    payload["static-check"] = merged
     _write_config_payload(payload)
 
 
@@ -3197,8 +3235,14 @@ def run(args: Namespace) -> None:
             4,
         )
 
-    # Preserve the persisted static-check configuration unchanged (SRS-301, SRS-415).
-    merged_static_check = load_static_check_from_config()
+    # Preserve the persisted static-check configuration unchanged; an absent key stays
+    # absent so the SRS-424 defaults keep tracking tool upgrades (SRS-301, SRS-415, SRS-424).
+    try:
+        raw_payload = _read_config_payload()
+    except ReqError:
+        raw_payload = {}
+    persisted_sc = raw_payload.get("static-check")
+    merged_static_check = persisted_sc if isinstance(persisted_sc, dict) else None
 
     # Persist the single user-global configuration file (SRS-279, SRS-288, SRS-407).
     save_config(
@@ -4472,7 +4516,7 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
     @details
       Static-check configuration is loaded from `~/.config/usereq/config.json`.
       When the global configuration file cannot be located, emits a warning to stderr and
-      returns 0 (SRS-254).
+      continues with the SRS-424 default static-check configuration (SRS-254).
       Project base for dispatch context is the mandatory `--prj-base` value (SRS-253,
       SRS-410).
       For each file:
@@ -4492,13 +4536,13 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
     # Resolve the mandatory project base for dispatch context (SRS-253, SRS-410).
     project_base = _require_prj_base(args)
 
-    sc_config = load_static_check_from_config()
-    if not sc_config and not get_global_config_path().is_file():
+    # SRS-254: warn on a missing configuration file, then continue with the SRS-424 defaults.
+    if not get_global_config_path().is_file():
         print(
-            "  Warning: global configuration file not found; no static-check tools configured.",
+            "  Warning: global configuration file not found; using the default static-check configuration.",
             file=sys.stderr,
         )
-        return 0
+    sc_config = load_static_check_from_config()
 
     overall = 0
     for raw_path in files:

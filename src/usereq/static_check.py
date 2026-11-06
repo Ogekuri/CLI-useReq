@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import glob
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -373,15 +374,30 @@ class StaticCheckBase:
     # Public interface
     # ------------------------------------------------------------------
 
+    def is_available(self) -> tuple[bool, str]:
+        """!
+        @brief Probe checker availability before execution.
+        @return {tuple[bool, str]} Tuple `(available, reason)`; `(True, "")` when available.
+        @details Base implementation (Dummy): always available. Subclasses override to
+          verify tool module or binary availability (SRS-427).
+        @satisfies SRS-427
+        """
+        return True, ""
+
     def run(self) -> int:
         """!
         @brief Execute the static check for all resolved files.
         @return Exit code: 0 if all files pass (or file list is empty), 1 if any file fails.
         @details
           If the resolved file list is empty a warning is printed to stderr and 0 is returned.
+          Before any file is checked the SRS-427 pre-flight availability probe runs; when the
+          checker is unavailable every file emits header, `Result: FAIL`, English evidence
+          identifying the missing checker or binary, and one trailing blank line in both
+          `fail_only` modes, the overall exit code is 1, and no exception is raised (SRS-428).
           For each file `_check_file` is called; the overall return code is the maximum of all
           per-file return codes (0 = all OK, 1 = at least one FAIL).
           When `fail_only` is True, trailing blank separator lines are emitted only for failing files.
+        @satisfies SRS-427, SRS-428
         """
         if not self._files:
             print(
@@ -389,6 +405,18 @@ class StaticCheckBase:
                 file=sys.stderr,
             )
             return 0
+
+        available, reason = self.is_available()
+        if not available:
+            for filepath in self._files:
+                self._emit_line(self._header_line(filepath))
+                self._emit_line("Result: FAIL")
+                self._emit_line("Evidence:")
+                self._emit_line(
+                    f"Error: static checker {self.LABEL} is not available: {reason}"
+                )
+                self._emit_line("")
+            return 1
 
         overall = 0
         for filepath in self._files:
@@ -456,6 +484,22 @@ class StaticCheckPylance(StaticCheckBase):
     """
 
     LABEL = "Pylance"
+
+    def is_available(self) -> tuple[bool, str]:
+        """!
+        @brief Probe pyright module availability in the active interpreter.
+        @return {tuple[bool, str]} `(False, reason)` when `importlib.util.find_spec('pyright')`
+          is `None`; `(True, "")` otherwise.
+        @details Availability matches the `[sys.executable, '-m', 'pyright']` dispatch exactly:
+          the module must be importable by the running interpreter (SRS-427).
+        @satisfies SRS-427
+        """
+        if importlib.util.find_spec("pyright") is None:
+            return (
+                False,
+                f"module 'pyright' is not installed for the active interpreter '{sys.executable}'",
+            )
+        return True, ""
 
     def __init__(
         self,
@@ -548,6 +592,22 @@ class StaticCheckRuff(StaticCheckBase):
 
     LABEL = "Ruff"
 
+    def is_available(self) -> tuple[bool, str]:
+        """!
+        @brief Probe ruff module availability in the active interpreter.
+        @return {tuple[bool, str]} `(False, reason)` when `importlib.util.find_spec('ruff')`
+          is `None`; `(True, "")` otherwise.
+        @details Availability matches the `[sys.executable, '-m', 'ruff']` dispatch exactly:
+          the module must be importable by the running interpreter (SRS-427).
+        @satisfies SRS-427
+        """
+        if importlib.util.find_spec("ruff") is None:
+            return (
+                False,
+                f"module 'ruff' is not installed for the active interpreter '{sys.executable}'",
+            )
+        return True, ""
+
     def _check_file(self, filepath: str) -> int:
         """!
         @brief Run `ruff check` on `filepath` via `sys.executable -m ruff` and emit OK or FAIL with evidence.
@@ -600,9 +660,11 @@ class StaticCheckCommand(StaticCheckBase):
     @details Derived from `StaticCheckBase`; overrides `_check_file` to invoke the user-supplied
       `cmd` as a subprocess.
       Header label: `Command[<cmd>]`.
-      Before processing files the constructor verifies that `cmd` is available on PATH via
-      `shutil.which`; raises `ReqError(code=1)` if the command is not found.
+      `cmd` availability is resolved at execution time by the SRS-427 pre-flight via
+      `shutil.which`; an unavailable `cmd` yields a per-file `Result: FAIL` outcome with
+      English evidence and execution continues (SRS-428); the constructor does not raise.
     @see StaticCheckBase
+    @satisfies SRS-427, SRS-428
     """
 
     def __init__(
@@ -614,23 +676,30 @@ class StaticCheckCommand(StaticCheckBase):
         fail_only: bool = False,
     ) -> None:
         """!
-                @brief Initialize the command checker and verify tool availability.
-                @param cmd External command name (must be available on PATH).
+                @brief Initialize the command checker.
+                @param cmd External command name (availability resolved by the SRS-427 pre-flight).
                 @param inputs Raw path/pattern/directory entries from CLI.
                 @param extra_args Additional CLI arguments forwarded to the external command.
                 @param fail_only When True, suppress all stdout output for passing checks (SRS-244).
-                @throws ReqError If `cmd` is not found on PATH (exit code 1).
-                @details Calls `shutil.which(cmd)` before delegating to the parent constructor.
-                  Sets `LABEL` dynamically to `Command[<cmd>]`.
+                @details Stores `cmd` and sets `LABEL` dynamically to `Command[<cmd>]`.
         @return {None} Function return value.
         """
-        if not shutil.which(cmd):
-            raise ReqError(
-                f"Error: external command '{cmd}' not found on PATH.", 1
-            )
         self._cmd = cmd
         self.LABEL = f"Command[{cmd}]"
         super().__init__(inputs=inputs, extra_args=extra_args, fail_only=fail_only)
+
+    def is_available(self) -> tuple[bool, str]:
+        """!
+        @brief Probe the external command binary on PATH.
+        @return {tuple[bool, str]} `(False, reason)` when `shutil.which(self._cmd)` is `None`;
+          `(True, "")` otherwise.
+        @details Availability of the checker binary is required before any subprocess dispatch
+          (SRS-427); unavailability is reported as FAIL evidence without raising (SRS-428).
+        @satisfies SRS-427, SRS-428
+        """
+        if shutil.which(self._cmd) is None:
+            return False, f"command '{self._cmd}' is not available on PATH"
+        return True, ""
 
     def _check_file(self, filepath: str) -> int:
         """!

@@ -461,13 +461,20 @@ class TestStaticCheckCommand(unittest.TestCase):
         m.stderr = stderr
         return m
 
-    def test_cmd_not_found_raises_req_error(self) -> None:
-        """Constructor raises ReqError when cmd is not on PATH."""
+    def test_cmd_not_found_fails_preflight_without_raise(self) -> None:
+        """SRS-427/SRS-428: constructor must not raise; run() emits FAIL evidence."""
+        f = _make_temp_file(self.tmp, "missing_tool.py")
         with patch("shutil.which", return_value=None):
-            with self.assertRaises(ReqError) as ctx:
-                StaticCheckCommand(cmd="nonexistent_tool_xyz", inputs=[])
-        self.assertEqual(ctx.exception.code, 1)
-        self.assertIn("nonexistent_tool_xyz", ctx.exception.message)
+            checker = StaticCheckCommand(cmd="nonexistent_tool_xyz", inputs=[str(f)])
+            with patch("builtins.print") as mock_print:
+                rc = checker.run()
+        self.assertEqual(rc, 1)
+        calls = [str(c.args[0]) for c in mock_print.call_args_list]
+        self.assertIn("Result: FAIL", calls)
+        self.assertIn("Evidence:", calls)
+        self.assertTrue(
+            any("nonexistent_tool_xyz" in s and "not available on PATH" in s for s in calls)
+        )
 
     def test_label_includes_cmd_name(self) -> None:
         """LABEL is set to 'Command[<cmd>]' after successful init."""
@@ -1247,8 +1254,8 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
                 rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
         self.assertEqual(rc, 0)
 
-    def test_files_static_check_no_config_warns_and_returns_zero(self) -> None:
-        """Without the global config file, files-static-check warns to stderr and returns 0."""
+    def test_files_static_check_no_config_warns_and_uses_defaults(self) -> None:
+        """SRS-254/SRS-424: missing config file warns and applies the default configuration."""
         from usereq import cli
         if self.config_path.exists():
             self.config_path.unlink()
@@ -1257,8 +1264,11 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         # Patching builtins.print would swallow it before it reaches the patched sys.stderr.
         with patch("sys.stderr", new_callable=StringIO) as mock_err:
             rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
-        self.assertEqual(rc, 0)
         self.assertIn("Warning", mock_err.getvalue())
+        self.assertIn("default static-check configuration", mock_err.getvalue())
+        # Defaults include Python=Pylance+Ruff (SRS-426); both are installed runtime
+        # dependencies (SRS-338) and the sample file is clean, so the command passes.
+        self.assertEqual(rc, 0)
 
     def test_files_static_check_lang_not_in_config_skipped(self) -> None:
         """File whose language is not configured in static-check config is skipped."""
@@ -1738,19 +1748,19 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         payload = json.loads(self.config_path.read_text())
         self.assertNotIn("static-check", payload)
 
-    def test_load_static_check_returns_empty_when_key_absent(self) -> None:
-        """load_static_check_from_config returns {} when 'static-check' key is absent."""
-        from usereq.cli import save_config, load_static_check_from_config
+    def test_load_static_check_returns_defaults_when_key_absent(self) -> None:
+        """SRS-424: absent 'static-check' key resolves to the default configuration."""
+        from usereq.cli import save_config, load_static_check_from_config, DEFAULT_STATIC_CHECK
         save_config("docs", "tests", ["src"])
         result = load_static_check_from_config()
-        self.assertEqual(result, {})
+        self.assertEqual(result, DEFAULT_STATIC_CHECK)
 
-    def test_load_static_check_returns_empty_when_no_config_file(self) -> None:
-        """load_static_check_from_config returns {} when config.json is absent (SRS-254)."""
-        from usereq.cli import load_static_check_from_config
+    def test_load_static_check_returns_defaults_when_no_config_file(self) -> None:
+        """SRS-424: missing config.json resolves to the default configuration."""
+        from usereq.cli import load_static_check_from_config, DEFAULT_STATIC_CHECK
         # No config.json written in setUp for this test
         result = load_static_check_from_config()
-        self.assertEqual(result, {})
+        self.assertEqual(result, DEFAULT_STATIC_CHECK)
 
     def test_enable_static_check_deduplicates_identical_entries_same_invocation(self) -> None:
         """Identical specs in one invocation are deduplicated to first occurrence (SRS-251)."""
@@ -1900,6 +1910,194 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
                 {"module": "Command", "cmd": "node", "params": ["--check"]},
             ],
         )
+
+
+# ---------------------------------------------------------------------------
+# Default static-check configuration tests (SRS-424, SRS-425, SRS-426, SRS-429)
+# ---------------------------------------------------------------------------
+
+class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
+    """!
+    @brief Tests for the default static-check configuration resolution (SRS-424..SRS-426, SRS-429).
+    @details Verifies the trace-derived defaults for C, C++, JavaScript, Python, and
+    TypeScript and that a present `"static-check"` entry, including an empty object,
+    suppresses the defaults.
+    """
+
+    def test_defaults_when_no_entry(self) -> None:
+        """SRS-424..SRS-426: missing file or key resolves to the default set."""
+        from usereq import cli
+
+        sc = cli.load_static_check_from_config()
+        self.assertEqual(set(sc), {"C", "C++", "JavaScript", "Python", "TypeScript"})
+        self.assertEqual(
+            sc["C"],
+            [
+                {
+                    "module": "Command",
+                    "cmd": "cppcheck",
+                    "params": [
+                        "--error-exitcode=1",
+                        "--enable=warning,style,performance,portability",
+                        "--std=c11",
+                    ],
+                },
+                {
+                    "module": "Command",
+                    "cmd": "clang-format",
+                    "params": ["--dry-run", "--Werror"],
+                },
+            ],
+        )
+        self.assertEqual(
+            sc["C++"][0]["params"][-1],
+            "--std=c++20",
+        )
+        self.assertEqual(
+            sc["JavaScript"],
+            [{"module": "Command", "cmd": "node", "params": ["--check"]}],
+        )
+        self.assertEqual(sc["Python"], [{"module": "Pylance"}, {"module": "Ruff"}])
+        self.assertEqual(
+            sc["TypeScript"], [{"module": "Command", "cmd": "eslint"}]
+        )
+
+    def test_defaults_are_returned_as_copy(self) -> None:
+        """SRS-424: resolved defaults must not alias the module constant."""
+        from usereq import cli
+
+        sc = cli.load_static_check_from_config()
+        sc["Python"].append({"module": "Dummy"})
+        self.assertEqual(
+            cli.load_static_check_from_config()["Python"],
+            [{"module": "Pylance"}, {"module": "Ruff"}],
+        )
+
+    def test_present_entry_suppresses_defaults(self) -> None:
+        """SRS-424: a present `"static-check"` entry, including `{}`, suppresses defaults."""
+        from usereq import cli
+
+        self.write_global_config({"static-check": {}})
+        self.assertEqual(cli.load_static_check_from_config(), {})
+        self.write_global_config(
+            {"static-check": {"Python": [{"module": "Dummy"}]}}
+        )
+        self.assertEqual(
+            cli.load_static_check_from_config(),
+            {"Python": [{"module": "Dummy"}]},
+        )
+
+    def test_disable_all_keeps_key_and_suppresses_defaults(self) -> None:
+        """SRS-414/SRS-424: explicit disable persists an empty object."""
+        from usereq import cli
+
+        self.write_global_config(
+            {"static-check": {"Python": [{"module": "Dummy"}]}}
+        )
+        rc = cli.main(["--disable-static-check", "Python"])
+        self.assertEqual(rc, 0)
+        payload = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["static-check"], {})
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight availability tests (SRS-427, SRS-428, SRS-429)
+# ---------------------------------------------------------------------------
+
+class TestPreflightAvailability(unittest.TestCase):
+    """!
+    @brief Tests for the pre-flight checker availability probe (SRS-427..SRS-429).
+    @details Verifies FAIL-with-evidence outcomes for unavailable checkers and that
+    execution continues with the remaining checks without raising.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = TEMP_BASE / "preflight"
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+        self.tmp.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self) -> None:
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+
+    def test_dummy_is_always_available(self) -> None:
+        """SRS-427: Dummy checker reports itself available."""
+        checker = StaticCheckBase(inputs=[])
+        self.assertEqual(checker.is_available(), (True, ""))
+
+    def test_command_missing_binary_fails_without_raise(self) -> None:
+        """SRS-427/SRS-428: unavailable cmd yields FAIL evidence and exit code 1."""
+        f = _make_temp_file(self.tmp, "missing_cmd.py")
+        with patch("shutil.which", return_value=None):
+            checker = StaticCheckCommand(cmd="no_such_binary_xyz", inputs=[str(f)])
+            with patch("builtins.print") as mock_print:
+                rc = checker.run()
+        self.assertEqual(rc, 1)
+        calls = [str(c.args[0]) for c in mock_print.call_args_list]
+        self.assertIn("Result: FAIL", calls)
+        self.assertIn("Evidence:", calls)
+        self.assertTrue(
+            any(
+                "no_such_binary_xyz" in s and "not available on PATH" in s
+                for s in calls
+            )
+        )
+
+    def test_command_missing_binary_fail_only_emits_fail_block(self) -> None:
+        """SRS-428: pre-flight failures emit the FAIL block also in fail_only mode."""
+        f = _make_temp_file(self.tmp, "missing_cmd_fail_only.py")
+        with patch("shutil.which", return_value=None):
+            rc = dispatch_static_check_for_file(
+                str(f), {"module": "Command", "cmd": "no_such_binary_xyz"}, fail_only=True
+            )
+        self.assertEqual(rc, 1)
+
+    def test_pylance_module_missing_fails(self) -> None:
+        """SRS-427: missing pyright module yields FAIL evidence."""
+        f = _make_temp_file(self.tmp, "no_pylance.py")
+        out = StringIO()
+        with patch("importlib.util.find_spec", return_value=None):
+            with patch("builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")):
+                rc = dispatch_static_check_for_file(
+                    str(f), {"module": "Pylance"}, fail_only=False
+                )
+        self.assertEqual(rc, 1)
+        self.assertIn("Result: FAIL", out.getvalue())
+        self.assertIn("pyright", out.getvalue())
+
+    def test_ruff_module_missing_fails(self) -> None:
+        """SRS-427: missing ruff module yields FAIL evidence."""
+        f = _make_temp_file(self.tmp, "no_ruff.py")
+        out = StringIO()
+        with patch("importlib.util.find_spec", return_value=None):
+            with patch("builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")):
+                rc = dispatch_static_check_for_file(
+                    str(f), {"module": "Ruff"}, fail_only=False
+                )
+        self.assertEqual(rc, 1)
+        self.assertIn("Result: FAIL", out.getvalue())
+        self.assertIn("ruff", out.getvalue())
+
+    def test_unavailable_checker_does_not_stop_remaining_checks(self) -> None:
+        """SRS-428: after an unavailable Command entry, the next entry still executes."""
+        f = _make_temp_file(self.tmp, "continue.py")
+        results = []
+        with patch("shutil.which", return_value=None):
+            with patch("builtins.print"):
+                results.append(
+                    dispatch_static_check_for_file(
+                        str(f),
+                        {"module": "Command", "cmd": "no_such_binary_xyz"},
+                        fail_only=True,
+                    )
+                )
+                results.append(
+                    dispatch_static_check_for_file(
+                        str(f), {"module": "Dummy"}, fail_only=True
+                    )
+                )
+        self.assertEqual(results, [1, 0])
 
 
 if __name__ == "__main__":
