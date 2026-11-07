@@ -27,7 +27,7 @@ useReq is a text-based CLI that initializes and updates repository resources for
 - This document MUST NOT introduce requirements about source-code comment authoring style beyond already preserved requirements.
 
 ### 1.2 Project Scope
-- Primary interface: CLI (`req`, `use-req`, `usereq`).
+- Primary interface: CLI (`req`, `usereq`).
 - Functional domains: user-level CLI resource generation, global configuration persistence, source analysis, token counting, compression, construct extraction, Doxygen field extraction, and git worktree management.
 - Out-of-scope for this SRS rewrite: source-code modification.
 
@@ -200,6 +200,7 @@ No explicit performance optimizations identified.
 - **SRS-435**: MUST implement the following behavior: `pyproject.toml` `[project].name` MUST be `cli-usereq`, matching the registered PyPI trusted-publisher project name for repository `Ogekuri/CLI-useReq` and workflow `release-pypi.yml`.
 - **SRS-436**: MUST implement the following behavior: `pyproject.toml` `[project].authors` MUST declare `Ogekuri` as the author.
 - **SRS-437**: MUST implement the following behavior: `pyproject.toml` `[project.urls]` `Homepage` and `Repository` MUST reference the `https://github.com/Ogekuri/CLI-useReq` repository.
+- **SRS-454**: MUST deploy exactly the console-script entry points `req` and `usereq` declared in `pyproject.toml` `[project.scripts]`, both bound to `usereq.cli:main`.
 
 ### 3.6 Source Analysis Core
 - **SRS-131**: MUST implement the following behavior: The `usereq.source_analyzer` module MUST support 20 programming languages: C (`.c`), C++ (`.cpp`), C# (`.cs`), Elixir (`.ex`), Go (`.go`), Haskell (`.hs`), Java (`.java`), JavaScript (`.js`, `.mjs`), Kotlin (`.kt`), Lua (`.lua`), Perl (`.pl`), PHP (`.php`), Python (`.py`), Ruby (`.rb`), Rust (`.rs`), Scala (`.scala`), Shell (`.sh`), Swift (`.swift`), TypeScript (`.ts`), and Zig (`.zig`).

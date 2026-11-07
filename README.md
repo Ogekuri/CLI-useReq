@@ -22,7 +22,7 @@
 
 <p align="center">
 <strong>The `req` CLI provisions requirements-driven development prompts for LLM agents.</strong><br>
-In more detail: useReq packages a catalog of requirements-engineering prompts (write, create, change, implement, check, and more) and installs them as user-level prompts, commands, skills, and agents for the CLIs and agents you already use — exposed as `/req-<name>`, `/req:<name>`, `/skill:req-<name>`, `$req-<name>`, or `/req-<name>.prompt` depending on the provider. It also ships an embedded source-analysis toolkit (token counting, references, compression, construct extraction, static checks) that operates on your project across 20 programming languages, plus git-worktree helpers for parallel task execution. Everything is driven by one user-global configuration file (`~/.config/usereq/config.json`); nothing is written into your project repository. It runs as a Python package (installed as `req`, `usereq`, or `use-req`) or directly via `uvx`.
+In more detail: useReq packages a catalog of requirements-engineering prompts (write, create, change, implement, check, and more) and installs them as user-level prompts, commands, skills, and agents for the CLIs and agents you already use — exposed as `/req-<name>`, `/req:<name>`, `/skill:req-<name>`, `$req-<name>`, or `/req-<name>.prompt` depending on the provider. It also ships an embedded source-analysis toolkit (token counting, references, compression, construct extraction, static checks) that operates on your project across 20 programming languages, plus git-worktree helpers for parallel task execution. Everything is driven by one user-global configuration file (`~/.config/usereq/config.json`); nothing is written into your project repository. It runs as a Python package (installed as `req` or `usereq`) or directly via `uvx`.
 </p>
 
 <p align="center">
@@ -108,7 +108,7 @@ uv tool install cli-usereq
 
 PyPI is the canonical distribution channel (project [`cli-usereq`](https://pypi.org/project/cli-usereq/), published via OIDC trusted publishing by the `release-pypi.yml` workflow for `master` tags). GitHub hosts intermediate and test releases; see [Install from GitHub (alternative channel)](#install-from-github-alternative-channel) below.
 
-This exposes the CLI as `req` (also callable as `use-req` / `usereq` or `python -m usereq`). After installation, verify with `req --version`.
+This exposes the CLI as `req` (also callable as `usereq` or `python -m usereq`). After installation, verify with `req --version`.
 
 ### Tool upgrade and auto-install
 

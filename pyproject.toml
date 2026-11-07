@@ -34,7 +34,6 @@ Homepage = "https://github.com/Ogekuri/CLI-useReq"
 Repository = "https://github.com/Ogekuri/CLI-useReq"
 
 [project.scripts]
-use-req = "usereq.cli:main"
 req = "usereq.cli:main"
 usereq = "usereq.cli:main"
 
