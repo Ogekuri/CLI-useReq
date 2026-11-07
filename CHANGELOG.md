@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.68.3](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.3) - 2026-11-07
+## [0.68.4](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.4) - 2026-11-07
 ### ⛰️  Features
 - Update prompts.
 
@@ -19,6 +19,15 @@
   - concise; tests/test_cli.py 120 passed; static-check clean.
 
 ### 🚜  Changes
+- BREAKING CHANGE: decouple install from --prj-base; require it in --git-wt-create [useReq] *(cli)*
+  - SRS-447/448 rewritten: install subparser no longer defines or consumes
+  - --prj-base; install performs no project scaffolding, containment
+  - validation, or directory persistence (SRS-363/407/449 removed legacy).
+  - SRS-320/335 rewritten: --git-wt-create requires --prj-base and copies
+  - .venv only from --prj-base, never from --git-base; missing --prj-base
+  - exits code 1 (SRS-395); inline help documents the requirement (SRS-460).
+  - Tests updated: install independence and no-persistence checks, wt-create
+  - mandatory --prj-base, venv copy/skip/no-fallback rules (SRS-461).
 - BREAKING CHANGE: migrate release workflow JavaScript actions to Node24 [useReq] *(release)*
   - Bump JS actions to Node24-runtime majors: checkout@v5, setup-python@v6,
   - setup-uv@v7, upload-artifact@v6, download-artifact@v7,
@@ -1475,7 +1484,7 @@
 - \[0.66.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.66.0
 - \[0.67.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.67.0
 - \[0.68.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.0
-- \[0.68.3\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.3
+- \[0.68.4\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.4
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1544,4 +1553,4 @@
 [0.66.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.65.0..v0.66.0
 [0.67.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.66.0..v0.67.0
 [0.68.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0
-[0.68.3]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.3
+[0.68.4]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.4

@@ -1,6 +1,6 @@
 #!/bin/bash
 # -*- coding: utf-8 -*-
-# VERSION: 0.68.3
+# VERSION: 0.68.4
 # AUTHORS: Ogekuri
 # @file test-install.sh
 # @brief Rebuilds a disposable user-level installation with the repository
