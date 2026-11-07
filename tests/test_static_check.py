@@ -1241,7 +1241,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         f = _make_temp_file(self.tmp, "main.py")
         self._write_config({"Python": [{"module": "Dummy"}]})
         with patch("builtins.print"):
-            rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
+            rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
         self.assertEqual(rc, 0)
 
     def test_files_static_check_unknown_extension_skipped(self) -> None:
@@ -1251,7 +1251,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         f = _make_temp_file(self.tmp, "file.unknown_ext")
         with patch("builtins.print"):
             with patch("sys.stderr", new_callable=StringIO):
-                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
+                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
         self.assertEqual(rc, 0)
 
     def test_files_static_check_no_config_warns_and_uses_defaults(self) -> None:
@@ -1263,7 +1263,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         # Do NOT mock builtins.print here: the warning is emitted via print(..., file=sys.stderr).
         # Patching builtins.print would swallow it before it reaches the patched sys.stderr.
         with patch("sys.stderr", new_callable=StringIO) as mock_err:
-            rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
+            rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
         self.assertIn("Warning", mock_err.getvalue())
         self.assertIn("default static-check configuration", mock_err.getvalue())
         # Defaults include Python=Pylance+Ruff (SRS-426); both are installed runtime
@@ -1277,7 +1277,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         # .c file, but only Python is configured
         f = _make_temp_file(self.tmp, "prog.c", "int main(){return 0;}\n")
         with patch("builtins.print"):
-            rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
+            rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
         self.assertEqual(rc, 0)
 
     def test_files_static_check_fail_propagates_exit_code(self) -> None:
@@ -1291,7 +1291,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         mock_result.stderr = ""
         with patch("subprocess.run", return_value=mock_result):
             with patch("builtins.print"):
-                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
+                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
         self.assertEqual(rc, 1)
 
     def test_files_static_check_multiple_files_mixed(self) -> None:
@@ -1304,7 +1304,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
                    MagicMock(returncode=1, stdout="err", stderr="")]
         with patch("subprocess.run", side_effect=results):
             with patch("builtins.print"):
-                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f1), str(f2)])
+                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f1), str(f2)])
         self.assertEqual(rc, 1)
 
     def test_files_static_check_runs_all_entries_for_language_in_order(self) -> None:
@@ -1320,7 +1320,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
             }
         )
         with patch("usereq.static_check.dispatch_static_check_for_file", side_effect=[0, 0]) as mock_dispatch:
-            rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
+            rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
         self.assertEqual(rc, 0)
         self.assertEqual(mock_dispatch.call_count, 2)
         self.assertEqual(mock_dispatch.call_args_list[0].args[1]["cmd"], "cppcheck")
@@ -1343,7 +1343,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         with patch("shutil.which", return_value="/usr/bin/node"):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
                 with patch("builtins.print"):
-                    rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp), str(f)])
+                    rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
         self.assertEqual(rc, 0)
         cmd_used = mock_run.call_args[0][0]
         self.assertEqual(cmd_used, ["node", "--check", str(f.resolve())])
@@ -1392,7 +1392,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("builtins.print"):
-                rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1407,7 +1407,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("builtins.print") as mock_print:
-                rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         # rc=0 because no files were actually checked (all skipped)
@@ -1430,7 +1430,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
             os.chdir(str(self.tmp))
             with patch("subprocess.run", return_value=mock_result):
                 with patch("builtins.print"):
-                    rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                    rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 1)
@@ -1445,7 +1445,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
             os.chdir(str(self.tmp))
             with patch("sys.stderr", new_callable=StringIO):
                 with patch("builtins.print"):
-                    rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                    rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertNotEqual(rc, 0)
@@ -1468,7 +1468,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         _make_temp_file(self.tmp / "src", "ok.py")
         self._write_config({"Python": [{"module": "Dummy"}]})
         with patch("builtins.print"):
-            rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+            rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         self.assertEqual(rc, 0)
 
     def test_static_check_runs_all_entries_for_language_in_order(self) -> None:
@@ -1487,7 +1487,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("usereq.static_check.dispatch_static_check_for_file", side_effect=[0, 0]) as mock_dispatch:
-                rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1526,7 +1526,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
                     "subprocess.run", side_effect=_run_side_effect
                 ) as mock_run:
                     with patch("builtins.print"):
-                        rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                        rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1556,7 +1556,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
-                rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1584,7 +1584,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
-                rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
@@ -1611,7 +1611,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
-                rc = cli.main(["static-check", "--prj-base", str(self.tmp), "--git-base", str(self.tmp)])
+                rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)

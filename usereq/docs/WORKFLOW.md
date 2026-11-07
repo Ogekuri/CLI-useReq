@@ -189,23 +189,16 @@
           - `resolve_git_root(...)`: execute `git rev-parse --show-toplevel` in `--git-base` [`src/usereq/cli.py`]
         - `_worktree_path_exists_exact(...)`: verify exact worktree path via `git worktree list --porcelain` [`src/usereq/cli.py`]
         - external boundaries: `subprocess.run(["git", "worktree", "remove", ...])` and `subprocess.run(["git", "branch", "-D", ...])` worktree/branch removal
-    - `run(...)`: initialization/update command path for user-level resources and global config persistence; resolves the mandatory `--prj-base` project base, loads the persisted `"providers"` specs (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), loads `docs-dir`/`tests-dir`/`src-dir` from the global configuration with defaults `usereq`/`tests`/`src`, creates missing configured directories on non-update installation, preserves the persisted static-check and auto-install configuration (SRS-288, SRS-301, SRS-420), installs artifacts into user-level CLI directories under the user HOME (SRS-381..SRS-386), substitutes home-relative GUIDELINES_DIR paths, and prints the installation summary report [`src/usereq/cli.py`]
+    - `run(...)`: initialization command path for user-level resources and global config persistence; resolves the mandatory `--prj-base` project base, loads the persisted `"providers"` specs (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), loads `docs-dir`/`tests-dir`/`src-dir` from the global configuration with defaults `usereq`/`tests`/`src`, creates missing configured directories during installation, preserves the persisted static-check and auto-install configuration (SRS-288, SRS-301, SRS-420), installs artifacts into user-level CLI directories under the user HOME (SRS-381..SRS-386), substitutes home-relative GUIDELINES_DIR paths, and prints the installation summary report [`src/usereq/cli.py`]
       - `_require_prj_base(...)`: resolve the mandatory `--prj-base` project base [`src/usereq/cli.py`]
-      - `run_remove(...)`: for `--remove`, delete `req-*` artifacts from user-level provider directories configured in the global configuration (SRS-390) [`src/usereq/cli.py`]
-        - `remove_generated_resources(...)`: resolve provider/artifact user-level roots and delete `req-*` artifacts [`src/usereq/cli.py`]
-          - `load_persisted_provider_specs(...)`: load persisted provider SPEC strings from `~/.config/usereq/config.json` (SRS-390) [`src/usereq/cli.py`]
-          - `resolve_provider_configs(...)`: resolve specs into per-provider enablement maps [`src/usereq/cli.py`]
-          - `provider_artifact_root(...)`: resolve user-level artifact root under HOME [`src/usereq/cli.py`]
-            - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
-          - `prune_empty_dirs(...)`: remove emptied user-level provider directories [`src/usereq/cli.py`]
       - `load_config(...)`: load `docs-dir`, `tests-dir`, and `src-dir` from `~/.config/usereq/config.json` with per-key defaults when the file or key is absent [`src/usereq/cli.py`]
         - `get_global_config_path(...)`: resolve `~/.config/usereq/config.json` path [`src/usereq/cli.py`]
           - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
       - `load_persisted_provider_specs(...)`: load persisted `--enable` SPEC strings from `~/.config/usereq/config.json` `"providers"` key (SRS-279) [`src/usereq/cli.py`]
       - `_read_config_payload(...)`: read the raw payload; the persisted `"static-check"` section is preserved unchanged and an absent key stays absent so the SRS-424 defaults keep tracking (SRS-301, SRS-415, SRS-424) [`src/usereq/cli.py`]
-      - `ensure_doc_directory(...)`: validate the configured docs directory and create missing directories during non-update installation [`src/usereq/cli.py`]
-      - `ensure_test_directory(...)`: validate the configured tests directory and create missing directories during non-update installation [`src/usereq/cli.py`]
-      - `ensure_src_directory(...)`: validate each configured source directory and create missing directories during non-update installation [`src/usereq/cli.py`]
+      - `ensure_doc_directory(...)`: validate the configured docs directory and create missing directories during installation [`src/usereq/cli.py`]
+      - `ensure_test_directory(...)`: validate the configured tests directory and create missing directories during installation [`src/usereq/cli.py`]
+      - `ensure_src_directory(...)`: validate each configured source directory and create missing directories during installation [`src/usereq/cli.py`]
       - `resolve_provider_configs(...)`: resolve `--provider` specs into per-provider config dicts keyed by provider name, with artifact enablement booleans and provider-scoped `prompts-use-agents` [`src/usereq/cli.py`]
         - `parse_provider_spec(...)`: parse and validate a single `--provider` SPEC string into provider name, ordered artifact items, and ordered provider options [`src/usereq/cli.py`]
           - `_parse_provider_artifact_item(...)`: parse one bare `ARTIFACT_ITEM` token against `VALID_ARTIFACTS` [`src/usereq/cli.py`]
@@ -274,7 +267,7 @@
 - `PROC:req-sh -> PROC:main`
   - `mechanism`: `OS exec handoff`
   - `endpoint/channel`: ``uv run --project <repo-root> python -m usereq.cli``
-  - `payload`: `argv passthrough from shell process to Python CLI main entrypoint with repository project resolution and preserved caller working directory for here-mode command context`
+  - `payload`: `argv passthrough from shell process to Python CLI main entrypoint with repository project resolution and preserved caller working directory as CLI runtime context`
 - `PROC:test-install-sh -> PROC:req-sh`
   - `mechanism`: `child-process spawn`
   - `endpoint/channel`: `scripts/req.sh`

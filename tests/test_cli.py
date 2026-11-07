@@ -464,11 +464,11 @@ class TestProviderSpecPersistence(HomeIsolatedTestCase):
         data = json.loads(config_path.read_text(encoding="utf-8"))
         self.assertEqual(data["providers"], ["pi:prompts,skills"])
 
-    def test_provider_specs_restored_on_update(self) -> None:
-        """SRS-280: --update without --provider reuses persisted specs."""
+    def test_provider_specs_restored_on_install(self) -> None:
+        """SRS-280/SRS-064: install without --enable reuses persisted specs."""
         self.run_cli(self.base_argv + ["--enable", "codex:prompts", "install"])
         shutil.rmtree(self.HOME / ".codex")
-        rc = self.run_cli(["--update", "--prj-base", str(self.TEST_DIR)])
+        rc = self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
         self.assertEqual(rc, 0)
         self.assertTrue(
             (self.HOME / ".codex" / "prompts" / f"req-{EXPECTED_PROMPTS[0]}.md").exists()
@@ -588,13 +588,13 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
         self.assertEqual(rc, 0)
         self.assertTrue((self.TEST_DIR / "req" / "docs").is_dir())
 
-    def test_update_keeps_configured_directories(self) -> None:
-        """SRS-407: update reuses the persisted directory configuration."""
+    def test_install_keeps_configured_directories(self) -> None:
+        """SRS-407: install reuses the persisted directory configuration."""
         self.seed_directory_config()
         self.run_cli(
             ["--prj-base", str(self.TEST_DIR), "--enable", "codex:prompts", "install"]
         )
-        rc = self.run_cli(["--update", "--prj-base", str(self.TEST_DIR)])
+        rc = self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -676,8 +676,8 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         self.assertFalse((project / "usereq" / "guidelines").exists())
 
 
-class TestRemoveCommand(HomeIsolatedTestCase):
-    """SRS-390: --remove deletes req-* artifacts from user-level directories."""
+class TestUninstallCommand(HomeIsolatedTestCase):
+    """SRS-419: uninstall removes req-* artifacts from user-level directories."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -698,8 +698,8 @@ class TestRemoveCommand(HomeIsolatedTestCase):
         )
         self.assertEqual(rc, 0)
 
-    def test_remove_deletes_req_artifacts(self) -> None:
-        rc = self.run_cli(["--remove"])
+    def test_uninstall_deletes_req_artifacts(self) -> None:
+        rc = self.run_cli(["uninstall"])
         self.assertEqual(rc, 0)
         self.assertFalse(
             (self.HOME / ".claude" / "commands" / "req" / "write.md").exists()
@@ -714,21 +714,21 @@ class TestRemoveCommand(HomeIsolatedTestCase):
             (self.HOME / ".codex" / "skills" / "req-write").exists()
         )
 
-    def test_remove_preserves_unrelated_user_content(self) -> None:
+    def test_uninstall_preserves_unrelated_user_content(self) -> None:
         unrelated = self.HOME / ".claude" / "commands" / "user-command.md"
         unrelated.parent.mkdir(parents=True, exist_ok=True)
         unrelated.write_text("user\n", encoding="utf-8")
         unrelated_skill = self.HOME / ".claude" / "skills" / "user-skill"
         unrelated_skill.mkdir(parents=True, exist_ok=True)
         (unrelated_skill / "SKILL.md").write_text("user\n", encoding="utf-8")
-        rc = self.run_cli(["--remove"])
+        rc = self.run_cli(["uninstall"])
         self.assertEqual(rc, 0)
         self.assertTrue(unrelated.exists())
         self.assertTrue((unrelated_skill / "SKILL.md").exists())
 
-    def test_remove_without_global_config_fails(self) -> None:
+    def test_uninstall_without_global_config_fails(self) -> None:
         (self.HOME / ".config" / "usereq" / "config.json").unlink()
-        rc = self.run_cli(["--remove"])
+        rc = self.run_cli(["uninstall"])
         self.assertNotEqual(rc, 0)
 
 
@@ -1172,7 +1172,7 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
             {"Python": [{"module": "Pylance"}]},
         )
 
-    def test_update_preserves_existing_static_check_entries(self) -> None:
+    def test_install_preserves_existing_static_check_entries(self) -> None:
         self.run_cli(
             self.base_argv
             + [
@@ -1184,11 +1184,11 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
         )
         rc = self.run_cli(
             [
-                "--update",
-                "--prj-base",
-                str(self.TEST_DIR),
                 "--enable-static-check",
                 "Python=Ruff",
+                "install",
+                "--prj-base",
+                str(self.TEST_DIR),
             ]
         )
         self.assertEqual(rc, 0)

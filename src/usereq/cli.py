@@ -117,10 +117,10 @@ GUIDELINES_DIR_RELATIVE_TO_HOME = (
 VALID_PROVIDERS = frozenset(
     {"antigravity", "claude", "codex", "opencode", "pi"}
 )
-"""! @brief Valid provider names accepted by ``--provider`` specs (SRS-275, SRS-364)."""
+"""! @brief Valid provider names accepted by ``--enable`` SPECs (SRS-275, SRS-364)."""
 
 VALID_ARTIFACTS = frozenset({"prompts", "agents", "skills"})
-"""! @brief Valid artifact type tokens accepted in ``--provider`` specs (SRS-275, SRS-364)."""
+"""! @brief Valid artifact type tokens accepted in ``--enable`` SPECs (SRS-275, SRS-364)."""
 
 VALID_PROVIDER_OPTIONS = frozenset({"prompts-use-agents"})
 """! @brief Valid provider-scoped option tokens accepted in ``PROVIDER_OPTIONS`` (SRS-365)."""
@@ -257,9 +257,9 @@ INVALID_WT_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]')
 
 def _parse_provider_artifact_item(spec: str, artifact_item: str) -> tuple[str, list[str]]:
     """!
-    @brief Parse one artifact item from a ``--provider`` SPEC.
+    @brief Parse one artifact item from an ``--enable`` SPEC.
     @details Splits `ARTIFACT_ITEM` on `+`, validates the artifact token and artifact-local option tokens, preserves first-seen option order, rejects provider-scoped option placement inside the artifact item, and raises deterministic `ReqError` payloads for all invalid tokens. Complexity: O(N) in artifact-item token count. No side effects.
-    @param spec {str} Full raw ``--provider`` SPEC used for diagnostics.
+    @param spec {str} Full raw ``--enable`` SPEC used for diagnostics.
     @param artifact_item {str} One comma-delimited `ARTIFACT_ITEM` fragment from `SPEC`.
     @return {tuple[str, list[str]]} Tuple `(artifact_name, ordered_artifact_options)`.
     @throws {ReqError} Raised when the artifact token is missing, unknown, or contains invalid option placement.
@@ -282,9 +282,9 @@ def _parse_provider_artifact_item(spec: str, artifact_item: str) -> tuple[str, l
 
 def _parse_provider_options(spec: str, raw_options: str) -> list[str]:
     """!
-    @brief Parse provider-scoped options from a ``--provider`` SPEC.
+    @brief Parse provider-scoped options from an ``--enable`` SPEC.
     @details Splits `PROVIDER_OPTIONS` on commas, preserves first-seen option order, and accepts only the provider-scoped `prompts-use-agents` token (SRS-365). Complexity: O(N) in provider-option token count. No side effects.
-    @param spec {str} Full raw ``--provider`` SPEC used for diagnostics.
+    @param spec {str} Full raw ``--enable`` SPEC used for diagnostics.
     @param raw_options {str} Raw provider-options field from `SPEC` without leading separators.
     @return {list[str]} Ordered provider-scoped option tokens.
     @throws {ReqError} Raised when an option token is unknown or positioned in the wrong field.
@@ -305,9 +305,9 @@ def _parse_provider_options(spec: str, raw_options: str) -> list[str]:
 
 def parse_provider_spec(spec: str) -> tuple[str, list[tuple[str, list[str]]], list[str]]:
     """!
-    @brief Parse a single ``--provider`` SPEC into ordered provider, artifact-item, and provider-option components.
+    @brief Parse a single ``--enable`` SPEC into ordered provider, artifact-item, and provider-option components.
     @details Splits `SPEC` on `:`, validates provider token membership, parses each comma-delimited bare `ARTIFACT` item (SRS-364), parses optional provider-scoped options, preserves first-seen artifact order and option order, and rejects unknown tokens. Complexity: O(A + O) where A is artifact-item token count and O is provider-option token count. No side effects.
-    @param spec {str} Raw ``--provider`` SPEC in format `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`.
+    @param spec {str} Raw ``--enable`` SPEC in format `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`.
     @return {tuple[str, list[tuple[str, list[str]]], list[str]]} Tuple `(provider_name, ordered_artifact_items, ordered_provider_options)`.
     @throws {ReqError} Raised when provider, artifact, option, or option placement validation fails.
     @satisfies SRS-275, SRS-276, SRS-278, SRS-364, SRS-365
@@ -347,10 +347,10 @@ def resolve_provider_configs(
     provider_specs: list[str],
 ) -> dict[str, dict[str, Any]]:
     """!
-    @brief Resolve per-provider configurations from ``--provider`` specs only.
+    @brief Resolve per-provider configurations from ``--enable`` SPEC strings only.
     @details Initializes every provider as disabled, then merges parsed `ARTIFACT_ITEM` and `PROVIDER_OPTIONS` data across all raw specs for that provider. Artifact enablement is tracked in top-level `prompts`/`agents`/`skills` booleans. Provider-scoped `prompts-use-agents` remains a top-level boolean. Complexity: O(P * (A + O)) where P is spec count. No external side effects.
-    @param provider_specs {list[str]} Raw ``--provider`` SPEC strings.
-    @return {dict[str, dict[str, Any]]} Mapping provider -> configuration dict with keys `enabled`, `prompts`, `agents`, `skills`, `artifact-options`, `prompts-use-agents`, and `legacy`.
+    @param provider_specs {list[str]} Raw ``--enable`` SPEC strings.
+    @return {dict[str, dict[str, Any]]} Mapping provider -> configuration dict with keys `enabled`, `prompts`, `agents`, `skills`, and `prompts-use-agents`.
     @satisfies SRS-275, SRS-276, SRS-364, SRS-365
     @see parse_provider_spec
     """
@@ -499,10 +499,10 @@ def build_parser() -> argparse.ArgumentParser:
     @return Configured ArgumentParser instance.
     @details Defines all supported CLI arguments, flags, and help texts. Provider enablement,
     artifact selection, and per-provider options are configured exclusively via the repeatable
-    ``--provider SPEC`` argument (SRS-275, SRS-034).
+    ``--enable SPEC`` argument (SRS-275, SRS-034).
     """
     usage = (
-        "req [-h] [--upgrade] [--develop] [--dev] [--uninstall] [--remove] [--update] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
+        "req [-h] [--upgrade] [--develop] [--dev] [--uninstall] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
         "[--enable SPEC] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
@@ -523,7 +523,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="prj_base",
         help=(
             "Absolute project base directory containing the configured docs-dir, "
-            "src-dir, and tests-dir. Required for install, --update, "
+            "src-dir, and tests-dir. Required for install, "
             "--docs-check, --set-*-dir, and the project-scan analysis "
             "subcommands (tokens, references, compress, find, static-check, "
             "files-static-check)."
@@ -546,8 +546,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         dest="set_docs_dir",
         help=(
-            "Persist DOCS_DIR as the project-relative documentation directory in "
-            "~/.config/usereq/config.json. Requires --prj-base."
+            "Configure DOCS_DIR as the project-relative documentation "
+            "directory. Requires --prj-base."
         ),
     )
     parser.add_argument(
@@ -557,9 +557,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         dest="set_src_dir",
         help=(
-            "Persist SRC_DIR as a project-relative source directory in "
-            "~/.config/usereq/config.json, replacing previous entries (repeatable). "
-            "Requires --prj-base."
+            "Configure SRC_DIR as a project-relative source directory "
+            "(repeatable). Requires --prj-base."
         ),
     )
     parser.add_argument(
@@ -568,8 +567,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         dest="set_tests_dir",
         help=(
-            "Persist TESTS_DIR as the project-relative test directory in "
-            "~/.config/usereq/config.json. Requires --prj-base."
+            "Configure TESTS_DIR as the project-relative test directory. "
+            "Requires --prj-base."
         ),
     )
     parser.add_argument(
@@ -589,14 +588,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--uninstall", action="store_true", help="Uninstall the tool with uv."
     )
     parser.add_argument(
-        "--update",
-        action="store_true",
-        help="Re-run the command using ~/.config/usereq/config.json.",
-    )
-    parser.add_argument(
-        "--remove", action="store_true", help="Remove resources created by the tool."
-    )
-    parser.add_argument(
         "--verbose", action="store_true", help="Show verbose progress messages."
     )
     parser.add_argument(
@@ -608,8 +599,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SPEC",
         dest="enable_provider",
         help=(
-            "Persist provider enablement in ~/.config/usereq/config.json without "
-            "installing (repeatable); run the 'install' subcommand to install. "
+            "Configure provider enablement without installing (repeatable); "
+            "run the 'install' subcommand to install. "
             "Format: PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]. "
             "PROVIDER: antigravity|claude|codex|opencode|pi. "
             "ARTIFACT_ITEM: one of prompts|agents|skills. "
@@ -622,8 +613,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PROVIDER",
         dest="disable_provider",
         help=(
-            "Remove all persisted specs of PROVIDER from "
-            "~/.config/usereq/config.json (repeatable); one of "
+            "Disable a provider (repeatable); one of "
             "antigravity|claude|codex|opencode|pi."
         ),
     )
@@ -632,15 +622,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="enable_auto_install",
         help=(
-            "Persist \"auto-install\": true in ~/.config/usereq/config.json; after a "
-            "successful --upgrade the persisted providers are reinstalled."
+            "Reinstall the configured providers automatically after a "
+            "successful --upgrade."
         ),
     )
     parser.add_argument(
         "--disable-auto-install",
         action="store_true",
         dest="disable_auto_install",
-        help="Persist \"auto-install\": false in ~/.config/usereq/config.json.",
+        help="Skip automatic provider reinstallation after a successful --upgrade.",
     )
     parser.add_argument(
         "--enable-line-numbers",
@@ -666,13 +656,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="enable_static_check",
         default=None,
         help=(
-            "Persist a static-check tool for a language in ~/.config/usereq/config.json "
-            "without requiring --prj-base. "
+            "Configure a static-check tool for a language without requiring "
+            "--prj-base. "
             "SPEC format: LANG=MODULE[,CMD[,PARAM...]]. "
             "MODULE: Dummy, Pylance, Ruff, Command (case-insensitive). "
             "LANG: Python, C, C++, C#, Rust, JavaScript, TypeScript, Java, Go, Ruby, "
             "PHP, Swift, Kotlin, Scala, Lua, Shell, Perl, Haskell, Zig, Elixir (case-insensitive). "
-            "For Command, CMD is the binary and subsequent tokens are params saved in config.json; "
+            "For Command, CMD is the binary and subsequent tokens are params; "
             "tokens containing commas must be wrapped in double quotes. "
             "Repeatable: multiple flags per language append multiple entries. "
             "Example: --enable-static-check Python=Pylance "
@@ -685,7 +675,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SPEC",
         dest="disable_static_check",
         help=(
-            "Remove static-check entries from ~/.config/usereq/config.json. "
+            "Remove configured static-check entries. "
             "SPEC format: LANG=MODULE[,CMD[,PARAM...]] removes the exact matching "
             "entry; bare LANG removes the whole language key."
         ),
@@ -741,8 +731,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     # Bare analysis subcommands (SRS-408). Legacy --prefixed forms are not parsed
-    # (SRS-409); --prj-base is mandatory exactly per SRS-396/SRS-410 and --git-base
-    # is never required for subcommands.
+    # (SRS-409); --prj-base is mandatory exactly per SRS-396/SRS-410.
     # SUPPRESS defaults prevent subparser defaults from clobbering values parsed
     # by the main parser before the subcommand token.
     base_options = argparse.ArgumentParser(add_help=False)
@@ -752,13 +741,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
         dest="prj_base",
         help="Absolute project base directory; required by project-scan analysis subcommands.",
-    )
-    base_options.add_argument(
-        "--git-base",
-        type=Path,
-        default=argparse.SUPPRESS,
-        dest="git_base",
-        help="Absolute git repository base directory; optional and unused by analysis subcommands.",
     )
     line_number_options = argparse.ArgumentParser(add_help=False)
     line_number_options.add_argument(
@@ -781,9 +763,8 @@ def build_parser() -> argparse.ArgumentParser:
         title="subcommands",
         description=(
             "Project-scan analysis subcommands (tokens, references, compress, "
-            "find, static-check, files-static-check) require --prj-base; no "
-            "subcommand requires --git-base. Legacy --prefixed forms are not "
-            "accepted."
+            "find, static-check, files-static-check) require --prj-base. "
+            "Legacy --prefixed forms are not accepted."
         ),
         metavar=(
             "{files-tokens,files-references,files-compress,files-find,tokens,"
@@ -794,38 +775,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = subparsers.add_parser(
         "files-tokens",
-        parents=[base_options],
-        usage="req files-tokens [--prj-base PRJ_BASE] [--git-base GIT_BASE] FILE [FILE ...]",
+        usage="req files-tokens FILE [FILE ...]",
         help="Count tokens and chars for the given files.",
     )
     sub.add_argument("files_tokens", nargs="+", metavar="FILE")
 
     sub = subparsers.add_parser(
         "files-references",
-        parents=[base_options],
-        usage="req files-references [--prj-base PRJ_BASE] [--git-base GIT_BASE] FILE [FILE ...]",
+        usage="req files-references FILE [FILE ...]",
         help="Generate LLM reference markdown for the given files.",
     )
     sub.add_argument("files_references", nargs="+", metavar="FILE")
 
     sub = subparsers.add_parser(
         "files-compress",
-        parents=[base_options, line_number_options],
-        usage=(
-            "req files-compress [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
-            "[--enable-line-numbers] FILE [FILE ...]"
-        ),
+        parents=[line_number_options],
+        usage="req files-compress [--enable-line-numbers] FILE [FILE ...]",
         help="Generate compressed output for the given files.",
     )
     sub.add_argument("files_compress", nargs="+", metavar="FILE")
 
     sub = subparsers.add_parser(
         "files-find",
-        parents=[base_options, line_number_options],
-        usage=(
-            "req files-find [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
-            "[--enable-line-numbers] TAG PATTERN FILE [FILE ...]"
-        ),
+        parents=[line_number_options],
+        usage="req files-find [--enable-line-numbers] TAG PATTERN FILE [FILE ...]",
         help=(
             "Find and extract specific constructs: files-find TAG PATTERN FILE ... "
             "TAG accepts pipe-separated tags; the per-language tag catalog is "
@@ -884,10 +857,9 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[base_options],
         usage="req files-static-check --prj-base PRJ_BASE FILE [FILE ...]",
         help=(
-            "Run static analysis on explicit files using tools configured in "
-            "~/.config/usereq/config.json. Detects language from file extension; "
-            "skips files with no configured tool. Requires --prj-base as the "
-            "checker dispatch context."
+            "Run static analysis on explicit files using the configured tools. "
+            "Detects language from file extension; skips files with no configured "
+            "tool. Requires --prj-base as the checker dispatch context."
         ),
     )
     sub.add_argument("files_static_check", nargs="+", metavar="FILE")
@@ -898,8 +870,7 @@ def build_parser() -> argparse.ArgumentParser:
         usage="req static-check --prj-base PRJ_BASE",
         help=(
             "Run static analysis on source and test files selected from the "
-            "configured src-dir and tests-dir directories. Tools are loaded from "
-            "the 'static-check' section of ~/.config/usereq/config.json."
+            "configured src-dir and tests-dir directories."
         ),
     )
 
@@ -908,8 +879,8 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[install_options],
         usage="req install --prj-base PRJ_BASE",
         help=(
-            "Install or update the providers persisted under \"providers\" in "
-            "~/.config/usereq/config.json and print the installation report."
+            "Install or update the configured providers and print the "
+            "installation report."
         ),
     )
 
@@ -917,8 +888,7 @@ def build_parser() -> argparse.ArgumentParser:
         "uninstall",
         usage="req uninstall",
         help=(
-            "Remove req-* artifacts of the providers persisted under \"providers\" "
-            "in ~/.config/usereq/config.json."
+            "Remove req-* artifacts of the configured providers."
         ),
     )
 
@@ -2877,29 +2847,6 @@ def remove_generated_resources() -> None:
             if root.is_dir():
                 prune_empty_dirs(root)
 
-def run_remove(args: Namespace) -> None:
-    """!
-    @brief Handles the removal of generated user-level resources.
-    @details Validates that `--update` is not combined with `--remove`, verifies that the
-    user-global configuration file exists, and removes `req-*` artifacts from user-level
-    provider directories (SRS-390).
-    @param args Input parameter `args`.
-    @return {None} Function return value.
-    @satisfies SRS-390
-    """
-    if args.update:
-        raise ReqError(
-            "Error: --remove does not accept --update",
-            4,
-        )
-    if not get_global_config_path().is_file():
-        raise ReqError(
-            f"Error: global configuration file not found at {get_global_config_path()}",
-            11,
-        )
-    remove_generated_resources()
-
-
 def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
     """!
     @brief Render one Unicode box-drawing table from headers and rows.
@@ -3212,7 +3159,7 @@ def run(args: Namespace) -> None:
     `~/.config/usereq/config.json` (SRS-064, SRS-279) and requires at least one enabled
     provider (SRS-035), loads the `docs-dir`, `tests-dir`, and `src-dir` values from the
     user-global configuration with defaults `usereq`, `tests`, and `src` (SRS-359,
-    SRS-361, SRS-362), creates missing directories during non-update installation
+    SRS-361, SRS-362), creates missing directories during installation
     (SRS-363), preserves the persisted static-check and auto-install configuration
     (SRS-288, SRS-301, SRS-420, SRS-407), and orchestrates user-level provider artifact
     generation with home-relative GUIDELINES_DIR token substitution (SRS-402, SRS-403).
@@ -3226,10 +3173,6 @@ def run(args: Namespace) -> None:
     DEBUG = getattr(args, "debug", False)
 
     # Main flow: validates input, calculates paths, generates user-level resources.
-    if getattr(args, "remove", False):
-        run_remove(args)
-        return
-
     project_base = _resolve_project_base(args)
 
     config = load_config()
@@ -3248,8 +3191,7 @@ def run(args: Namespace) -> None:
     ):
         raise ReqError("Error: invalid src configuration values", 11)
 
-    update_active = getattr(args, "update", False)
-    create_missing_dirs = not update_active
+    create_missing_dirs = True
     ensure_doc_directory(
         doc_dir_value, project_base, create_missing=create_missing_dirs
     )
@@ -3320,11 +3262,6 @@ def run(args: Namespace) -> None:
             enable_pi,
         )
     ):
-        if update_active:
-            raise ReqError(
-                "Error: the global configuration has an invalid provider/artifact update configuration",
-                11,
-            )
         parser = build_parser()
         parser.print_help()
         raise ReqError(
@@ -3332,11 +3269,6 @@ def run(args: Namespace) -> None:
             4,
         )
     if not any((enable_prompts, enable_agents, enable_skills)):
-        if update_active:
-            raise ReqError(
-                "Error: the global configuration has an invalid provider/artifact update configuration",
-                11,
-            )
         parser = build_parser()
         parser.print_help()
         raise ReqError(
@@ -4936,10 +4868,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             elif getattr(args, "git_wt_delete", None):
                 run_git_wt_delete(args)
             return 0
-        # Install/update/remove flows require --prj-base except for --remove (SRS-396).
-        if getattr(args, "remove", False):
-            run_remove(args)
-            return 0
+        # Install flow requires --prj-base (SRS-396).
         run(args)
     except ReqError as e:
         print(e.message, file=sys.stderr)

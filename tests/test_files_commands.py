@@ -8,7 +8,6 @@ import contextlib
 import io
 import json
 import os
-import subprocess
 import tempfile
 import shutil
 import re
@@ -38,26 +37,6 @@ def _isolated_user_home(tmp_path, monkeypatch):
     monkeypatch.setattr(cli_module, "home_dir", lambda: home)
     yield home
 
-
-SUBCOMMAND_BASE_REPO = Path(tempfile.mkdtemp(prefix="usereq-subcmd-base-"))
-subprocess.run(["git", "init"], cwd=str(SUBCOMMAND_BASE_REPO), capture_output=True)
-subprocess.run(
-    ["git", "config", "user.email", "tests@example.com"],
-    cwd=str(SUBCOMMAND_BASE_REPO),
-    capture_output=True,
-)
-subprocess.run(
-    ["git", "config", "user.name", "tests"],
-    cwd=str(SUBCOMMAND_BASE_REPO),
-    capture_output=True,
-)
-"""Shared --prj-base/--git-base argument list for bare subcommand invocations (SRS-408, SRS-410)."""
-SUBCOMMAND_BASES = [
-    "--prj-base",
-    str(SUBCOMMAND_BASE_REPO),
-    "--git-base",
-    str(SUBCOMMAND_BASE_REPO),
-]
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 FIXTURE_FILES = sorted(FIXTURES_DIR.glob("fixture_*.*"))
@@ -762,7 +741,7 @@ class TestFilesTokensCommand:
             f.write("def hello():\n    return 'world'\n")
             path = f.name
         try:
-            rc = main(["files-tokens", *SUBCOMMAND_BASES, path])
+            rc = main(["files-tokens", path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "Pack Summary" in captured.out
@@ -777,7 +756,7 @@ class TestFilesTokensCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["files-tokens", *SUBCOMMAND_BASES, path])
+            rc = main(["files-tokens", path])
             assert rc == 0
         finally:
             os.unlink(path)
@@ -789,7 +768,7 @@ class TestFilesTokensCommand:
             f.write("x = 1\n")
             valid_path = f.name
         try:
-            rc = main(["files-tokens", *SUBCOMMAND_BASES, "/nonexistent.py", valid_path])
+            rc = main(["files-tokens", "/nonexistent.py", valid_path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "skipping" in captured.err.lower() or "Warning" in captured.err
@@ -798,7 +777,7 @@ class TestFilesTokensCommand:
 
     def test_files_tokens_all_missing_errors(self, capsys):
         """CMD-003: All missing files must error."""
-        rc = main(["files-tokens", *SUBCOMMAND_BASES, "/nonexistent1.py", "/nonexistent2.py"])
+        rc = main(["files-tokens", "/nonexistent1.py", "/nonexistent2.py"])
         assert rc != 0
 
 
@@ -817,7 +796,7 @@ class TestFilesReferencesCommand:
             f.write("class Foo:\n    pass\n")
             path = f.name
         try:
-            rc = main(["files-references", *SUBCOMMAND_BASES, path])
+            rc = main(["files-references", path])
             assert rc == 0
             captured = capsys.readouterr()
             expected_path = Path(
@@ -837,7 +816,7 @@ class TestFilesReferencesCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["files-references", *SUBCOMMAND_BASES, path])
+            rc = main(["files-references", path])
             assert rc == 0
         finally:
             os.unlink(path)
@@ -849,7 +828,7 @@ class TestFilesReferencesCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--verbose", "files-references", *SUBCOMMAND_BASES, path])
+            rc = main(["--verbose", "files-references", path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "OK" in captured.err
@@ -870,7 +849,7 @@ class TestFilesReferencesCommand:
         """DOX-014: Every fixture must preserve total Doxygen field count in output."""
         source_counts = _count_effective_exportable_doxygen_tags(fixture_file)
 
-        rc = main(["files-references", *SUBCOMMAND_BASES, str(fixture_file)])
+        rc = main(["files-references", str(fixture_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -894,7 +873,7 @@ class TestFilesReferencesCommand:
     def test_files_references_cli_log_emits_brief_and_param(self, capsys):
         """DOX-014: files-references must emit semantic Doxygen field content for `log()`."""
         cli_file = Path(__file__).resolve().parents[1] / "src" / "usereq" / "cli.py"
-        rc = main(["files-references", *SUBCOMMAND_BASES, str(cli_file)])
+        rc = main(["files-references", str(cli_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -918,7 +897,7 @@ class TestFilesReferencesCommand:
             encoding="utf-8",
         )
 
-        rc = main(["files-references", *SUBCOMMAND_BASES, str(source_file)])
+        rc = main(["files-references", str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -937,7 +916,7 @@ class TestFilesReferencesCommand:
         source_file = repo_temp_dir / "cmd_major_sample.py"
         _write_cmd_major_sample(source_file)
 
-        rc = main(["files-references", *SUBCOMMAND_BASES, str(source_file)])
+        rc = main(["files-references", str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_reference_definition_block_by_signature(
@@ -965,7 +944,7 @@ class TestFilesCompressCommand:
             f.write("# comment\nx = 1\n")
             path = f.name
         try:
-            rc = main(["files-compress", *SUBCOMMAND_BASES, path])
+            rc = main(["files-compress", path])
             assert rc == 0
             captured = capsys.readouterr()
             expected_path = Path(
@@ -985,7 +964,7 @@ class TestFilesCompressCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["files-compress", *SUBCOMMAND_BASES, path])
+            rc = main(["files-compress", path])
             assert rc == 0
         finally:
             os.unlink(path)
@@ -996,7 +975,7 @@ class TestFilesCompressCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["files-compress", *SUBCOMMAND_BASES, path])
+            rc = main(["files-compress", path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "1: x = 1" not in captured.out
@@ -1010,7 +989,7 @@ class TestFilesCompressCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["files-compress", *SUBCOMMAND_BASES, path, "--enable-line-numbers"])
+            rc = main(["files-compress", path, "--enable-line-numbers"])
             assert rc == 0
             captured = capsys.readouterr()
             assert "1: x = 1" in captured.out
@@ -1025,7 +1004,7 @@ class TestFilesCompressCommand:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["--verbose", "files-compress", *SUBCOMMAND_BASES, path])
+            rc = main(["--verbose", "files-compress", path])
             assert rc == 0
             captured = capsys.readouterr()
             assert "OK" in captured.err
@@ -1101,7 +1080,7 @@ class TestReferencesCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_lib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["references", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert len(captured.out) > 0
@@ -1124,7 +1103,7 @@ class TestReferencesCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["references", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert captured.out.startswith("# Files Structure\n```")
@@ -1144,7 +1123,7 @@ class TestReferencesCommand:
                   "tests-dir": "tests/", "src-dir": ["lib"]}
         (req_dir / "config.json").write_text(json.dumps(config))
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["references", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
 
     @pytest.mark.parametrize(
@@ -1178,7 +1157,7 @@ class TestReferencesCommand:
         source_counts = _count_effective_exportable_doxygen_tags(copied_fixture)
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["references", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1223,7 +1202,7 @@ class TestReferencesCommand:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["references", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1257,7 +1236,7 @@ class TestReferencesCommand:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["references", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_reference_definition_block_by_signature(
@@ -1290,7 +1269,7 @@ class TestCompressCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["compress", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["compress", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "@@@" in captured.out
@@ -1309,7 +1288,7 @@ class TestCompressCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["compress", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["compress", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: x = 1" not in captured.out
@@ -1327,7 +1306,7 @@ class TestCompressCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["compress", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "--enable-line-numbers"])
+        rc = main(["compress", "--prj-base", str(repo_temp_dir), "--enable-line-numbers"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: x = 1" in captured.out
@@ -1356,7 +1335,7 @@ class TestTokensCommand:
         config = {"docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["tokens", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["tokens", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "REQUIREMENTS.md" in captured.out
@@ -1378,7 +1357,7 @@ class TestTokensCommand:
         config = {"docs-dir": "cfg_docs", "tests-dir": "tests/", "src-dir": ["src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["tokens", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc = main(["tokens", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "Pack Summary" in captured.out
@@ -1401,7 +1380,7 @@ class TestFindCommandVerbose:
         )
         src = repo_temp_dir / "a.py"
         src.write_text("def foo():\n    return 1\n", encoding="utf-8")
-        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "foo", str(src)])
+        rc = main(["files-find", "FUNCTION", "foo", str(src)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "foo" in captured.out
@@ -1411,7 +1390,7 @@ class TestFindCommandVerbose:
     def test_files_find_verbose_outputs_progress(self, capsys, repo_temp_dir):
         src = repo_temp_dir / "a.py"
         src.write_text("def foo():\n    return 1\n", encoding="utf-8")
-        rc = main(["--verbose", "files-find", *SUBCOMMAND_BASES, "FUNCTION", "foo", str(src)])
+        rc = main(["--verbose", "files-find", "FUNCTION", "foo", str(src)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "OK" in captured.err
@@ -1420,7 +1399,7 @@ class TestFindCommandVerbose:
     def test_files_find_enable_line_numbers(self, capsys, repo_temp_dir):
         src = repo_temp_dir / "a.py"
         src.write_text("def foo():\n    return 1\n", encoding="utf-8")
-        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "foo", str(src), "--enable-line-numbers"])
+        rc = main(["files-find", "FUNCTION", "foo", str(src), "--enable-line-numbers"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: def foo():" in captured.out
@@ -1434,7 +1413,7 @@ class TestFindCommandVerbose:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--verbose", "find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "foo"])
+        rc = main(["--verbose", "find", "--prj-base", str(repo_temp_dir), "FUNCTION", "foo"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "OK" in captured.err
@@ -1450,7 +1429,7 @@ class TestFindCommandVerbose:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "foo", "--enable-line-numbers"])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "FUNCTION", "foo", "--enable-line-numbers"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: def foo():" in captured.out
@@ -1491,7 +1470,7 @@ class TestFindCommandsDoxygen:
             _count_file_level_doxygen_tags(fixture_file),
         )
 
-        rc = main(["files-find", *SUBCOMMAND_BASES, tag_filter, pattern, str(fixture_file)])
+        rc = main(["files-find", tag_filter, pattern, str(fixture_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1523,7 +1502,7 @@ class TestFindCommandsDoxygen:
             encoding="utf-8",
         )
 
-        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "plain_function", str(source_file)])
+        rc = main(["files-find", "FUNCTION", "plain_function", str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1554,7 +1533,7 @@ class TestFindCommandsDoxygen:
             encoding="utf-8",
         )
 
-        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "^inc$", str(source_file)])
+        rc = main(["files-find", "FUNCTION", "^inc$", str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1579,7 +1558,7 @@ class TestFindCommandsDoxygen:
         source_file = repo_temp_dir / "cmd_major_sample.py"
         _write_cmd_major_sample(source_file)
 
-        rc = main(["files-find", *SUBCOMMAND_BASES, "FUNCTION", "^cmd_major$", str(source_file)])
+        rc = main(["files-find", "FUNCTION", "^cmd_major$", str(source_file)])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_construct_block_by_name(captured.out, "FUNCTION", "cmd_major")
@@ -1630,7 +1609,7 @@ class TestFindCommandsDoxygen:
         )
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), tag_filter, pattern])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), tag_filter, pattern])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1675,7 +1654,7 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "plain_function"])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "FUNCTION", "plain_function"])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1719,7 +1698,7 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "^inc$"])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "FUNCTION", "^inc$"])
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1757,7 +1736,7 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["find", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir), "FUNCTION", "^cmd_major$"])
+        rc = main(["find", "--prj-base", str(repo_temp_dir), "FUNCTION", "^cmd_major$"])
         assert rc == 0
         captured = capsys.readouterr()
         block = _extract_construct_block_by_name(captured.out, "FUNCTION", "cmd_major")
@@ -1789,7 +1768,7 @@ class TestProjectExamplesDoxygenOccurrences:
             _merge_tag_counts(phase1_expected_directory, phase1_expected_counts)
             _print_file_tag_counts("PHASE1-BASELINE", filepath, phase1_expected_counts)
 
-            rc, references_stdout, _ = _run_cli_capture(["files-references", *SUBCOMMAND_BASES, str(filepath)])
+            rc, references_stdout, _ = _run_cli_capture(["files-references", str(filepath)])
             assert rc == 0, f"phase1::{filepath.as_posix()}: files-references failed"
             phase1_counts = _labels_to_tags_counts(
                 _count_output_doxygen_labels(references_stdout)
@@ -1823,7 +1802,7 @@ class TestProjectExamplesDoxygenOccurrences:
             )
             _merge_tag_counts(phase2_expected_directory, phase2_expected_counts)
             rc, files_find_stdout, _ = _run_cli_capture(
-                ["files-find", *SUBCOMMAND_BASES, tag_filter, ".*", str(filepath)]
+                ["files-find", tag_filter, ".*", str(filepath)]
             )
             assert rc == 0, f"phase2::{filepath.as_posix()}: files-find failed"
             phase2_counts = _labels_to_tags_counts(
@@ -1871,7 +1850,7 @@ class TestProjectExamplesDoxygenOccurrences:
                     f"regex extraction did not discover effective tag {tag}"
                 )
 
-        rc, stdout, _ = _run_cli_capture(["files-references", *SUBCOMMAND_BASES, str(filepath)])
+        rc, stdout, _ = _run_cli_capture(["files-references", str(filepath)])
         assert rc == 0, f"files-references failed for {filepath.as_posix()}"
         output_tag_counts = _labels_to_tags_counts(_count_output_doxygen_labels(stdout))
         _assert_tag_counts_match(
@@ -1922,7 +1901,7 @@ class TestProjectExamplesReferencesDoxygenParity:
                 )
 
         monkeypatch.chdir(repo_temp_dir)
-        rc, stdout, _ = _run_cli_capture(["references", "--prj-base", str(repo_temp_dir), "--git-base", str(repo_temp_dir)])
+        rc, stdout, _ = _run_cli_capture(["references", "--prj-base", str(repo_temp_dir)])
         assert rc == 0, f"references failed for {filepath.as_posix()}"
         output_tag_counts = _labels_to_tags_counts(_count_output_doxygen_labels(stdout))
         _assert_tag_counts_match(
@@ -1970,7 +1949,6 @@ class TestProjectExamplesFilesFindDoxygenParity:
         rc, stdout, _ = _run_cli_capture(
             [
                 "files-find",
-                *SUBCOMMAND_BASES,
                 tag_filter,
                 ".*",
                 str(filepath),
@@ -2056,8 +2034,6 @@ class TestProjectExamplesFindDoxygenParity:
             [
                 "find",
                 "--prj-base",
-                str(repo_temp_dir),
-                "--git-base",
                 str(repo_temp_dir),
                 tag_filter,
                 ".*",
