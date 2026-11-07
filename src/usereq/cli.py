@@ -202,10 +202,10 @@ def provider_artifact_root(provider: str, artifact: str) -> Path:
     """!
     @brief Resolve the user-level installation root for one provider artifact.
     @details Maps ``provider`` and ``artifact`` selectors to user-level CLI configuration
-    directories under the user HOME (claude -> ``~/.claude``, codex -> ``~/.codex``,
-    antigravity -> ``~/.antigravity``, opencode -> ``~/.config/opencode``,
-    pi -> ``~/.pi/agent``). Paths are computed lazily from :func:`home_dir` so HOME
-    redirection stays consistent across a single process run.
+    directories under the user HOME (antigravity -> ``~/.gemini/config``, claude ->
+    ``~/.claude``, codex -> ``~/.codex`` with skills under ``~/.agents``, opencode ->
+    ``~/.config/opencode``, pi -> ``~/.pi/agent``). Paths are computed lazily from
+    :func:`home_dir` so HOME redirection stays consistent across a single process run.
     @param provider {str} Provider selector from ``{antigravity, claude, codex, opencode, pi}``.
     @param artifact {str} Artifact selector from ``{prompts, agents, skills}``.
     @return {Path} Absolute user-level target directory for the artifact.
@@ -215,8 +215,9 @@ def provider_artifact_root(provider: str, artifact: str) -> Path:
     home = home_dir()
     roots: dict[str, dict[str, Path]] = {
         "antigravity": {
-            "prompts": home / ".antigravity" / "commands" / "req",
-            "skills": home / ".antigravity" / "skills",
+            "prompts": home / ".gemini" / "config" / "workflows",
+            "agents": home / ".gemini" / "config" / "agents",
+            "skills": home / ".gemini" / "config" / "skills",
         },
         "claude": {
             "prompts": home / ".claude" / "commands" / "req",
@@ -225,12 +226,13 @@ def provider_artifact_root(provider: str, artifact: str) -> Path:
         },
         "codex": {
             "prompts": home / ".codex" / "prompts",
-            "skills": home / ".codex" / "skills",
+            "agents": home / ".codex" / "agents",
+            "skills": home / ".agents" / "skills",
         },
         "opencode": {
-            "prompts": home / ".config" / "opencode" / "command",
-            "agents": home / ".config" / "opencode" / "agent",
-            "skills": home / ".config" / "opencode" / "skill",
+            "prompts": home / ".config" / "opencode" / "commands" / "req",
+            "agents": home / ".config" / "opencode" / "agents",
+            "skills": home / ".config" / "opencode" / "skills",
         },
         "pi": {
             "prompts": home / ".pi" / "agent" / "prompts",
@@ -253,7 +255,8 @@ def provider_artifact_root(provider: str, artifact: str) -> Path:
 
 PROVIDER_ARTIFACT_DISPLAY_PATTERNS: dict[str, dict[str, str]] = {
     "antigravity": {
-        "prompts": "{prompt_name}.toml",
+        "prompts": "req-{prompt_name}.md",
+        "agents": "req-{prompt_name}/agent.md",
         "skills": "req-{prompt_name}/SKILL.md",
     },
     "claude": {
@@ -263,15 +266,16 @@ PROVIDER_ARTIFACT_DISPLAY_PATTERNS: dict[str, dict[str, str]] = {
     },
     "codex": {
         "prompts": "req-{prompt_name}.md",
+        "agents": "req-{prompt_name}.toml",
         "skills": "req-{prompt_name}/SKILL.md",
     },
     "opencode": {
-        "prompts": "req-{prompt_name}.md",
+        "prompts": "{prompt_name}.md",
         "agents": "req-{prompt_name}.md",
         "skills": "req-{prompt_name}/SKILL.md",
     },
     "pi": {
-        "prompts": "req-{prompt_name}.prompt.md",
+        "prompts": "req-{prompt_name}.md",
         "skills": "req-{prompt_name}/SKILL.md",
     },
 }
@@ -280,11 +284,12 @@ PROVIDER_ARTIFACT_DISPLAY_PATTERNS: dict[str, dict[str, str]] = {
 @details Maps provider -> artifact -> installed filename pattern relative to the
 provider artifact root resolved by :func:`provider_artifact_root`. Patterns mirror
 the exact artifacts written by the installation flow: prompts use the installed
-base-name convention of each CLI (``{prompt_name}.toml`` for antigravity commands,
-``{prompt_name}.md`` for claude commands, ``req-{prompt_name}.md`` for codex and
-opencode, ``req-{prompt_name}.prompt.md`` for pi), agents use
-``req-{prompt_name}.md``, and skills use ``req-{prompt_name}/SKILL.md``.
-Missing provider/artifact keys denote unsupported pairs rendered as ``-`` (SRS-466).
+base-name convention of each CLI (``req-{prompt_name}.md`` for antigravity, codex,
+and pi, ``{prompt_name}.md`` for claude and opencode), agents use
+``req-{prompt_name}.md`` for claude and opencode, ``req-{prompt_name}.toml`` for
+codex, and ``req-{prompt_name}/agent.md`` for antigravity, while skills use
+``req-{prompt_name}/SKILL.md``. Missing provider/artifact keys denote unsupported
+pairs rendered as ``-`` (SRS-466).
 @satisfies SRS-462, SRS-463, SRS-464, SRS-465, SRS-466
 """
 
@@ -2664,12 +2669,18 @@ def normalize_description(value: str) -> str:
 
 def md_to_toml(md_path: Path, toml_path: Path, force: bool) -> None:
     """!
-    @brief Converts a Markdown prompt to TOML for Gemini.
-    @details Implements the md_to_toml function behavior with deterministic control flow.
-    @param md_path Input parameter `md_path`.
-    @param toml_path Input parameter `toml_path`.
-    @param force Input parameter `force`.
+    @brief Converts a Markdown prompt to a TOML agent definition for codex.
+    @details Reads the packaged prompt template, extracts the front-matter description,
+    and writes a TOML payload with a ``description`` string key and a ``prompt``
+    multi-line string key containing the template body. Raises a deterministic
+    `ReqError` when the template lacks a leading ``---`` front-matter block or when
+    the destination exists and `force` is false.
+    @param md_path {Path} Packaged Markdown prompt template to convert.
+    @param toml_path {Path} Destination TOML agent file to write.
+    @param force {bool} When true, overwrite an existing destination file.
     @return {None} Function return value.
+    @throws {ReqError} Raised when the template has no front matter or the destination exists without `force`.
+    @satisfies SRS-469
     """
     if toml_path.exists() and not force:
         raise ReqError(
@@ -3412,7 +3423,7 @@ def run(args: Namespace) -> None:
         pc_pi = provider_configs["pi"]
 
         if is_prompt_source and pc_codex["enabled"] and pc_codex["prompts"]:
-            # ~/.codex/prompts
+            # ~/.codex/prompts (deprecated, SRS-470)
             dst_codex_prompt = provider_artifact_root("codex", "prompts") / f"req-{PROMPT}.md"
             existed = dst_codex_prompt.exists()
             write_text_file(dst_codex_prompt, prompt_with_replacements)
@@ -3421,8 +3432,25 @@ def run(args: Namespace) -> None:
             prompts_installed["codex"].add(PROMPT)
             modules_installed["codex"].add("prompts")
 
+        if is_prompt_source and pc_codex["enabled"] and pc_codex["agents"]:
+            # ~/.codex/agents/req-<PROMPT>.toml (SRS-469)
+            dst_codex_agent = (
+                provider_artifact_root("codex", "agents") / f"req-{PROMPT}.toml"
+            )
+            existed = dst_codex_agent.exists()
+            md_to_toml(prompt_path, dst_codex_agent, force=existed)
+            codex_agent_replacements = {
+                **base_replacements,
+                "%%ARGS%%": "$ARGUMENTS",
+            }
+            replace_tokens(dst_codex_agent, codex_agent_replacements)
+            if VERBOSE:
+                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_codex_agent}")
+            prompts_installed["codex"].add(PROMPT)
+            modules_installed["codex"].add("agents")
+
         if pc_codex["enabled"] and pc_codex["skills"]:
-            # ~/.codex/skills/req-<prompt>/SKILL.md
+            # ~/.agents/skills/req-<prompt>/SKILL.md (SRS-383)
             codex_skill_dir = skills_roots["codex"] / f"req-{PROMPT}"
             codex_skill_dir.mkdir(parents=True, exist_ok=True)
             codex_skill_text = (
@@ -3438,22 +3466,61 @@ def run(args: Namespace) -> None:
             modules_installed["codex"].add("skills")
 
         if is_prompt_source and pc_antigravity["enabled"] and pc_antigravity["prompts"]:
-            # ~/.antigravity/commands/req/<PROMPT>.toml (Antigravity TOML command)
-            dst_toml = (
-                provider_artifact_root("antigravity", "prompts") / f"{PROMPT}.toml"
+            # ~/.gemini/config/workflows/req-<PROMPT>.md (SRS-467)
+            dst_antigravity_prompt = (
+                provider_artifact_root("antigravity", "prompts") / f"req-{PROMPT}.md"
             )
-            existed = dst_toml.exists()
-            md_to_toml(prompt_path, dst_toml, force=existed)
-            toml_replacements = {
-                "%%GUIDELINES_FILES%%": guidelines_file_list,
-                "%%GUIDELINES_PATH%%": guidelines_path_value,
+            existed = dst_antigravity_prompt.exists()
+            antigravity_replacements = {
+                **base_replacements,
                 "%%ARGS%%": "{{args}}",
             }
-            replace_tokens(dst_toml, toml_replacements)
+            workflow_header_lines = ["---", f'description: "{desc_yaml}"']
+            if argument_hint:
+                workflow_header_lines.append(
+                    f'argument-hint: "{yaml_double_quote_escape(argument_hint)}"'
+                )
+            antigravity_workflow_text = (
+                "\n".join(workflow_header_lines)
+                + "\n---\n\n"
+                + apply_replacements(prompt_body, antigravity_replacements)
+            )
+            dst_antigravity_prompt.parent.mkdir(parents=True, exist_ok=True)
+            if not antigravity_workflow_text.endswith("\n"):
+                antigravity_workflow_text += "\n"
+            dst_antigravity_prompt.write_text(
+                antigravity_workflow_text, encoding="utf-8"
+            )
             if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_toml}")
+                log(
+                    f"{'OVERWROTE' if existed else 'COPIED'}: {dst_antigravity_prompt}"
+                )
             prompts_installed["antigravity"].add(PROMPT)
-            modules_installed["antigravity"].add("commands")
+            modules_installed["antigravity"].add("prompts")
+
+        if is_prompt_source and pc_antigravity["enabled"] and pc_antigravity["agents"]:
+            # ~/.gemini/config/agents/req-<PROMPT>/agent.md (SRS-468)
+            antigravity_agent_dir = (
+                provider_artifact_root("antigravity", "agents") / f"req-{PROMPT}"
+            )
+            dst_antigravity_agent = antigravity_agent_dir / "agent.md"
+            existed = dst_antigravity_agent.exists()
+            antigravity_agent_text = (
+                "---\n"
+                f"name: req-{PROMPT}\n"
+                f'description: "{desc_yaml}"\n'
+                "\n---\n\n" + prompt_body_replaced
+            )
+            antigravity_agent_dir.mkdir(parents=True, exist_ok=True)
+            if not antigravity_agent_text.endswith("\n"):
+                antigravity_agent_text += "\n"
+            write_text_file(dst_antigravity_agent, antigravity_agent_text)
+            if VERBOSE:
+                log(
+                    f"{'OVERWROTE' if existed else 'COPIED'}: {dst_antigravity_agent}"
+                )
+            prompts_installed["antigravity"].add(PROMPT)
+            modules_installed["antigravity"].add("agents")
 
         if is_prompt_source and pc_claude["enabled"] and pc_claude["agents"]:
             # ~/.claude/agents
@@ -3477,9 +3544,9 @@ def run(args: Namespace) -> None:
             modules_installed["claude"].add("agents")
 
         if is_prompt_source and pc_pi["enabled"] and pc_pi["prompts"]:
-            # ~/.pi/agent/prompts/req-<PROMPT>.prompt.md
+            # ~/.pi/agent/prompts/req-<PROMPT>.md (SRS-353)
             dst_pi_prompt = (
-                provider_artifact_root("pi", "prompts") / f"req-{PROMPT}.prompt.md"
+                provider_artifact_root("pi", "prompts") / f"req-{PROMPT}.md"
             )
             existed = dst_pi_prompt.exists()
             if pc_pi["prompts-use-agents"]:
@@ -3501,7 +3568,7 @@ def run(args: Namespace) -> None:
             modules_installed["pi"].add("prompts")
 
         if is_prompt_source and pc_opencode["enabled"] and pc_opencode["agents"]:
-            # ~/.config/opencode/agent
+            # ~/.config/opencode/agents (SRS-385)
             dst_opencode_agent = (
                 provider_artifact_root("opencode", "agents") / f"req-{PROMPT}.md"
             )
@@ -3520,9 +3587,9 @@ def run(args: Namespace) -> None:
             modules_installed["opencode"].add("agent")
 
         if is_prompt_source and pc_opencode["enabled"] and pc_opencode["prompts"]:
-            # ~/.config/opencode/command
+            # ~/.config/opencode/commands/req (SRS-385)
             dst_opencode_command = (
-                provider_artifact_root("opencode", "prompts") / f"req-{PROMPT}.md"
+                provider_artifact_root("opencode", "prompts") / f"{PROMPT}.md"
             )
             existed = dst_opencode_command.exists()
             if pc_opencode["prompts-use-agents"]:
@@ -3594,7 +3661,7 @@ def run(args: Namespace) -> None:
             modules_installed["claude"].add("skills")
 
         if pc_antigravity["enabled"] and pc_antigravity["skills"]:
-            # ~/.antigravity/skills/req-<prompt>/SKILL.md
+            # ~/.gemini/config/skills/req-<prompt>/SKILL.md (SRS-384)
             antigravity_skill_dir = skills_roots["antigravity"] / f"req-{PROMPT}"
             antigravity_skill_dir.mkdir(parents=True, exist_ok=True)
             antigravity_skill_text = (
@@ -3628,7 +3695,7 @@ def run(args: Namespace) -> None:
             modules_installed["pi"].add("skills")
 
         if pc_opencode["enabled"] and pc_opencode["skills"]:
-            # ~/.config/opencode/skill/req-<prompt>/SKILL.md
+            # ~/.config/opencode/skills/req-<prompt>/SKILL.md (SRS-385)
             opencode_skill_dir = skills_roots["opencode"] / f"req-{PROMPT}"
             opencode_skill_dir.mkdir(parents=True, exist_ok=True)
             opencode_skill_text = (

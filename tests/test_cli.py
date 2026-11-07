@@ -33,11 +33,11 @@ from usereq import cli
 
 ALL_PROVIDERS_ALL_ARTIFACTS = [
     "--enable",
-    "antigravity:prompts,skills",
+    "antigravity:prompts,agents,skills",
     "--enable",
     "claude:prompts,agents,skills",
     "--enable",
-    "codex:prompts,skills",
+    "codex:prompts,agents,skills",
     "--enable",
     "opencode:prompts,agents,skills",
     "--enable",
@@ -152,7 +152,7 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
     def test_no_project_local_files_are_created(self) -> None:
         """SRS-388: no `.req` directory or provider dirs are created in the project."""
         self.assertFalse((self.TEST_DIR / ".req").exists())
-        for hidden in (".claude", ".codex", ".antigravity", ".pi", ".opencode"):
+        for hidden in (".claude", ".codex", ".gemini", ".agents", ".pi", ".opencode"):
             self.assertFalse(
                 (self.TEST_DIR / hidden).exists(),
                 f"The project must not contain {hidden}",
@@ -165,20 +165,22 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         self.assertTrue((self.HOME / ".claude" / "skills").is_dir())
 
     def test_codex_user_level_directories_created(self) -> None:
-        """SRS-383: codex artifacts are installed under ~/.codex."""
+        """SRS-383: codex artifacts are installed under ~/.codex and ~/.agents."""
         self.assertTrue((self.HOME / ".codex" / "prompts").is_dir())
-        self.assertTrue((self.HOME / ".codex" / "skills").is_dir())
+        self.assertTrue((self.HOME / ".codex" / "agents").is_dir())
+        self.assertTrue((self.HOME / ".agents" / "skills").is_dir())
 
     def test_antigravity_user_level_directories_created(self) -> None:
-        """SRS-384: antigravity artifacts are installed under ~/.antigravity."""
-        self.assertTrue((self.HOME / ".antigravity" / "commands" / "req").is_dir())
-        self.assertTrue((self.HOME / ".antigravity" / "skills").is_dir())
+        """SRS-384: antigravity artifacts are installed under ~/.gemini/config."""
+        self.assertTrue((self.HOME / ".gemini" / "config" / "workflows").is_dir())
+        self.assertTrue((self.HOME / ".gemini" / "config" / "agents").is_dir())
+        self.assertTrue((self.HOME / ".gemini" / "config" / "skills").is_dir())
 
     def test_opencode_user_level_directories_created(self) -> None:
         """SRS-385: opencode artifacts are installed under ~/.config/opencode."""
-        self.assertTrue((self.HOME / ".config" / "opencode" / "command").is_dir())
-        self.assertTrue((self.HOME / ".config" / "opencode" / "agent").is_dir())
-        self.assertTrue((self.HOME / ".config" / "opencode" / "skill").is_dir())
+        self.assertTrue((self.HOME / ".config" / "opencode" / "commands" / "req").is_dir())
+        self.assertTrue((self.HOME / ".config" / "opencode" / "agents").is_dir())
+        self.assertTrue((self.HOME / ".config" / "opencode" / "skills").is_dir())
 
     def test_pi_user_level_directories_created(self) -> None:
         """SRS-386: pi artifacts are installed under ~/.pi/agent."""
@@ -216,20 +218,42 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
             target = commands_dir / f"{prompt}.md"
             self.assertTrue(target.exists(), f"Missing claude command {target}")
 
-    def test_antigravity_toml_files_created(self) -> None:
-        """Antigravity TOML commands are created under ~/.antigravity/commands/req."""
-        toml_dir = self.HOME / ".antigravity" / "commands" / "req"
+    def test_antigravity_workflow_files_created(self) -> None:
+        """SRS-467: antigravity workflows are req-<name>.md under ~/.gemini/config/workflows."""
+        workflows_dir = self.HOME / ".gemini" / "config" / "workflows"
         for prompt in EXPECTED_PROMPTS:
-            target = toml_dir / f"{prompt}.toml"
-            self.assertTrue(target.exists(), f"Missing antigravity toml {target}")
+            target = workflows_dir / f"req-{prompt}.md"
+            self.assertTrue(target.exists(), f"Missing antigravity workflow {target}")
             content = target.read_text(encoding="utf-8")
-            self.assertIn("prompt", content)
+            self.assertTrue(content.startswith("---"), "workflow must have front matter")
+            self.assertIn("description:", content)
+            self.assertNotIn("%%ARGS%%", content)
+
+    def test_antigravity_agent_files_created(self) -> None:
+        """SRS-468: antigravity agents are req-<name>/agent.md under ~/.gemini/config/agents."""
+        agents_dir = self.HOME / ".gemini" / "config" / "agents"
+        for prompt in EXPECTED_PROMPTS:
+            target = agents_dir / f"req-{prompt}" / "agent.md"
+            self.assertTrue(target.exists(), f"Missing antigravity agent {target}")
+            content = target.read_text(encoding="utf-8")
+            self.assertIn("name: req-", content)
+            self.assertIn("description:", content)
+
+    def test_codex_agent_toml_files_created(self) -> None:
+        """SRS-469: codex agents are req-<name>.toml under ~/.codex/agents."""
+        agents_dir = self.HOME / ".codex" / "agents"
+        for prompt in EXPECTED_PROMPTS:
+            target = agents_dir / f"req-{prompt}.toml"
+            self.assertTrue(target.exists(), f"Missing codex agent {target}")
+            content = target.read_text(encoding="utf-8")
+            self.assertIn('description = "', content)
+            self.assertIn('prompt = """', content)
 
     def test_pi_prompt_files_created(self) -> None:
-        """SRS-353: pi prompts use req-<name>.prompt.md under ~/.pi/agent/prompts."""
+        """SRS-353: pi prompts use req-<name>.md under ~/.pi/agent/prompts."""
         prompts_dir = self.HOME / ".pi" / "agent" / "prompts"
         for prompt in EXPECTED_PROMPTS:
-            target = prompts_dir / f"req-{prompt}.prompt.md"
+            target = prompts_dir / f"req-{prompt}.md"
             self.assertTrue(target.exists(), f"Missing pi prompt {target}")
             content = target.read_text(encoding="utf-8")
             self.assertTrue(content.startswith("---"), "pi prompt must have front matter")
@@ -238,10 +262,10 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
     def test_skill_files_created_for_every_provider(self) -> None:
         """Skills are created as req-<name>/SKILL.md for every enabled provider."""
         skill_roots = {
-            "antigravity": self.HOME / ".antigravity" / "skills",
+            "antigravity": self.HOME / ".gemini" / "config" / "skills",
             "claude": self.HOME / ".claude" / "skills",
-            "codex": self.HOME / ".codex" / "skills",
-            "opencode": self.HOME / ".config" / "opencode" / "skill",
+            "codex": self.HOME / ".agents" / "skills",
+            "opencode": self.HOME / ".config" / "opencode" / "skills",
             "pi": self.HOME / ".pi" / "agent" / "skills",
         }
         for provider, root in skill_roots.items():
@@ -307,17 +331,21 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
             (self.HOME / ".claude" / "commands" / "req" / "flowchart.md").exists()
         )
         self.assertTrue(
+            (self.HOME / ".pi" / "agent" / "prompts" / "req-flowchart.md").exists()
+        )
+        self.assertTrue(
             (
-                self.HOME / ".pi" / "agent" / "prompts" / "req-flowchart.prompt.md"
+                self.HOME / ".agents" / "skills" / "req-flowchart" / "SKILL.md"
             ).exists()
         )
         self.assertTrue(
             (
-                self.HOME / ".codex" / "skills" / "req-flowchart" / "SKILL.md"
+                self.HOME
+                / ".gemini"
+                / "config"
+                / "workflows"
+                / "req-flowchart.md"
             ).exists()
-        )
-        self.assertTrue(
-            (self.HOME / ".antigravity" / "commands" / "req" / "flowchart.toml").exists()
         )
 
     def test_guidelines_tokens_replaced(self) -> None:
@@ -416,7 +444,7 @@ class TestProviderSpecMultiple(HomeIsolatedTestCase):
     def test_codex_skills_created_prompts_not_created(self) -> None:
         self.install("codex:skills")
         self.assertTrue(
-            (self.HOME / ".codex" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
+            (self.HOME / ".agents" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
         )
         self.assertFalse((self.HOME / ".codex" / "prompts").exists())
 
@@ -429,7 +457,7 @@ class TestProviderSpecMultiple(HomeIsolatedTestCase):
 
     def test_disabled_providers_absent(self) -> None:
         self.install("codex:prompts")
-        for provider_dir in (".claude", ".antigravity", ".pi"):
+        for provider_dir in (".claude", ".gemini", ".agents", ".pi"):
             self.assertFalse((self.HOME / provider_dir).exists())
 
     def test_at_least_one_provider_spec_required(self) -> None:
@@ -515,13 +543,13 @@ class TestPromptsUseAgents(HomeIsolatedTestCase):
         self.run_cli(
             self.base_argv + ["--enable", "opencode:prompts:prompts-use-agents", "install"]
         )
-        command = self.HOME / ".config" / "opencode" / "command" / "req-write.md"
+        command = self.HOME / ".config" / "opencode" / "commands" / "req" / "write.md"
         content = command.read_text(encoding="utf-8")
         self.assertIn("agent: req-write", content)
 
     def test_pi_prompts_are_agent_stubs(self) -> None:
         self.run_cli(self.base_argv + ["--enable", "pi:prompts:prompts-use-agents", "install"])
-        prompt = self.HOME / ".pi" / "agent" / "prompts" / "req-write.prompt.md"
+        prompt = self.HOME / ".pi" / "agent" / "prompts" / "req-write.md"
         content = prompt.read_text(encoding="utf-8")
         self.assertIn("agent: req-write", content)
 
@@ -542,7 +570,7 @@ class TestPromptsUseAgents(HomeIsolatedTestCase):
             "agent: req-write", claude_command.read_text(encoding="utf-8")
         )
         opencode_command = (
-            self.HOME / ".config" / "opencode" / "command" / "req-write.md"
+            self.HOME / ".config" / "opencode" / "commands" / "req" / "write.md"
         )
         self.assertNotIn(
             "agent: req-write", opencode_command.read_text(encoding="utf-8")
@@ -703,7 +731,7 @@ class TestUninstallCommand(HomeIsolatedTestCase):
             (self.HOME / ".codex" / "prompts" / "req-write.md").exists()
         )
         self.assertFalse(
-            (self.HOME / ".codex" / "skills" / "req-write").exists()
+            (self.HOME / ".agents" / "skills" / "req-write").exists()
         )
 
     def test_uninstall_preserves_unrelated_user_content(self) -> None:
@@ -804,14 +832,26 @@ class TestUserLevelPathHelpers(unittest.TestCase):
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             self.assertEqual(
                 cli.provider_artifact_root("antigravity", "prompts"),
-                Path("/tmp/testhome/.antigravity/commands/req"),
+                Path("/tmp/testhome/.gemini/config/workflows"),
+            )
+            self.assertEqual(
+                cli.provider_artifact_root("codex", "agents"),
+                Path("/tmp/testhome/.codex/agents"),
+            )
+            self.assertEqual(
+                cli.provider_artifact_root("codex", "skills"),
+                Path("/tmp/testhome/.agents/skills"),
             )
 
     def test_provider_artifact_root_opencode(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             self.assertEqual(
                 cli.provider_artifact_root("opencode", "agents"),
-                Path("/tmp/testhome/.config/opencode/agent"),
+                Path("/tmp/testhome/.config/opencode/agents"),
+            )
+            self.assertEqual(
+                cli.provider_artifact_root("opencode", "prompts"),
+                Path("/tmp/testhome/.config/opencode/commands/req"),
             )
 
     def test_provider_artifact_root_pi(self) -> None:
@@ -824,7 +864,7 @@ class TestUserLevelPathHelpers(unittest.TestCase):
     def test_unsupported_artifact_raises(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             with self.assertRaises(cli.ReqError):
-                cli.provider_artifact_root("codex", "agents")
+                cli.provider_artifact_root("pi", "agents")
 
 
 class TestGitCheckCommand(HomeIsolatedTestCase):

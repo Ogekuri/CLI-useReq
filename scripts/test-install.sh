@@ -76,16 +76,18 @@ export HOME="$SMOKE_HOME"
 # are included to keep repeated executions deterministic.
 # @satisfies SRS-367
 delete_dirs=(
-    ".antigravity/commands"
-    ".antigravity/skills"
+    ".gemini/config/workflows"
+    ".gemini/config/agents"
+    ".gemini/config/skills"
     ".claude/commands"
     ".claude/agents"
     ".claude/skills"
+    ".agents/skills"
     ".codex/prompts"
-    ".codex/skills"
-    ".config/opencode/agent"
-    ".config/opencode/command"
-    ".config/opencode/skill"
+    ".codex/agents"
+    ".config/opencode/commands"
+    ".config/opencode/agents"
+    ".config/opencode/skills"
     ".config/usereq"
     ".pi/agent/prompts"
     ".pi/agent/skills"
@@ -126,9 +128,9 @@ else
     # @details Persists providers and static-check tools in the disposable HOME
     # configuration file; no artifact is installed at this stage.
     echo "${SCRIPT_PATH}/req.sh" \
-        --enable antigravity:prompts,skills \
+        --enable antigravity:prompts,agents,skills \
         --enable claude:prompts,agents,skills \
-        --enable codex:prompts,skills \
+        --enable codex:prompts,agents,skills \
         --enable opencode:prompts,agents,skills \
         --enable "pi:prompts,skills" \
         --enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \
@@ -142,9 +144,9 @@ else
     # @details Writes the canonical provider and static-check configuration to the
     # disposable `~/.config/usereq/config.json` without installing artifacts.
     "${SCRIPT_PATH}/req.sh" \
-        --enable antigravity:prompts,skills \
+        --enable antigravity:prompts,agents,skills \
         --enable claude:prompts,agents,skills \
-        --enable codex:prompts,skills \
+        --enable codex:prompts,agents,skills \
         --enable opencode:prompts,agents,skills \
         --enable "pi:prompts,skills" \
         --enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \

@@ -22,7 +22,7 @@
 
 <p align="center">
 <strong>The `req` CLI provisions requirements-driven development prompts for LLM agents.</strong><br>
-In more detail: useReq packages a catalog of requirements-engineering prompts (write, create, change, implement, check, and more) and installs them as user-level prompts, commands, skills, and agents for the CLIs and agents you already use — exposed as `/req-<name>`, `/req:<name>`, `/skill:req-<name>`, `$req-<name>`, or `/req-<name>.prompt` depending on the provider. It also ships an embedded source-analysis toolkit (token counting, references, compression, construct extraction, static checks) that operates on your project across 20 programming languages, plus git-worktree helpers for parallel task execution. Everything is driven by one user-global configuration file (`~/.config/usereq/config.json`); nothing is written into your project repository. It runs as a Python package (installed as `req` or `usereq`) or directly via `uvx`.
+In more detail: useReq packages a catalog of requirements-engineering prompts (write, create, change, implement, check, and more) and installs them as user-level prompts, commands, skills, and agents for the CLIs and agents you already use — exposed as `/req-<name>`, `/req:<name>`, `/skill:req-<name>`, or `$req-<name>` depending on the provider. It also ships an embedded source-analysis toolkit (token counting, references, compression, construct extraction, static checks) that operates on your project across 20 programming languages, plus git-worktree helpers for parallel task execution. Everything is driven by one user-global configuration file (`~/.config/usereq/config.json`); nothing is written into your project repository. It runs as a Python package (installed as `req` or `usereq`) or directly via `uvx`.
 </p>
 
 <p align="center">
@@ -147,7 +147,7 @@ req --uninstall     # executes `uv tool uninstall cli-usereq` on Linux and clean
 - `req uninstall` — reciprocal of `install`: removes the `req-*` artifacts of the configured providers from the user-level provider directories.
 - `req show` — prints the active configuration as tables: settings (including `auto-install`), provider enablement status, one dedicated per-provider table showing the installation status of the `prompts`, `agents`, and `skills` components detected on disk, and the enabled static-check entries.
 
-Artifacts are always installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`); nothing is ever written into the project repository.
+Artifacts are always installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.gemini/config`, `~/.agents`, `~/.config/opencode`, `~/.pi/agent`); nothing is ever written into the project repository.
 
 ## Configuration
 
@@ -318,10 +318,10 @@ A startup release check queries the latest PyPI release (idle-gated to at most o
 ### High-Level Assessment
 
 - 🌟 **pi.dev CLI** 🌟 - Supports user-level prompt templates and Agent Skills from `~/.pi/agent/prompts/` and `~/.pi/agent/skills/`.
-- 🌟 **Antigravity CLI** 🌟 - Evolution of Gemini CLI; supports user-level TOML commands and skills.
+- 🌟 **Antigravity CLI** 🌟 - Evolution of Gemini CLI; supports user-level workflows, agents, and skills from `~/.gemini/config/`.
 - 👍 **OpenCode** 👍 - Many models available; supports user-level commands, agents, and skills from `~/.config/opencode/`.
 - ⚖️ **Claude Code** ⚖️ - Only supports Claude/Anthropic models; supports user-level commands, agents, and skills from `~/.claude/`.
-- 🆗 **OpenAI Codex** 🆗 - Only supports OpenAI models; supports user-level prompts and skills from `~/.codex/`.
+- 🆗 **OpenAI Codex** 🆗 - Only supports OpenAI models; supports user-level prompts (deprecated), agents, and skills from `~/.codex/` and `~/.agents/`.
 
 ### useReq/req Support
 
@@ -348,12 +348,12 @@ GitHub Copilot and Kiro CLI are not supported: their prompt/agent/skill configur
 
 ### CLI Prompt Details
 
-- ✅ pi.dev CLI: [`/req-create.prompt`]
-  - useReq generates `~/.pi/agent/prompts/req-create.prompt.md`.
-  - pi prompt templates use the filename without `.md` as the command name, so the generated `.prompt` suffix remains part of the slash command.
+- ✅ pi.dev CLI: [`/req-create`]
+  - useReq generates `~/.pi/agent/prompts/req-create.md`.
+  - pi prompt templates use the filename without `.md` as the command name.
   - Prompt arguments are supported by pi prompt templates (`$1`, `$2`, `$@`, `$ARGUMENTS`).
-- ✅ Antigravity CLI: [`/req:create`]
-- ✅ OpenAI Codex: [`/prompts:/req-create`]
+- ✅ Antigravity CLI: [`/req-<name>` workflows under `~/.gemini/config/workflows/`]
+- ✅ OpenAI Codex: [`/prompts:/req-create`] (deprecated)
 - ✅ Claude Code: [`/req:create`]
 - ✅ OpenCode: [`/req-create`]
 
@@ -361,8 +361,10 @@ GitHub Copilot and Kiro CLI are not supported: their prompt/agent/skill configur
 
 - ❌ pi.dev CLI
   - useReq does not generate agents for provider `pi`; it emits prompts and skills only.
-- ❌ Antigravity CLI
-- ❌ OpenAI Codex
+- ✅ Antigravity CLI
+  - useReq generates `~/.gemini/config/agents/req-<name>/agent.md`.
+- ✅ OpenAI Codex
+  - useReq generates `~/.codex/agents/req-<name>.toml`.
 - ✅ Claude Code: [`@agent-req-create`]
 - ✔️ OpenCode: [`<TAB> ➡️ Req.Create ↩️`]
   - **Starts a new session** (`/new`) for every prompt.

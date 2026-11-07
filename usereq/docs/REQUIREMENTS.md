@@ -138,9 +138,9 @@ No explicit performance optimizations identified.
 - **SRS-417**: MUST implement the following behavior: For every enabled provider, `show` MUST print a dedicated table reporting the installation status of the `prompts`, `agents`, and `skills` components detected from user-level directories.
 - **SRS-462**: MUST implement the following behavior: The `show` Providers table MUST print the `Prompts`, `Agents`, and `Skills` columns rendering, for every provider row, the user-level installation location of each artifact type.
 - **SRS-463**: MUST implement the following behavior: Each `Prompts`, `Agents`, and `Skills` cell MUST render a home-relative `~/`-prefixed path joining the provider hardcoded SRS-382..SRS-386 artifact root with the installed filename pattern.
-- **SRS-464**: MUST implement the following behavior: The `Skills` cell MUST render `{skills_root}/req-{prompt_name}/SKILL.md`, and the `Agents` cell MUST render `{agents_root}/req-{prompt_name}.md` for providers supporting agents.
-- **SRS-465**: MUST implement the following behavior: The `Prompts` cell MUST render `{prompts_root}/{prompt_name}.toml` for `antigravity`, `{prompts_root}/{prompt_name}.md` for `claude`, and `{prompts_root}/req-{prompt_name}.md` for `codex`.
-- **SRS-466**: MUST implement the following behavior: The `pi` Prompts cell MUST render `{prompts_root}/req-{prompt_name}.prompt.md`, the `opencode` Prompts cell `{prompts_root}/req-{prompt_name}.md`, and cells without a hardcoded artifact target MUST render `-`.
+- **SRS-464**: MUST implement the following behavior: The `Skills` cell MUST render `{skills_root}/req-{prompt_name}/SKILL.md`, and the `Agents` cell MUST render `{agents_root}/req-{prompt_name}.md` for `claude` and `opencode`.
+- **SRS-465**: MUST implement the following behavior: The `Prompts` cell MUST render `{prompts_root}/req-{prompt_name}.md` for `antigravity` and `codex`, and `{prompts_root}/{prompt_name}.md` for `claude` and `opencode`.
+- **SRS-466**: MUST implement the following behavior: The `pi` Prompts cell MUST render `{prompts_root}/req-{prompt_name}.md`, and cells without a hardcoded artifact target MUST render `-`.
 - **SRS-418**: MUST implement the following behavior: The `install` subcommand MUST install or update the providers persisted under `"providers"` and MUST print the installation summary report.
 - **SRS-419**: MUST implement the following behavior: The `uninstall` subcommand MUST remove `req-*` artifacts of the providers persisted under `"providers"` per SRS-390 semantics.
 - **SRS-420**: MUST implement the following behavior: `auto-install` MUST default to enabled; `--disable-auto-install` MUST persist `"auto-install": false` and `--enable-auto-install` MUST persist `"auto-install": true` in `~/.config/usereq/config.json`.
@@ -163,9 +163,9 @@ No explicit performance optimizations identified.
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider prompts, agents, and skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
 - **SRS-382**: MUST install provider `claude` prompts to `~/.claude/commands/req`, agents to `~/.claude/agents`, and skills to `~/.claude/skills`.
-- **SRS-383**: MUST install provider `codex` prompts to `~/.codex/prompts` and skills to `~/.codex/skills`.
-- **SRS-384**: MUST install provider `antigravity` TOML prompt commands to `~/.antigravity/commands/req` and skills to `~/.antigravity/skills`.
-- **SRS-385**: MUST install provider `opencode` prompts to `~/.config/opencode/command`, agents to `~/.config/opencode/agent`, and skills to `~/.config/opencode/skill`.
+- **SRS-383**: MUST install provider `codex` prompts to `~/.codex/prompts`, agents to `~/.codex/agents`, and skills to `~/.agents/skills`.
+- **SRS-384**: MUST install provider `antigravity` prompts to `~/.gemini/config/workflows`, agents to `~/.gemini/config/agents`, and skills to `~/.gemini/config/skills`.
+- **SRS-385**: MUST install provider `opencode` prompts to `~/.config/opencode/commands/req`, agents to `~/.config/opencode/agents`, and skills to `~/.config/opencode/skills`.
 - **SRS-386**: MUST install provider `pi` prompts to `~/.pi/agent/prompts` and skills to `~/.pi/agent/skills`.
 - **SRS-095**: MUST generate `SKILL.md` for each skill subdirectory of every enabled provider using prompt body substituted with only `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, and `%%ARGS%%` tokens, and provider-resolved YAML front matter.
 - **SRS-368**: MUST set `SKILL.md` YAML `name` to `req-<prompt_name>` and `description` to the YAML-escaped output of `extract_skill_description(prompt_frontmatter)`.
@@ -175,7 +175,7 @@ No explicit performance optimizations identified.
 - **SRS-404**: MUST NOT copy, create, update, or delete guideline files in project or user directories.
 - **SRS-371**: MUST implement the following behavior: When `src/usereq/resources/prompts/flowchart.md` exists, provider resource generation MUST emit `req-flowchart` artifacts for every enabled provider/artifact combination supported by packaged prompt templates.
 
-- **SRS-353**: MUST implement the following behavior: Provider `pi` prompt installation MUST write `req-<prompt_name>.prompt.md` files with `description` and optional `argument-hint` front matter under `~/.pi/agent/prompts`.
+- **SRS-353**: MUST implement the following behavior: Provider `pi` prompt installation MUST write `req-<prompt_name>.md` files with `description` and optional `argument-hint` front matter under `~/.pi/agent/prompts`.
 
 - **SRS-354**: MUST implement the following behavior: Provider `pi` skill installation MUST write `req-<prompt_name>/SKILL.md` files under `~/.pi/agent/skills`.
 
@@ -184,6 +184,10 @@ No explicit performance optimizations identified.
 - **SRS-367**: MUST implement the following behavior: `scripts/test-install.sh` MUST isolate `HOME` to a disposable directory and delete `~/.pi/agent/prompts` and `~/.pi/agent/skills` inside it before its clean-install execution path.
 
 - **SRS-263**: MUST implement the following behavior: The CLI MUST treat files under `src/usereq/resources/prompts` as read-only package inputs and MUST NOT create, modify, overwrite, rename, or delete files in that directory.
+- **SRS-467**: MUST implement the following behavior: Provider `antigravity` prompt installation MUST write `req-<prompt_name>.md` Markdown workflow files with `description` and optional `argument-hint` front matter under `~/.gemini/config/workflows`.
+- **SRS-468**: MUST implement the following behavior: Provider `antigravity` agent installation MUST write `req-<prompt_name>/agent.md` files with `name` and `description` front matter under `~/.gemini/config/agents`.
+- **SRS-469**: MUST implement the following behavior: Provider `codex` agent installation MUST write `req-<prompt_name>.toml` files with `description` and `prompt` TOML keys under `~/.codex/agents`.
+- **SRS-470**: MUST implement the following behavior: Provider `codex` prompt artifacts MUST remain installed at `~/.codex/prompts/req-{prompt_name}.md` and MUST be treated as deprecated.
 
 ### 3.4 Removal and Cleanup
 - **SRS-390**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.

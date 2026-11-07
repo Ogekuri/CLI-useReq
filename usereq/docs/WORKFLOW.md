@@ -209,14 +209,14 @@
           - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
         - `format_home_relative_path(...)`: render guideline paths in `~/` home-relative form for `%%GUIDELINES_PATH%%` and `%%GUIDELINES_FILES%%` [`src/usereq/cli.py`]
       - `generate_guidelines_file_items(...)`: list home-relative guideline entries printed after installation [`src/usereq/cli.py`]
-      - `md_to_toml(...)`: convert Markdown prompt templates to Antigravity TOML commands [`src/usereq/cli.py`]
+      - `md_to_toml(...)`: convert Markdown prompt templates to codex agent TOML definitions under `~/.codex/agents` [`src/usereq/cli.py`]
       - `replace_tokens(...)`: apply token substitutions inside generated TOML command files [`src/usereq/cli.py`]
       - `_build_provider_modules_map(...)`: derive ordered per-provider module-entry lines by merging applicable provider-scoped options per artifact item from the effective persisted `--enable` specs [`src/usereq/cli.py`]
       - `_format_install_table(...)`: render Unicode box-drawing installation summary table with prompt-column wrapping and non-wrapped per-artifact module-entry lines [`src/usereq/cli.py`]
       - `_colorize_table_border(...)`: apply bright-red ANSI styling to Unicode border glyphs before stdout emission [`src/usereq/cli.py`]
 - **External Boundaries**
   - `subprocess.run(...)` / `subprocess.check_output(...)`: invokes OS-level commands and static-check tools (e.g., git queries, checker executables) [`src/usereq/cli.py`, `src/usereq/static_check.py`]
-  - Filesystem read/write boundaries: `~/.config/usereq/config.json`, user-level provider directories under the user HOME (`~/.claude`, `~/.codex`, `~/.antigravity`, `~/.config/opencode`, `~/.pi/agent`), read-only installation-owned guidelines directory under `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines`, project docs directories, selected source files [`src/usereq/cli.py`, `src/usereq/token_counter.py`, `src/usereq/compress_files.py`]
+  - Filesystem read/write boundaries: `~/.config/usereq/config.json`, user-level provider directories under the user HOME (`~/.gemini/config`, `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode`, `~/.pi/agent`), read-only installation-owned guidelines directory under `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines`, project docs directories, selected source files [`src/usereq/cli.py`, `src/usereq/token_counter.py`, `src/usereq/compress_files.py`]
   - Standard stream I/O boundaries: stdout/stderr reporting for command outputs and status [`src/usereq/cli.py`, `src/usereq/static_check.py`, `src/usereq/token_counter.py`]
 
 ### `PROC:req-sh`
