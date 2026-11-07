@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.68.1](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.1) - 2026-11-07
+### 🐛  Bug Fixes
+- correct and trim inline --help usage and descriptions [useReq] *(cli)*
+  - Removed phantom 'req -c' token from the usage synopsis; the option
+  - does not exist and 'req -c' is not a valid invocation.
+  - Added the parsed [--develop] [--dev] options to the usage synopsis.
+  - Removed the duplicated per-language TAG catalog from the files-find
+  - and find help texts; the catalog is still printed at runtime on
+  - invalid TAG or non-matching filter errors.
+  - Removed the version marker from the usage line and internal SRS
+  - identifiers from user-facing help text; dropped the now-unused
+  - _get_available_tags_help helper.
+  - Added reproducer unit test test_help_usage_line_is_accurate_and_
+  - concise; tests/test_cli.py 120 passed; static-check clean.
+
+### 🚜  Changes
+- BREAKING CHANGE: remove legacy flags, compat logic, and config refs in help [useReq] *(cli)*
+  - Removed legacy --update and --remove flags (duplicates of the
+  - canonical install and uninstall subcommands); SRS-034 lists them as
+  - removed, SRS-064/SRS-396 updated, SRS-390 marked removed-legacy.
+  - Removed backward-compatibility parsing of --git-base on all analysis
+  - subcommands and of both bases on the files-* subcommands (SRS-410);
+  - SRS-412 test requirement updated accordingly.
+  - Removed compat logic: run_remove(), --update/--remove interplay
+  - validation, dead update_active branches in run(), and stale
+  - --provider/legacy docstring naming (SRS-275).
+  - Inline --help no longer references ~/.config/usereq/config.json or
+  - persistence operations (new SRS-446); README legacy-flag docs
+  - removed; 438 tests pass; static-check clean.
+- BREAKING CHANGE: require --prj-base/--git-base only where actually used [useReq] *(cli)*
+  - SRS-396/SRS-397/SRS-410 updated: files-tokens, files-references,
+  - files-compress, and files-find no longer require --prj-base; no
+  - analysis subcommand requires --git-base anymore.
+  - main() no longer validates both bases before every subcommand;
+  - handlers that consume --prj-base enforce it via _require_prj_base.
+  - Help synopsis, option help, subcommand usage lines, and subparsers
+  - description document exactly the mandatory base arguments (SRS-411).
+  - README.md base-requirement section and command table updated.
+  - tests/test_cli.py: git-base requirement test updated to the new
+  - no-base semantics; 438 tests passed; static-check clean.
+- BREAKING CHANGE: rename --github upgrade option to --develop and add --dev alias [useReq] *(cli)*
+  - REQUIREMENTS.md: SRS-440 now mandates `--upgrade --develop` for the
+  - GitHub git source; new SRS-445 mandates `--dev` as equivalent alias;
+  - SRS-443 updated to the new flag names.
+  - cli.py: build_parser defines `--develop`/`--dev`; main() maps both
+  - argv tokens to the GitHub upgrade source; docstrings updated.
+  - README.md: documents only the new flags (SRS-352, SRS-443).
+  - WORKFLOW.md/REFERENCES.md: runtime model and symbol index refreshed.
+  - Tests: tests/test_update_check.py + tests/test_cli.py 146 passed.
+
+### 📚  Documentation
+- Update README.md file.
+
 ## [0.68.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0) - 2026-11-06
 ### ⛰️  Features
 - Update prompts.
@@ -1381,6 +1434,7 @@
 - \[0.66.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.66.0
 - \[0.67.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.67.0
 - \[0.68.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.0
+- \[0.68.1\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.1
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1449,3 +1503,4 @@
 [0.66.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.65.0..v0.66.0
 [0.67.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.66.0..v0.67.0
 [0.68.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0
+[0.68.1]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.1
