@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.68.2](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.2) - 2026-11-07
+## [0.68.3](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.3) - 2026-11-07
 ### ⛰️  Features
 - Update prompts.
 
@@ -19,6 +19,30 @@
   - concise; tests/test_cli.py 120 passed; static-check clean.
 
 ### 🚜  Changes
+- BREAKING CHANGE: migrate release workflow JavaScript actions to Node24 [useReq] *(release)*
+  - Bump JS actions to Node24-runtime majors: checkout@v5, setup-python@v6,
+  - setup-uv@v7, upload-artifact@v6, download-artifact@v7,
+  - attest-build-provenance@v3, action-gh-release@v3 (SRS-455..SRS-457)
+  - Forbid transitional ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION and
+  - FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 overrides (SRS-458)
+  - Add tests/test_release_workflow.py Node24 runtime floor tests (SRS-459)
+  - Update REQUIREMENTS.md (v1.18) and WORKFLOW.md release unit
+- remove use-req console-script deployment [useReq] *(packaging)*
+  - REQUIREMENTS: revise section 1.2 primary interface; add SRS-454 mandating
+  - exactly the req and usereq console scripts in pyproject.toml
+  - pyproject.toml: drop the use-req entry point from [project.scripts];
+  - req and usereq remain bound to usereq.cli:main
+  - README: remove use-req invocability claims from install sections
+  - WORKFLOW: update PROC:main lifecycle trigger to req/usereq only
+- install latest tagged GitHub release for --develop/--dev [useReq] *(upgrade)*
+  - REQUIREMENTS: revise SRS-440; add SRS-451..SRS-453 defining GitHub
+  - releases/latest tag resolution for --upgrade --develop/--dev
+  - cli: resolve raw tag_name through the GitHub releases API regardless
+  - of branch, pin uv --from git+...@<TAG>, fail with exit code 1 when
+  - tag resolution fails without spawning uv
+  - tests: align test_update_check.py/test_cli.py upgrade suites with the
+  - tag-pinned command, raw-tag fetch, and failure paths
+  - README: document the tag-resolved GitHub upgrade channel
 - rename upstream Prompts repository to CLI-Prompts [useReq] *(prompts-update)*
   - SRS-375: update upstream repository URL to https://github.com/Ogekuri/CLI-Prompts
   - scripts/prompts-update.sh: rename clone URLs (HTTPS/HTTPS-.git/SSH), releases API endpoint, Doxygen docs, log messages, and temp clone directory to CLI-Prompts
@@ -1451,7 +1475,7 @@
 - \[0.66.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.66.0
 - \[0.67.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.67.0
 - \[0.68.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.0
-- \[0.68.2\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.2
+- \[0.68.3\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.3
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1520,4 +1544,4 @@
 [0.66.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.65.0..v0.66.0
 [0.67.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.66.0..v0.67.0
 [0.68.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0
-[0.68.2]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.2
+[0.68.3]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.3
