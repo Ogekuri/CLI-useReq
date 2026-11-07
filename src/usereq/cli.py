@@ -421,15 +421,17 @@ GITHUB_RELEASES_LATEST_URL = (
     f"https://api.github.com/repos/{GITHUB_REPOSITORY_OWNER}/"
     f"{GITHUB_REPOSITORY_NAME}/releases/latest"
 )
-"""! @brief Hardcoded GitHub API endpoint queried by `--ver`/`--version` for the GitHub latest version (SRS-442).
+"""! @brief Hardcoded GitHub API endpoint queried by `--ver`/`--version` and `--upgrade --develop` (SRS-442, SRS-451).
 @details Intermediate and test releases are published on GitHub; this endpoint resolves the
-latest GitHub release tag for display purposes only and is never used by the default
-`--upgrade` path, which installs from the PyPI index (SRS-343, SRS-440)."""
+latest tagged release independently of the branch holding the tag. The default `--upgrade`
+path never queries it and installs from the PyPI index (SRS-343, SRS-440)."""
 
 GITHUB_UPGRADE_SOURCE = (
     f"git+https://github.com/{GITHUB_REPOSITORY_OWNER}/{GITHUB_REPOSITORY_NAME}.git"
 )
-"""! @brief Hardcoded git source used only by `--upgrade --develop` (alias `--dev`) installs (SRS-440, SRS-445)."""
+"""! @brief Hardcoded git source base used only by `--upgrade --develop` (alias `--dev`) installs (SRS-440, SRS-445).
+@details The uv `--from` reference appends `@<TAG>` with the raw SRS-451 release tag so the
+install pins the latest tagged release regardless of the branch holding the tag (SRS-452)."""
 
 PYPI_PROJECT_JSON_URL = "https://pypi.org/pypi/cli-usereq/json"
 """! @brief Hardcoded PyPI JSON API endpoint for latest-version resolution (SRS-430).
@@ -578,8 +580,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--dev",
         action="store_true",
         help=(
-            "With --upgrade: install from the develop GitHub repository "
-            "git+https://github.com/Ogekuri/CLI-useReq.git instead of PyPI. "
+            "With --upgrade: install the latest tagged GitHub release "
+            "(git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>, resolved via the "
+            "GitHub releases API regardless of branch) instead of PyPI. "
             "--dev is an equivalent alias of --develop."
         ),
     )
@@ -977,20 +980,56 @@ def maybe_print_version(argv: list[str], pypi_latest: Optional[str] = None) -> b
     return False
 
 
+def _resolve_github_upgrade_tag() -> str:
+    """!
+    @brief Resolve the raw latest GitHub release tag for `--upgrade --develop` installations.
+    @details Queries `GITHUB_RELEASES_LATEST_URL` through
+    `fetch_github_latest_version(raw_tag=True)` and returns the raw `tag_name` value with the
+    optional `v` prefix preserved so the uv `--from` reference targets an existing git tag
+    regardless of the branch holding it (SRS-451). Maps fetch exceptions and empty payloads to
+    one English `ReqError` so no uv process is spawned (SRS-453). Complexity: O(1).
+    Side effects: one HTTP request.
+    @return {str} Raw latest release tag, e.g. `v0.0.76`.
+    @throws {ReqError} Raised with exit code 1 when the GitHub query fails or returns no tag (SRS-453).
+    @satisfies SRS-451, SRS-453
+    """
+    failure_message = (
+        "Error: unable to resolve the latest GitHub release tag for "
+        f"--upgrade --develop from {GITHUB_RELEASES_LATEST_URL}"
+    )
+    try:
+        resolved_tag = fetch_github_latest_version(raw_tag=True)
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        ValueError,
+    ) as exc:
+        raise ReqError(f"{failure_message} ({exc})", 1) from exc
+    if not resolved_tag:
+        raise ReqError(failure_message, 1)
+    return resolved_tag
+
+
 def run_upgrade(use_github: bool = False) -> None:
     """!
-    @brief Executes the upgrade using uv from the PyPI index or the GitHub repository.
-        @param use_github {bool} When True, install from `GITHUB_UPGRADE_SOURCE` instead of the
-        PyPI index (`--upgrade --develop` or equivalent alias `--dev`, SRS-440, SRS-445).
+    @brief Executes the upgrade using uv from the PyPI index or the latest GitHub release tag.
+        @param use_github {bool} When True, install the latest tagged GitHub release instead of
+        the PyPI index (`--upgrade --develop` or equivalent alias `--dev`, SRS-440, SRS-445).
     @details Builds `uv tool install cli-usereq --force` against the PyPI index by default
-    (SRS-343); appends `--from git+https://github.com/Ogekuri/CLI-useReq.git` only when
-    `use_github` is True (SRS-440). Executes the command only on Linux; on non-Linux platforms
-    prints the manual command and skips uv execution.
-    @throws ReqError If upgrade fails.
+    (SRS-343). When `use_github` is True, resolves the latest GitHub release tag through
+    `_resolve_github_upgrade_tag()` (SRS-451) and appends
+    `--from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` regardless of the branch
+    holding that tag (SRS-440, SRS-452). Executes the command only on Linux; on non-Linux
+    platforms prints the manual command and skips uv execution.
+    @throws {ReqError} When the SRS-451 GitHub tag resolution fails (exit code 1, SRS-453) or
+    when the uv process fails.
     @return {None} Function return value.
+    @note Tag resolution precedes the platform gate so the non-Linux manual command embeds the
+    resolved tag (SRS-452).
     @note The `--develop`/`--dev` argv alias mapping to `use_github=True` is resolved by
     `main(...)` before calling this function.
-    @satisfies SRS-343, SRS-440, SRS-445
+    @satisfies SRS-343, SRS-440, SRS-445, SRS-451, SRS-452, SRS-453
     """
     command = [
         "uv",
@@ -1000,7 +1039,8 @@ def run_upgrade(use_github: bool = False) -> None:
         "--force",
     ]
     if use_github:
-        command += ["--from", GITHUB_UPGRADE_SOURCE]
+        resolved_tag = _resolve_github_upgrade_tag()
+        command += ["--from", f"{GITHUB_UPGRADE_SOURCE}@{resolved_tag}"]
     detected_system = platform.system() or "Unknown"
     if detected_system != "Linux":
         print(
@@ -1266,21 +1306,28 @@ def fetch_pypi_latest_version(
 
 def fetch_github_latest_version(
     timeout_seconds: float = RELEASE_CHECK_TIMEOUT_SECONDS,
+    *,
+    raw_tag: bool = False,
 ) -> Optional[str]:
     """!
     @brief Fetch the latest GitHub release version from the GitHub latest-release API.
         @param timeout_seconds {float} Timeout for the HTTP GET request.
+        @param raw_tag {bool} When True, return the raw `tag_name` value with its optional
+        `v` prefix preserved; when False, normalize through `normalize_release_tag`.
     @details Issues `GET https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` with
-    GitHub JSON `Accept` headers, parses `tag_name`, and strips the optional `v` prefix through
-    `normalize_release_tag`. Complexity: O(1). Side effects: one HTTP request. Used only by
-    `--ver`/`--version` display (SRS-441, SRS-442); never by the startup release-check (SRS-430).
-    @return {Optional[str]} Normalized latest GitHub release version; None when `tag_name` is
-    absent or not a non-empty string.
+    GitHub JSON `Accept` headers and parses `tag_name`. The endpoint answers with the latest
+    tagged release independently of the branch holding the tag. Normalized output feeds the
+    `--ver`/`--version` display (SRS-441, SRS-442); raw output feeds the `--upgrade --develop`
+    tag resolution (SRS-451). The startup release-check never calls this function (SRS-430).
+    Complexity: O(1). Side effects: one HTTP request.
+    @return {Optional[str]} Latest GitHub release tag: raw whitespace-stripped `tag_name` when
+    `raw_tag` is True, `v`-prefix-stripped otherwise; None when `tag_name` is absent or not a
+    non-empty string.
     @throws {urllib.error.HTTPError} When the endpoint answers with an HTTP error status.
     @throws {urllib.error.URLError} On network-level failures.
     @throws {TimeoutError} When the request exceeds `timeout_seconds`.
     @throws {json.JSONDecodeError} When the response body is not valid JSON.
-    @satisfies SRS-442
+    @satisfies SRS-442, SRS-451
     """
     request = urllib.request.Request(
         GITHUB_RELEASES_LATEST_URL,
@@ -1296,7 +1343,7 @@ def fetch_github_latest_version(
     tag = payload.get("tag_name")
     if not isinstance(tag, str) or not tag.strip():
         return None
-    return normalize_release_tag(tag)
+    return tag.strip() if raw_tag else normalize_release_tag(tag)
 
 
 def format_unix_timestamp_utc(timestamp_seconds: int) -> str:

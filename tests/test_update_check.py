@@ -551,13 +551,39 @@ class TestOnlineUpdateCheck(unittest.TestCase):
             check=False,
         )
 
-    def test_upgrade_command_with_github_installs_from_git_source(self) -> None:
-        """--upgrade --github must install from the GitHub git source (SRS-440)."""
+    def test_fetch_github_latest_version_raw_tag_preserves_v_prefix(self) -> None:
+        """raw_tag=True must return tag_name without stripping the v prefix (SRS-451)."""
+        # Arrange
+        response_mock = MagicMock()
+        response_mock.read.return_value = json.dumps({"tag_name": " v9.9.9 "}).encode("utf-8")
+        urlopen_cm = MagicMock()
+        urlopen_cm.__enter__.return_value = response_mock
+        urlopen_cm.__exit__.return_value = None
+
+        # Act
+        with patch("usereq.cli.load_package_version", return_value="0.0.1"):
+            with patch("usereq.cli.urllib.request.urlopen", return_value=urlopen_cm):
+                raw_tag = cli.fetch_github_latest_version(raw_tag=True)
+                normalized_tag = cli.fetch_github_latest_version(raw_tag=False)
+
+        # Assert
+        self.assertEqual(raw_tag, "v9.9.9")
+        self.assertEqual(normalized_tag, "9.9.9")
+
+    def test_upgrade_command_with_github_installs_latest_release_tag(self) -> None:
+        """--upgrade --develop must pin the raw latest GitHub release tag (SRS-440, SRS-451, SRS-452)."""
+        # Arrange
         result_mock = MagicMock(returncode=0)
 
-        with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
+        # Act
+        with (
+            patch("usereq.cli.fetch_github_latest_version", return_value="v9.9.9") as fetch_mock,
+            patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock,
+        ):
             cli.run_upgrade(use_github=True)
 
+        # Assert
+        fetch_mock.assert_called_once_with(raw_tag=True)
         run_mock.assert_called_once_with(
             [
                 "uv",
@@ -566,10 +592,47 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 cli.TOOL_PROGRAM_NAME,
                 "--force",
                 "--from",
-                "git+https://github.com/Ogekuri/CLI-useReq.git",
+                "git+https://github.com/Ogekuri/CLI-useReq.git@v9.9.9",
             ],
             check=False,
         )
+
+    def test_upgrade_command_with_github_fails_when_tag_unfetchable(self) -> None:
+        """GitHub tag-resolution failure must raise ReqError code 1 without executing uv (SRS-453)."""
+        # Arrange
+        # Act
+        with (
+            patch(
+                "usereq.cli.fetch_github_latest_version",
+                side_effect=urllib.error.URLError("offline"),
+            ),
+            patch("usereq.cli.subprocess.run") as run_mock,
+            self.assertRaises(cli.ReqError) as context,
+        ):
+            cli.run_upgrade(use_github=True)
+
+        # Assert
+        self.assertEqual(context.exception.code, 1)
+        self.assertIn(
+            "unable to resolve the latest GitHub release tag",
+            context.exception.message,
+        )
+        run_mock.assert_not_called()
+
+    def test_upgrade_command_with_github_fails_when_tag_missing(self) -> None:
+        """Empty GitHub tag payload must raise ReqError code 1 without executing uv (SRS-453)."""
+        # Arrange
+        # Act
+        with (
+            patch("usereq.cli.fetch_github_latest_version", return_value=None),
+            patch("usereq.cli.subprocess.run") as run_mock,
+            self.assertRaises(cli.ReqError) as context,
+        ):
+            cli.run_upgrade(use_github=True)
+
+        # Assert
+        self.assertEqual(context.exception.code, 1)
+        run_mock.assert_not_called()
 
     def test_upgrade_command_fails_on_nonzero_exit(self) -> None:
         """Upgrade command must raise ReqError when uv exits with non-zero status."""

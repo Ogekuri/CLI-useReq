@@ -116,7 +116,7 @@ This exposes the CLI as `req` (also callable as `use-req` / `usereq` or `python 
 req --upgrade
 ```
 
-On Linux this executes `uv tool install cli-usereq --force` from the PyPI index; on other platforms the manual command is printed and `uv` is not executed. Use `req --upgrade --develop` (or the equivalent `req --upgrade --dev`) to install the latest GitHub release instead of PyPI. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
+On Linux this executes `uv tool install cli-usereq --force` from the PyPI index; on other platforms the manual command is printed and `uv` is not executed. Use `req --upgrade --develop` (or the equivalent `req --upgrade --dev`) to install the latest tagged GitHub release instead of PyPI. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
 
 ### Install from GitHub (alternative channel)
 
@@ -133,7 +133,7 @@ uvx --from git+https://github.com/Ogekuri/CLI-useReq.git req --help
 req --upgrade --develop
 ```
 
-On Linux `req --upgrade --develop` (or `req --upgrade --dev`) executes `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git`; on other platforms the manual command is printed and `uv` is not executed.
+On Linux `req --upgrade --develop` (or `req --upgrade --dev`) executes `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`, where `<TAG>` is the latest tagged release resolved through the GitHub releases API regardless of the branch holding it; on other platforms the manual command is printed and `uv` is not executed.
 
 ### Tool removal
 
@@ -285,7 +285,7 @@ Notes:
 
 - `--verbose` / `--debug` — detailed and diagnostic output.
 - `--ver` / `--version` — print the installed package version, query PyPI and GitHub, and print `PyPI latest: <version>` and `GitHub latest: <version>` lines (`unknown` when a repository cannot be reached).
-- `--develop` / `--dev` — with `--upgrade`: install from the GitHub repository `git+https://github.com/Ogekuri/CLI-useReq.git` instead of PyPI; `--dev` is an equivalent alias of `--develop`.
+- `--develop` / `--dev` — with `--upgrade`: install the latest tagged GitHub release from `git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`, with `<TAG>` resolved through the GitHub releases API regardless of branch, instead of PyPI; `--dev` is an equivalent alias of `--develop`.
 - `-h` / `--help` — print command help and exit.
 
 A startup release check queries the latest PyPI release (idle-gated to at most once per hour; once per day on API failures) and prints a bright-green stderr notice when a newer version is available.

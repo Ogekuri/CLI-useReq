@@ -1412,8 +1412,10 @@ class TestUpgradeUninstall(unittest.TestCase):
         self.assertEqual(command, ["uv", "tool", "install", "cli-usereq", "--force"])
 
     def test_upgrade_with_github_on_linux_executes_uv_install_from_git(self) -> None:
+        """SRS-440/SRS-452: GitHub upgrade pins the latest release tag on the git source."""
         with (
             patch("usereq.cli.platform.system", return_value="Linux"),
+            patch("usereq.cli.fetch_github_latest_version", return_value="v9.9.9"),
             patch("usereq.cli.subprocess.run") as mock_run,
         ):
             mock_run.return_value.returncode = 0
@@ -1429,7 +1431,7 @@ class TestUpgradeUninstall(unittest.TestCase):
                 "cli-usereq",
                 "--force",
                 "--from",
-                "git+https://github.com/Ogekuri/CLI-useReq.git",
+                "git+https://github.com/Ogekuri/CLI-useReq.git@v9.9.9",
             ],
         )
 

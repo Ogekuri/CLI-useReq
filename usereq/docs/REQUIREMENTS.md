@@ -142,7 +142,7 @@ No explicit performance optimizations identified.
 - **SRS-421**: MUST implement the following behavior: When `--upgrade` succeeds and `auto-install` is enabled, the CLI MUST execute the provider installation flow with persisted providers regardless of `--prj-base` presence.
 - **SRS-450**: MUST implement the following behavior: When post-upgrade auto-install runs and no provider spec is persisted, the CLI SHOULD print an English stderr warning and skip installation.
 - **SRS-422**: MUST implement the following behavior: `--disable-static-check` and `--disable` with unknown language or provider tokens MUST print an English error and exit with code 1.
-- **SRS-440**: MUST implement the following behavior: `--upgrade --develop` MUST install from `git+https://github.com/Ogekuri/CLI-useReq.git` instead of the PyPI index; without `--develop`, `--upgrade` MUST install from the PyPI index.
+- **SRS-440**: MUST implement the following behavior: `--upgrade --develop` MUST install the latest tagged GitHub release resolved per SRS-451; without `--develop`/`--dev`, `--upgrade` MUST install from the PyPI index.
 - **SRS-445**: MUST implement the following behavior: `--dev` MUST be accepted as an equivalent command-line alias of `--develop` when selecting the GitHub upgrade source for `--upgrade`.
 - **SRS-441**: MUST implement the following behavior: `--ver`/`--version` MUST print the installed version as the first line followed by `PyPI latest: <version>` and `GitHub latest: <version>` lines.
 - **SRS-442**: MUST implement the following behavior: `--ver`/`--version` MUST query the PyPI JSON API and the GitHub latest-release API bypassing idle gating; unfetchable versions MUST print `unknown`.
@@ -151,6 +151,9 @@ No explicit performance optimizations identified.
 - **SRS-447**: MUST accept the `install` subcommand without `--prj-base` and treat `--prj-base` as an optional argument for it.
 - **SRS-448**: MUST implement the following behavior: When `install` runs without `--prj-base`, the CLI MUST skip project scaffold creation, path containment validation, and `docs-dir`/`tests-dir`/`src-dir` persistence without error.
 - **SRS-449**: MUST implement the following behavior: When `install` runs with `--prj-base`, the CLI MUST execute the combined scaffold, containment validation, directory persistence, and installation flow.
+- **SRS-451**: MUST implement the following behavior: `--upgrade --develop` MUST resolve the installation tag by querying `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` and reading `tag_name`, regardless of the branch holding that tag.
+- **SRS-452**: MUST implement the following behavior: On Linux, `--upgrade --develop` MUST execute `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`; non-Linux MUST print this manual command and MUST NOT execute `uv`.
+- **SRS-453**: MUST implement the following behavior: When the SRS-451 GitHub query fails, `--upgrade --develop` MUST print an English stderr error, MUST NOT execute `uv`, and MUST exit with code 1.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider prompts, agents, and skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
