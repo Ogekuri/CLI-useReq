@@ -1351,6 +1351,33 @@ class TestPrjBaseRequirements(HomeIsolatedTestCase):
             ):
                 cli.main([flag, "value"])
 
+    def test_help_usage_line_is_accurate_and_concise(self) -> None:
+        """Help accuracy defect: valid complete usage synopsis without superfluous content.
+
+        expected_output: --help text whose usage line starts with 'usage: req [-h]',
+        lists the parsed [--develop] [--dev] options, embeds no version marker,
+        no duplicated per-language tag catalog, and no internal SRS identifiers.
+        """
+        # Arrange
+        parser = cli.build_parser()
+        version = cli.load_package_version()
+        # Act
+        with (
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+            self.assertRaises(SystemExit),
+        ):
+            parser.parse_args(["--help"])
+        help_text = mock_stdout.getvalue()
+        usage_line = help_text.splitlines()[0]
+        # Assert: usage synopsis is valid and complete
+        self.assertTrue(usage_line.startswith("usage: req [-h]"), usage_line)
+        self.assertIn("[--develop]", usage_line)
+        self.assertIn("[--dev]", usage_line)
+        self.assertNotIn(f"({version})", usage_line)
+        # Assert: no superfluous inline-help content
+        self.assertNotIn("Available tags:", help_text)
+        self.assertNotIn("SRS-", help_text)
+
 
 class TestUpgradeUninstall(unittest.TestCase):
     """SRS-343/SRS-344: uv upgrade and uninstall command composition."""

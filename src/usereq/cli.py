@@ -494,19 +494,6 @@ def vlog(msg: str) -> None:
         print(msg)
 
 
-def _get_available_tags_help() -> str:
-    """! @brief Generate available TAGs help text for argument parser.
-    @return Formatted multi-line string listing TAGs by language.
-    @details Imports format_available_tags from find_constructs module to generate dynamic TAG listing for CLI help display.
-    """
-    try:
-        from .find_constructs import format_available_tags
-
-        return format_available_tags()
-    except ImportError:
-        return "(tag list unavailable)"
-
-
 def build_parser() -> argparse.ArgumentParser:
     """! @brief Builds the CLI argument parser.
     @return Configured ArgumentParser instance.
@@ -514,17 +501,15 @@ def build_parser() -> argparse.ArgumentParser:
     artifact selection, and per-provider options are configured exclusively via the repeatable
     ``--provider SPEC`` argument (SRS-275, SRS-034).
     """
-    version = load_package_version()
     usage = (
-        "req -c [-h] [--upgrade] [--uninstall] [--remove] [--update] --prj-base PRJ_BASE [--git-base GIT_BASE] "
+        "req [-h] [--upgrade] [--develop] [--dev] [--uninstall] [--remove] [--update] --prj-base PRJ_BASE [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
         "[--enable SPEC] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
         "[--enable-static-check SPEC] [--disable-static-check SPEC] "
         "[--test-static-check {dummy,pylance,ruff,command} [FILES...]] "
         "[--git-check] [--docs-check] [--git-wt-name] [--git-wt-create WT_NAME] [--git-wt-delete WT_NAME] "
-        "{files-tokens,files-references,files-compress,files-find,tokens,references,compress,find,files-static-check,static-check,install,uninstall,show} ... "
-        f"({version})"
+        "{files-tokens,files-references,files-compress,files-find,tokens,references,compress,find,files-static-check,static-check,install,uninstall,show} ..."
     )
     parser = argparse.ArgumentParser(
         description="Initialize a project with useReq resources.",
@@ -791,9 +776,9 @@ def build_parser() -> argparse.ArgumentParser:
         dest="command",
         title="subcommands",
         description=(
-            "Analysis subcommands require both --prj-base and --git-base "
-            "(SRS-408, SRS-410); legacy --prefixed forms are not accepted (SRS-409). "
-            "Lifecycle subcommands install/uninstall/show require no --git-base (SRS-280)."
+            "Analysis subcommands require both --prj-base and --git-base; "
+            "legacy --prefixed forms are not accepted. "
+            "Lifecycle subcommands install/uninstall/show require no --git-base."
         ),
         metavar=(
             "{files-tokens,files-references,files-compress,files-find,tokens,"
@@ -838,7 +823,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         help=(
             "Find and extract specific constructs: files-find TAG PATTERN FILE ... "
-            f"Available tags:\n{_get_available_tags_help()}"
+            "TAG accepts pipe-separated tags; the per-language tag catalog is "
+            "printed on invalid TAG or non-matching filter errors."
         ),
     )
     sub.add_argument("files_find", nargs="+", metavar="ARG")
@@ -882,7 +868,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         help=(
             "Find and extract specific constructs from the configured src-dir: "
-            f"find TAG PATTERN. Available tags:\n{_get_available_tags_help()}"
+            "find TAG PATTERN. TAG accepts pipe-separated tags; the per-language "
+            "tag catalog is printed on invalid TAG or non-matching filter errors."
         ),
     )
     sub.add_argument("find", nargs=2, metavar=("TAG", "PATTERN"))
