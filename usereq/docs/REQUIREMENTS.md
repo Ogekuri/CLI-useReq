@@ -219,7 +219,7 @@ No explicit performance optimizations identified.
 - **SRS-213**: MUST implement the following behavior: The parser MUST recognize these Doxygen tags: @brief, @details, @param, @param[in], @param[out], @param[in,out], @return, @retval, @exception, @throws, @warning, @deprecated, @note, @see, @sa, @satisfies, @pre, @post.
 
 ### 3.12 Bundled Prompts Update Script
-- **SRS-375**: `scripts/prompts-update.sh` MUST fully synchronize the upstream `src/prompts` directory of `https://github.com/Ogekuri/Prompts` into `src/usereq/resources/prompts`, overwriting existing files and removing files absent upstream.
+- **SRS-375**: `scripts/prompts-update.sh` MUST fully synchronize the upstream `src/prompts` directory of `https://github.com/Ogekuri/CLI-Prompts` into `src/usereq/resources/prompts`, overwriting existing files and removing files absent upstream.
 - **SRS-376**: `scripts/prompts-update.sh` MUST resolve the newest upstream release through the GitHub Releases API, falling back to the newest version-sorted tag reachable from `develop`, then the `develop` head.
 - **SRS-377**: `scripts/prompts-update.sh` MUST print the resolved release version and the stored version before modifications, and MUST require exact input `Y` to proceed; any other input MUST abort without modifications.
 - **SRS-378**: `scripts/prompts-update.sh` MUST report `unknown` for a missing or empty version marker and MUST write the resolved release version to `src/usereq/resources/prompts-version.txt` only after successful synchronization.

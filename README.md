@@ -390,7 +390,7 @@ Requirements-driven projects keep their normative documentation under the config
 
 - `scripts/req.sh` runs the CLI via `uv run python -m usereq.cli` from the repository root, forwarding all user arguments unchanged.
 - `scripts/test-install.sh` performs an isolated-HOME smoke installation (`--enable pi:prompts,skills` + `install`).
-- `scripts/prompts-update.sh` synchronizes the bundled prompts from the upstream [Ogekuri/Prompts](https://github.com/Ogekuri/Prompts) releases into `src/usereq/resources/prompts`.
+- `scripts/prompts-update.sh` synchronizes the bundled prompts from the upstream [Ogekuri/CLI-Prompts](https://github.com/Ogekuri/CLI-Prompts) releases into `src/usereq/resources/prompts`.
 - `uv.lock` is the canonical dependency lockfile for execution, build, development, testing, and static analysis.
 
 ## Note on Git usage
@@ -434,7 +434,7 @@ This program is distributed in the hope that it will be useful, but **without an
 
 # Acknowledgments
 
-- **[Ogekuri/Prompts](https://github.com/Ogekuri/Prompts)** — upstream source of the bundled requirements-engineering prompt catalog (`src/usereq/resources/prompts`).
+- **[Ogekuri/CLI-Prompts](https://github.com/Ogekuri/CLI-Prompts)** — upstream source of the bundled requirements-engineering prompt catalog (`src/usereq/resources/prompts`).
 - **[Astral](https://astral.sh)** — for `uv`, the Python package and project manager that powers installation, execution, and self-upgrade.
 - **[OpenAI tiktoken](https://github.com/openai/tiktoken)** — token counting for LLM context budgeting.
 - **[pyright](https://github.com/microsoft/pyright)** and **[ruff](https://github.com/astral-sh/ruff)** — the static-analysis engines exposed through the `Pylance` and `Ruff` modules.

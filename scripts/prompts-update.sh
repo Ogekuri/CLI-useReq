@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # @file scripts/prompts-update.sh
-# @brief Updates bundled useReq prompt templates from the latest Prompts release.
-# @details Clones the Prompts repository (develop branch), resolves the newest
+# @brief Updates bundled useReq prompt templates from the latest CLI-Prompts release.
+# @details Clones the CLI-Prompts repository (develop branch), resolves the newest
 #     release ref, and performs a full one-way synchronization of the upstream
 #     `src/prompts` directory into the local `src/usereq/resources/prompts`
 #     target. Cloning tries anonymous HTTPS transports first with every
@@ -14,7 +14,7 @@
 #     every file that no longer exists upstream by replacing the target
 #     directory with a freshly staged copy. Upstream file access and
 #     modification timestamps are preserved through `cp -p`. Before any
-#     modification, the updater prints the resolved latest Prompts release
+#     modification, the updater prints the resolved latest CLI-Prompts release
 #     version and the stored version read from
 #     `src/usereq/resources/prompts-version.txt` (missing or empty files
 #     report `unknown`), then requires an explicit `Y` confirmation; any
@@ -29,24 +29,24 @@
 
 set -euo pipefail
 
-PROMPTS_REPO_URL_PRIMARY="https://github.com/Ogekuri/Prompts.git"
-PROMPTS_REPO_URL_FALLBACK="https://github.com/Ogekuri/Prompts"
-PROMPTS_REPO_URL_SSH="git@github.com:Ogekuri/Prompts.git"
-PROMPTS_RELEASE_API_URL="https://api.github.com/repos/Ogekuri/Prompts/releases/latest"
+PROMPTS_REPO_URL_PRIMARY="https://github.com/Ogekuri/CLI-Prompts.git"
+PROMPTS_REPO_URL_FALLBACK="https://github.com/Ogekuri/CLI-Prompts"
+PROMPTS_REPO_URL_SSH="git@github.com:Ogekuri/CLI-Prompts.git"
+PROMPTS_RELEASE_API_URL="https://api.github.com/repos/Ogekuri/CLI-Prompts/releases/latest"
 PROMPTS_BRANCH="develop"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET_ROOT="${REPO_ROOT}/src/usereq/resources"
 
-## @brief Stores the Prompts version marker path relative to the repository root.
+## @brief Stores the CLI-Prompts version marker path relative to the repository root.
 ## @details Read before the update and overwritten with the resolved version after
 ##     successful synchronization. The constant is immutable at runtime.
 ## @satisfies SRS-378
 PROMPTS_VERSION_REL="src/usereq/resources/prompts-version.txt"
 
 ## @brief Stores the upstream prompts source directory, relative to the cloned repository root.
-## @details The Prompts repository keeps every prompt template as one Markdown
+## @details The CLI-Prompts repository keeps every prompt template as one Markdown
 ##     file below `src/prompts`. The constant is immutable at runtime.
 ## @satisfies SRS-375
 PROMPTS_SOURCE_REL="src/prompts"
@@ -124,7 +124,7 @@ git_no_prompts() {
   GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true git "$@"
 }
 
-## @brief Reads one stored Prompts version marker file.
+## @brief Reads one stored CLI-Prompts version marker file.
 ## @details Returns the first line of the marker file with all surrounding
 ##     whitespace removed when the file exists and is non-empty; otherwise
 ##     returns the literal `unknown` so missing or empty version markers are
@@ -169,7 +169,7 @@ resolve_release_version() {
 }
 
 ## @brief Requests explicit user confirmation before any modification.
-## @details Prints the resolved latest Prompts release version plus the stored
+## @details Prints the resolved latest CLI-Prompts release version plus the stored
 ##     version and one English confirmation sentence, reads one line from
 ##     `stdin`, and returns success only when the confirmation input is exactly
 ##     `Y`; any other input, including end-of-stream input, returns failure so
@@ -184,15 +184,15 @@ confirm_update() {
   local stored_version="$2"
   local answer=""
 
-  log "Latest Prompts release : ${latest_version}"
+  log "Latest CLI-Prompts release : ${latest_version}"
   log "Stored version (${PROMPTS_VERSION_REL}): ${stored_version}"
-  log "This update replaces the bundled prompt templates in ${PROMPTS_TARGET_REL} with the content of the latest Prompts release."
+  log "This update replaces the bundled prompt templates in ${PROMPTS_TARGET_REL} with the content of the latest CLI-Prompts release."
   printf 'Proceed with the update? [Y/n] '
   read -r answer || answer=""
   [ "${answer}" = "Y" ]
 }
 
-## @brief Clones the upstream Prompts develop branch into one target directory.
+## @brief Clones the upstream CLI-Prompts develop branch into one target directory.
 ## @details Attempts a quiet, no-checkout clone of `${PROMPTS_BRANCH}` from
 ##     `${PROMPTS_REPO_URL_PRIMARY}` with every interactive credential prompt
 ##     disabled, removes the partial destination on failure, retries once with
@@ -228,7 +228,7 @@ clone_upstream() {
     printf '%s\n' "${PROMPTS_REPO_URL_SSH}"
     return 0
   fi
-  fail "Unable to clone Prompts from ${PROMPTS_REPO_URL_PRIMARY}, ${PROMPTS_REPO_URL_FALLBACK}, or ${PROMPTS_REPO_URL_SSH} without interactive credentials."
+  fail "Unable to clone CLI-Prompts from ${PROMPTS_REPO_URL_PRIMARY}, ${PROMPTS_REPO_URL_FALLBACK}, or ${PROMPTS_REPO_URL_SSH} without interactive credentials."
 }
 
 ## @brief Resolves the upstream synchronization ref for the cloned repository.
@@ -270,7 +270,7 @@ resolve_release_ref() {
     return 0
   fi
 
-  log "No Prompts release resolvable, falling back to the ${PROMPTS_BRANCH} head."
+  log "No CLI-Prompts release resolvable, falling back to the ${PROMPTS_BRANCH} head."
   printf 'refs/heads/%s\n' "${PROMPTS_BRANCH}"
 }
 
@@ -321,8 +321,8 @@ sync_directory() {
 }
 
 ## @brief Executes one full bundled-prompts update run.
-## @details Validates required tools, reads the stored Prompts version marker,
-##     allocates the temporary upstream working tree, clones the Prompts
+## @details Validates required tools, reads the stored CLI-Prompts version marker,
+##     allocates the temporary upstream working tree, clones the CLI-Prompts
 ##     develop branch, resolves the newest release ref plus its release version,
 ##     prints the resolved plus stored versions and requires an explicit `Y`
 ##     confirmation, checks out the resolved release ref, synchronizes the
@@ -350,7 +350,7 @@ main() {
 
   WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/prompts-update.XXXXXX")" \
     || fail "Unable to create the temporary working directory."
-  local repository="${WORK_DIR}/Prompts"
+  local repository="${WORK_DIR}/CLI-Prompts"
 
   local upstream_url
   upstream_url="$(clone_upstream "${repository}")"
