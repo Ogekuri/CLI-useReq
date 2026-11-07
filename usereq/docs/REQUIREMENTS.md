@@ -119,14 +119,14 @@ No explicit performance optimizations identified.
 - **SRS-360**: MUST resolve `GUIDELINES_DIR` as the user-home-relative directory `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines`, which MUST NOT be configurable.
 - **SRS-361**: MUST use `tests` as the `tests-dir` default value when `~/.config/usereq/config.json` stores no `tests-dir` entry.
 - **SRS-362**: MUST use `src` as the sole `src-dir` list entry when `~/.config/usereq/config.json` stores no `src-dir` entry.
-- **SRS-363**: MUST create missing directories, including missing parents, for the configured `docs-dir`, `tests-dir`, and each `src-dir` entry under `--prj-base` during installation.
+- **SRS-363**: MUST create missing directories, including missing parents, for the configured `docs-dir`, `tests-dir`, and each `src-dir` entry under `--prj-base` during installation when `--prj-base` is provided.
 - **SRS-387**: MUST persist all configuration state in the single user-global file `~/.config/usereq/config.json` and MUST create missing parent directories on first write.
 - **SRS-388**: MUST NOT create, read, or require the `.req` project directory or any per-project configuration file under the project base or git repository path.
 - **SRS-398**: MUST support `--set-docs-dir PATH` to persist the project-relative `docs-dir` value in `~/.config/usereq/config.json`.
 - **SRS-399**: MUST support repeatable `--set-src-dir PATH` to persist the ordered project-relative `src-dir` list in `~/.config/usereq/config.json`, replacing previous entries.
 - **SRS-400**: MUST support `--set-tests-dir PATH` to persist the project-relative `tests-dir` value in `~/.config/usereq/config.json`.
 - **SRS-401**: MUST preserve all unrelated configuration keys when `--set-docs-dir`, `--set-src-dir`, or `--set-tests-dir` writes `~/.config/usereq/config.json`.
-- **SRS-407**: MUST persist the effective `docs-dir`, `tests-dir`, and `src-dir` values in `~/.config/usereq/config.json` during installation and update.
+- **SRS-407**: MUST persist the effective `docs-dir`, `tests-dir`, and `src-dir` values in `~/.config/usereq/config.json` during installation and update when `--prj-base` is provided.
 - **SRS-408**: MUST implement the following behavior: The CLI MUST accept exactly these ten analysis subcommand tokens without the `--` prefix: `files-tokens`, `files-references`, `files-compress`, `files-find`, `tokens`, `references`, `compress`, `find`, `files-static-check`, `static-check`.
 - **SRS-409**: MUST NOT parse the legacy `--`-prefixed forms of the SRS-408 subcommands (`--files-tokens`, `--files-references`, `--files-compress`, `--files-find`, `--tokens`, `--references`, `--compress`, `--find`, `--files-static-check`, `--static-check`).
 - **SRS-410**: MUST NOT require `--git-base` for any SRS-408 subcommand; `--prj-base` MUST be mandatory exactly for the SRS-408 subcommands listed in SRS-396, and its absence MUST trigger the SRS-395 error behavior.
@@ -136,10 +136,11 @@ No explicit performance optimizations identified.
 - **SRS-415**: MUST implement the following behavior: `--enable-static-check` and `--disable-static-check` MUST only update the `"static-check"` key in `~/.config/usereq/config.json` and MUST NOT require `--prj-base`.
 - **SRS-416**: MUST implement the following behavior: The `show` subcommand MUST print the active configuration in tabular form, including `docs-dir`, `tests-dir`, `src-dir`, `auto-install`, enabled providers, and enabled static-check entries.
 - **SRS-417**: MUST implement the following behavior: For every enabled provider, `show` MUST print a dedicated table reporting the installation status of the `prompts`, `agents`, and `skills` components detected from user-level directories.
-- **SRS-418**: MUST implement the following behavior: The `install` subcommand MUST install or update the providers persisted under `"providers"`, MUST require `--prj-base`, and MUST print the installation summary report.
+- **SRS-418**: MUST implement the following behavior: The `install` subcommand MUST install or update the providers persisted under `"providers"` and MUST print the installation summary report.
 - **SRS-419**: MUST implement the following behavior: The `uninstall` subcommand MUST remove `req-*` artifacts of the providers persisted under `"providers"` per SRS-390 semantics.
 - **SRS-420**: MUST implement the following behavior: `auto-install` MUST default to enabled; `--disable-auto-install` MUST persist `"auto-install": false` and `--enable-auto-install` MUST persist `"auto-install": true` in `~/.config/usereq/config.json`.
-- **SRS-421**: MUST implement the following behavior: When `--upgrade` succeeds and `auto-install` is enabled, the CLI MUST execute the provider installation flow with persisted providers; when `--prj-base` is absent it MUST print an English stderr warning and skip.
+- **SRS-421**: MUST implement the following behavior: When `--upgrade` succeeds and `auto-install` is enabled, the CLI MUST execute the provider installation flow with persisted providers regardless of `--prj-base` presence.
+- **SRS-450**: MUST implement the following behavior: When post-upgrade auto-install runs and no provider spec is persisted, the CLI SHOULD print an English stderr warning and skip installation.
 - **SRS-422**: MUST implement the following behavior: `--disable-static-check` and `--disable` with unknown language or provider tokens MUST print an English error and exit with code 1.
 - **SRS-440**: MUST implement the following behavior: `--upgrade --develop` MUST install from `git+https://github.com/Ogekuri/CLI-useReq.git` instead of the PyPI index; without `--develop`, `--upgrade` MUST install from the PyPI index.
 - **SRS-445**: MUST implement the following behavior: `--dev` MUST be accepted as an equivalent command-line alias of `--develop` when selecting the GitHub upgrade source for `--upgrade`.
@@ -147,6 +148,9 @@ No explicit performance optimizations identified.
 - **SRS-442**: MUST implement the following behavior: `--ver`/`--version` MUST query the PyPI JSON API and the GitHub latest-release API bypassing idle gating; unfetchable versions MUST print `unknown`.
 - **SRS-443**: MUST implement the following behavior: `README.md` MUST present PyPI as the primary install/upgrade channel and a dedicated non-primary GitHub section covering GitHub installation and `--develop`/`--dev` upgrades.
 - **SRS-446**: MUST implement the following behavior: The CLI help output MUST NOT reference `~/.config/usereq/config.json` or configuration-file persistence and removal operations.
+- **SRS-447**: MUST accept the `install` subcommand without `--prj-base` and treat `--prj-base` as an optional argument for it.
+- **SRS-448**: MUST implement the following behavior: When `install` runs without `--prj-base`, the CLI MUST skip project scaffold creation, path containment validation, and `docs-dir`/`tests-dir`/`src-dir` persistence without error.
+- **SRS-449**: MUST implement the following behavior: When `install` runs with `--prj-base`, the CLI MUST execute the combined scaffold, containment validation, directory persistence, and installation flow.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider prompts, agents, and skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
@@ -305,7 +309,7 @@ No explicit performance optimizations identified.
 - **SRS-393**: MUST accept `--git-base PATH` as the sole command-line source of the git repository base used for git operations.
 - **SRS-394**: MUST NOT persist `--prj-base` or `--git-base` in `~/.config/usereq/config.json` and MUST NOT load them from it.
 - **SRS-395**: MUST print an English error to stderr and exit with code 1 when a dispatched command requires `--prj-base` or `--git-base` and that argument is absent.
-- **SRS-396**: MUST require `--prj-base` for the `install` command, `references`, `compress`, `tokens`, `find`, `static-check`, `files-static-check`, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir`.
+- **SRS-396**: MUST require `--prj-base` for the `references`, `compress`, `tokens`, `find`, `static-check`, `files-static-check`, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir` commands.
 - **SRS-397**: MUST require `--git-base` for `--git-check`, `--git-wt-name`, `--git-wt-create`, and `--git-wt-delete`.
 - **SRS-310**: MUST implement the following behavior: When the global configuration file is loaded, ALL key-value parameters MUST be loaded and available to CLI command functions.
 

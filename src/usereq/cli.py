@@ -523,10 +523,9 @@ def build_parser() -> argparse.ArgumentParser:
         dest="prj_base",
         help=(
             "Absolute project base directory containing the configured docs-dir, "
-            "src-dir, and tests-dir. Required for install, "
-            "--docs-check, --set-*-dir, and the project-scan analysis "
-            "subcommands (tokens, references, compress, find, static-check, "
-            "files-static-check)."
+            "src-dir, and tests-dir. Required for --docs-check, --set-*-dir, and "
+            "the project-scan analysis subcommands (tokens, references, compress, "
+            "find, static-check, files-static-check); optional for install."
         ),
     )
     parser.add_argument(
@@ -756,7 +755,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=argparse.SUPPRESS,
         dest="prj_base",
-        help="Absolute project base directory; mandatory for this subcommand.",
+        help=(
+            "Absolute project base directory; optional: when provided, installation "
+            "also creates the project directories and persists the directory "
+            "configuration."
+        ),
     )
     subparsers = parser.add_subparsers(
         dest="command",
@@ -877,10 +880,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "install",
         parents=[install_options],
-        usage="req install --prj-base PRJ_BASE",
+        usage="req install [--prj-base PRJ_BASE]",
         help=(
-            "Install or update the configured providers and print the "
-            "installation report."
+            "Install or update the configured providers into user-level "
+            "directories and print the installation report."
         ),
     )
 
@@ -2899,14 +2902,16 @@ def _provider_artifact_installed(provider: str, artifact: str) -> bool:
 
 def run_install(args: Namespace) -> None:
     """!
-    @brief Execute install: install or update the persisted providers.
-    @param args Parsed CLI namespace; requires the mandatory `--prj-base` argument.
+    @brief Execute install: install or update the persisted providers globally.
+    @param args Parsed CLI namespace; `--prj-base` is optional (SRS-447).
     @return {None} Function return value.
     @details Delegates to the config-driven installation flow (SRS-035, SRS-064, SRS-418)
     which requires at least one enabled provider and prints the installation summary
-    report (SRS-049).
-    @throws ReqError If `--prj-base` is absent or no provider is enabled.
-    @satisfies SRS-035, SRS-064, SRS-418
+    report (SRS-049). When `--prj-base` is absent, project-side scaffold, validation,
+    and persistence are skipped (SRS-448); when provided, the combined flow executes
+    (SRS-449).
+    @throws ReqError If no provider is enabled.
+    @satisfies SRS-035, SRS-064, SRS-418, SRS-447, SRS-448, SRS-449
     """
     run(args)
 
@@ -3031,9 +3036,9 @@ def _maybe_auto_install_after_upgrade(argv_list: list[str]) -> None:
     @param argv_list {list[str]} Raw CLI argument vector of the `--upgrade` invocation.
     @return {None} Function return value.
     @details Executes the `install` flow with persisted providers when `auto-install` is
-    enabled (SRS-420, SRS-421); prints an English stderr warning and skips when no
-    provider is enabled or `--prj-base` is absent.
-    @satisfies SRS-421
+    enabled (SRS-420, SRS-421) regardless of `--prj-base` presence; prints an English
+    stderr warning and skips when no provider is enabled (SRS-450).
+    @satisfies SRS-420, SRS-421, SRS-450
     """
     if not load_auto_install_enabled():
         return
@@ -3046,12 +3051,6 @@ def _maybe_auto_install_after_upgrade(argv_list: list[str]) -> None:
     try:
         args = parse_args(argv_list)
     except SystemExit:
-        return
-    if getattr(args, "prj_base", None) is None:
-        print(
-            "Warning: --prj-base not provided; skipping auto-install after upgrade.",
-            file=sys.stderr,
-        )
         return
     run_install(args)
 
@@ -3155,83 +3154,95 @@ def _validate_enable_static_check_command_executables(
 def run(args: Namespace) -> None:
     """!
     @brief Handles the main installation/update flow for persisted providers.
-    @details Requires `--prj-base` (SRS-396), loads the persisted `"providers"` specs from
-    `~/.config/usereq/config.json` (SRS-064, SRS-279) and requires at least one enabled
-    provider (SRS-035), loads the `docs-dir`, `tests-dir`, and `src-dir` values from the
+    @details Treats `--prj-base` as optional (SRS-447, SRS-418): loads the persisted
+    `"providers"` specs from `~/.config/usereq/config.json` (SRS-064, SRS-279) and
+    requires at least one enabled provider (SRS-035), orchestrates user-level provider
+    artifact generation with home-relative GUIDELINES_DIR token substitution
+    (SRS-402, SRS-403), and preserves the persisted static-check and auto-install
+    configuration (SRS-288, SRS-301, SRS-420). When `--prj-base` is provided, it
+    additionally loads the `docs-dir`, `tests-dir`, and `src-dir` values from the
     user-global configuration with defaults `usereq`, `tests`, and `src` (SRS-359,
-    SRS-361, SRS-362), creates missing directories during installation
-    (SRS-363), preserves the persisted static-check and auto-install configuration
-    (SRS-288, SRS-301, SRS-420, SRS-407), and orchestrates user-level provider artifact
-    generation with home-relative GUIDELINES_DIR token substitution (SRS-402, SRS-403).
+    SRS-361, SRS-362), creates missing directories during installation (SRS-363),
+    validates containment under the project base, persists the effective directory
+    values, and rewrites the global configuration (SRS-288, SRS-301, SRS-420, SRS-407);
+    when `--prj-base` is absent, all project-side operations are skipped (SRS-448).
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError If `--prj-base` is absent, no provider is enabled, or configured paths are invalid.
-    @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-288, SRS-301, SRS-359, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388, SRS-396, SRS-402, SRS-403, SRS-407, SRS-418
+    @throws ReqError If no provider is enabled or configured paths are invalid.
+    @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-288, SRS-301, SRS-359, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388, SRS-396, SRS-402, SRS-403, SRS-407, SRS-418, SRS-447, SRS-448, SRS-449
     """
     global VERBOSE, DEBUG
     VERBOSE = getattr(args, "verbose", False)
     DEBUG = getattr(args, "debug", False)
 
     # Main flow: validates input, calculates paths, generates user-level resources.
-    project_base = _resolve_project_base(args)
-
-    config = load_config()
-    doc_dir_value = config["docs-dir"]
-    test_dir_value = config["tests-dir"]
-    src_dir_values = config["src-dir"]
-
-    if not isinstance(doc_dir_value, str):
-        raise ReqError("Error: invalid docs configuration values", 11)
-    if not isinstance(test_dir_value, str):
-        raise ReqError("Error: invalid tests configuration value", 11)
-    if (
-        not isinstance(src_dir_values, list)
-        or not src_dir_values
-        or not all(isinstance(value, str) for value in src_dir_values)
-    ):
-        raise ReqError("Error: invalid src configuration values", 11)
-
-    create_missing_dirs = True
-    ensure_doc_directory(
-        doc_dir_value, project_base, create_missing=create_missing_dirs
-    )
-    ensure_test_directory(
-        test_dir_value, project_base, create_missing=create_missing_dirs
-    )
-    for src_dir_value in src_dir_values:
-        ensure_src_directory(
-            src_dir_value, project_base, create_missing=create_missing_dirs
-        )
-
-    normalized_doc = make_relative_if_contains_project(
-        doc_dir_value, project_base
-    ).rstrip("/\\")
-    normalized_test = make_relative_if_contains_project(
-        test_dir_value, project_base
-    ).rstrip("/\\")
+    # `--prj-base` is optional for install (SRS-447): when absent, project-side
+    # scaffold, containment validation, and directory persistence are skipped (SRS-448).
+    project_base: Optional[Path] = None
+    normalized_doc = ""
+    normalized_test = ""
     normalized_src_dirs: list[str] = []
-    for src_dir_value in src_dir_values:
-        normalized_src = make_relative_if_contains_project(src_dir_value, project_base)
-        normalized_src_dirs.append(normalized_src.rstrip("/\\"))
+    if getattr(args, "prj_base", None) is not None:
+        project_base = _resolve_project_base(args)
 
-    ensure_relative(normalized_doc, "DOCS_DIR", 4)
-    ensure_relative(normalized_test, "TESTS_DIR", 4)
-    for normalized_src in normalized_src_dirs:
-        ensure_relative(normalized_src, "SRC_DIR", 4)
+        config = load_config()
+        doc_dir_value = config["docs-dir"]
+        test_dir_value = config["tests-dir"]
+        src_dir_values = config["src-dir"]
 
-    abs_doc = resolve_absolute(normalized_doc, project_base)
-    abs_test = resolve_absolute(normalized_test, project_base)
-    abs_src_dirs = [
-        resolve_absolute(normalized_src, project_base)
-        for normalized_src in normalized_src_dirs
-    ]
-    if abs_doc and not abs_doc.resolve().is_relative_to(project_base):
-        raise ReqError("Error: docs-dir must be under the project base", 5)
-    if abs_test and not abs_test.resolve().is_relative_to(project_base):
-        raise ReqError("Error: tests-dir must be under the project base", 5)
-    for abs_src in abs_src_dirs:
-        if abs_src and not abs_src.resolve().is_relative_to(project_base):
-            raise ReqError("Error: src-dir must be under the project base", 5)
+        if not isinstance(doc_dir_value, str):
+            raise ReqError("Error: invalid docs configuration values", 11)
+        if not isinstance(test_dir_value, str):
+            raise ReqError("Error: invalid tests configuration value", 11)
+        if (
+            not isinstance(src_dir_values, list)
+            or not src_dir_values
+            or not all(isinstance(value, str) for value in src_dir_values)
+        ):
+            raise ReqError("Error: invalid src configuration values", 11)
+
+        create_missing_dirs = True
+        ensure_doc_directory(
+            doc_dir_value, project_base, create_missing=create_missing_dirs
+        )
+        ensure_test_directory(
+            test_dir_value, project_base, create_missing=create_missing_dirs
+        )
+        for src_dir_value in src_dir_values:
+            ensure_src_directory(
+                src_dir_value, project_base, create_missing=create_missing_dirs
+            )
+
+        normalized_doc = make_relative_if_contains_project(
+            doc_dir_value, project_base
+        ).rstrip("/\\")
+        normalized_test = make_relative_if_contains_project(
+            test_dir_value, project_base
+        ).rstrip("/\\")
+        for src_dir_value in src_dir_values:
+            normalized_src = make_relative_if_contains_project(
+                src_dir_value, project_base
+            )
+            normalized_src_dirs.append(normalized_src.rstrip("/\\"))
+
+        ensure_relative(normalized_doc, "DOCS_DIR", 4)
+        ensure_relative(normalized_test, "TESTS_DIR", 4)
+        for normalized_src in normalized_src_dirs:
+            ensure_relative(normalized_src, "SRC_DIR", 4)
+
+        abs_doc = resolve_absolute(normalized_doc, project_base)
+        abs_test = resolve_absolute(normalized_test, project_base)
+        abs_src_dirs = [
+            resolve_absolute(normalized_src, project_base)
+            for normalized_src in normalized_src_dirs
+        ]
+        if abs_doc and not abs_doc.resolve().is_relative_to(project_base):
+            raise ReqError("Error: docs-dir must be under the project base", 5)
+        if abs_test and not abs_test.resolve().is_relative_to(project_base):
+            raise ReqError("Error: tests-dir must be under the project base", 5)
+        for abs_src in abs_src_dirs:
+            if abs_src and not abs_src.resolve().is_relative_to(project_base):
+                raise ReqError("Error: src-dir must be under the project base", 5)
 
     # Resolve persisted provider specs (SRS-064, SRS-279); installation is config-driven.
     effective_provider_specs = load_persisted_provider_specs()
@@ -3285,16 +3296,17 @@ def run(args: Namespace) -> None:
     persisted_sc = raw_payload.get("static-check")
     merged_static_check = persisted_sc if isinstance(persisted_sc, dict) else None
 
-    # Persist the single user-global configuration file (SRS-279, SRS-288, SRS-407).
-    save_config(
-        normalized_doc,
-        normalized_test,
-        normalized_src_dirs,
-        static_check_config=merged_static_check if merged_static_check else None,
-        provider_specs=effective_provider_specs
-        if effective_provider_specs
-        else None,
-    )
+    if project_base is not None:
+        # Persist the single user-global configuration file (SRS-279, SRS-288, SRS-407).
+        save_config(
+            normalized_doc,
+            normalized_test,
+            normalized_src_dirs,
+            static_check_config=merged_static_check if merged_static_check else None,
+            provider_specs=effective_provider_specs
+            if effective_provider_specs
+            else None,
+        )
 
     # Resolve the installation-owned guidelines substitution values (SRS-360, SRS-402, SRS-403).
     guidelines_file_list = generate_guidelines_file_list()
@@ -4868,7 +4880,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             elif getattr(args, "git_wt_delete", None):
                 run_git_wt_delete(args)
             return 0
-        # Install flow requires --prj-base (SRS-396).
+        # Install flow: --prj-base optional (SRS-447); a provided base adds the
+        # project-side scaffold, validation, and persistence flow (SRS-449).
         run(args)
     except ReqError as e:
         print(e.message, file=sys.stderr)
