@@ -502,7 +502,7 @@ def build_parser() -> argparse.ArgumentParser:
     ``--provider SPEC`` argument (SRS-275, SRS-034).
     """
     usage = (
-        "req [-h] [--upgrade] [--develop] [--dev] [--uninstall] [--remove] [--update] --prj-base PRJ_BASE [--git-base GIT_BASE] "
+        "req [-h] [--upgrade] [--develop] [--dev] [--uninstall] [--remove] [--update] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
         "[--enable SPEC] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
@@ -523,8 +523,10 @@ def build_parser() -> argparse.ArgumentParser:
         dest="prj_base",
         help=(
             "Absolute project base directory containing the configured docs-dir, "
-            "src-dir, and tests-dir. Required for every project file command and "
-            "every analysis subcommand."
+            "src-dir, and tests-dir. Required for install, --update, "
+            "--docs-check, --set-*-dir, and the project-scan analysis "
+            "subcommands (tokens, references, compress, find, static-check, "
+            "files-static-check)."
         ),
     )
     parser.add_argument(
@@ -533,8 +535,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         dest="git_base",
         help=(
-            "Absolute git repository base directory used as working directory for every "
-            "git operation and required by every analysis subcommand."
+            "Absolute git repository base directory used as working directory "
+            "for every git operation. Required by --git-check, --git-wt-name, "
+            "--git-wt-create, and --git-wt-delete."
         ),
     )
     parser.add_argument(
@@ -738,7 +741,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     # Bare analysis subcommands (SRS-408). Legacy --prefixed forms are not parsed
-    # (SRS-409); every subcommand requires both --prj-base and --git-base (SRS-410).
+    # (SRS-409); --prj-base is mandatory exactly per SRS-396/SRS-410 and --git-base
+    # is never required for subcommands.
     # SUPPRESS defaults prevent subparser defaults from clobbering values parsed
     # by the main parser before the subcommand token.
     base_options = argparse.ArgumentParser(add_help=False)
@@ -747,14 +751,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=argparse.SUPPRESS,
         dest="prj_base",
-        help="Absolute project base directory; mandatory for this subcommand.",
+        help="Absolute project base directory; required by project-scan analysis subcommands.",
     )
     base_options.add_argument(
         "--git-base",
         type=Path,
         default=argparse.SUPPRESS,
         dest="git_base",
-        help="Absolute git repository base directory; mandatory for this subcommand.",
+        help="Absolute git repository base directory; optional and unused by analysis subcommands.",
     )
     line_number_options = argparse.ArgumentParser(add_help=False)
     line_number_options.add_argument(
@@ -776,9 +780,10 @@ def build_parser() -> argparse.ArgumentParser:
         dest="command",
         title="subcommands",
         description=(
-            "Analysis subcommands require both --prj-base and --git-base; "
-            "legacy --prefixed forms are not accepted. "
-            "Lifecycle subcommands install/uninstall/show require no --git-base."
+            "Project-scan analysis subcommands (tokens, references, compress, "
+            "find, static-check, files-static-check) require --prj-base; no "
+            "subcommand requires --git-base. Legacy --prefixed forms are not "
+            "accepted."
         ),
         metavar=(
             "{files-tokens,files-references,files-compress,files-find,tokens,"
@@ -790,7 +795,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "files-tokens",
         parents=[base_options],
-        usage="req files-tokens --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]",
+        usage="req files-tokens [--prj-base PRJ_BASE] [--git-base GIT_BASE] FILE [FILE ...]",
         help="Count tokens and chars for the given files.",
     )
     sub.add_argument("files_tokens", nargs="+", metavar="FILE")
@@ -798,7 +803,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "files-references",
         parents=[base_options],
-        usage="req files-references --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]",
+        usage="req files-references [--prj-base PRJ_BASE] [--git-base GIT_BASE] FILE [FILE ...]",
         help="Generate LLM reference markdown for the given files.",
     )
     sub.add_argument("files_references", nargs="+", metavar="FILE")
@@ -807,7 +812,7 @@ def build_parser() -> argparse.ArgumentParser:
         "files-compress",
         parents=[base_options, line_number_options],
         usage=(
-            "req files-compress --prj-base PRJ_BASE --git-base GIT_BASE "
+            "req files-compress [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
             "[--enable-line-numbers] FILE [FILE ...]"
         ),
         help="Generate compressed output for the given files.",
@@ -818,7 +823,7 @@ def build_parser() -> argparse.ArgumentParser:
         "files-find",
         parents=[base_options, line_number_options],
         usage=(
-            "req files-find --prj-base PRJ_BASE --git-base GIT_BASE "
+            "req files-find [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
             "[--enable-line-numbers] TAG PATTERN FILE [FILE ...]"
         ),
         help=(
@@ -832,7 +837,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "tokens",
         parents=[base_options],
-        usage="req tokens --prj-base PRJ_BASE --git-base GIT_BASE",
+        usage="req tokens --prj-base PRJ_BASE",
         help=(
             "Count tokens/chars for REQUIREMENTS.md, WORKFLOW.md, and REFERENCES.md "
             "in the configured docs-dir."
@@ -842,7 +847,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "references",
         parents=[base_options],
-        usage="req references --prj-base PRJ_BASE --git-base GIT_BASE",
+        usage="req references --prj-base PRJ_BASE",
         help=(
             "Generate LLM reference markdown for all source files in the configured "
             "src-dir directories."
@@ -852,7 +857,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "compress",
         parents=[base_options, line_number_options],
-        usage="req compress --prj-base PRJ_BASE --git-base GIT_BASE [--enable-line-numbers]",
+        usage="req compress --prj-base PRJ_BASE [--enable-line-numbers]",
         help=(
             "Generate compressed output for all source files in the configured "
             "src-dir directories."
@@ -863,7 +868,7 @@ def build_parser() -> argparse.ArgumentParser:
         "find",
         parents=[base_options, line_number_options],
         usage=(
-            "req find --prj-base PRJ_BASE --git-base GIT_BASE "
+            "req find --prj-base PRJ_BASE "
             "[--enable-line-numbers] TAG PATTERN"
         ),
         help=(
@@ -877,11 +882,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "files-static-check",
         parents=[base_options],
-        usage="req files-static-check --prj-base PRJ_BASE --git-base GIT_BASE FILE [FILE ...]",
+        usage="req files-static-check --prj-base PRJ_BASE FILE [FILE ...]",
         help=(
             "Run static analysis on explicit files using tools configured in "
             "~/.config/usereq/config.json. Detects language from file extension; "
-            "skips files with no configured tool."
+            "skips files with no configured tool. Requires --prj-base as the "
+            "checker dispatch context."
         ),
     )
     sub.add_argument("files_static_check", nargs="+", metavar="FILE")
@@ -889,7 +895,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "static-check",
         parents=[base_options],
-        usage="req static-check --prj-base PRJ_BASE --git-base GIT_BASE",
+        usage="req static-check --prj-base PRJ_BASE",
         help=(
             "Run static analysis on source and test files selected from the "
             "configured src-dir and tests-dir directories. Tools are loaded from "
@@ -4042,7 +4048,7 @@ def _is_standalone_command(args: Namespace) -> bool:
     @return True when the standalone `--test-static-check` flag is present.
     @details The standalone group now contains only `--test-static-check` (SRS-240); the
       former `--files-*` and project-scan analysis flags were converted to bare
-      subcommands that require `--prj-base` and `--git-base` (SRS-408, SRS-410).
+      subcommands (SRS-408) whose base requirements follow SRS-396 and SRS-410.
     """
     return getattr(args, "test_static_check", None) is not None
 
@@ -4106,10 +4112,10 @@ def _require_git_base_value(args: Namespace) -> Path:
     @param args Parsed CLI namespace.
     @return {Path} Absolute `--git-base` path.
     @throws ReqError If `--git-base` is absent or does not exist.
-    @details Performs presence and existence validation only (SRS-395, SRS-410); analysis
-      subcommands use this level because they execute no git operations through
-      `--git-base`.
-    @satisfies SRS-393, SRS-394, SRS-395, SRS-410
+    @details Performs presence and existence validation only (SRS-395); git-integration
+      commands reach this level through `_require_git_base` because they are the only
+      commands that execute git operations through `--git-base` (SRS-397).
+    @satisfies SRS-393, SRS-394, SRS-395, SRS-397
     """
     git_base = getattr(args, "git_base", None)
     if git_base is None:
@@ -4128,8 +4134,8 @@ def _require_git_base(args: Namespace) -> Path:
     @throws ReqError If `--git-base` is absent, does not exist, or is not inside a git work tree.
     @details `--git-base` is command-line only and is never loaded from configuration; the
       returned path is the repository root reported by `git rev-parse --show-toplevel`
-      executed in `--git-base` (SRS-393, SRS-394, SRS-395, SRS-397, SRS-410).
-    @satisfies SRS-393, SRS-394, SRS-395, SRS-397, SRS-410
+      executed in `--git-base` (SRS-393, SRS-394, SRS-395, SRS-397).
+    @satisfies SRS-393, SRS-394, SRS-395, SRS-397
     """
     return resolve_git_root(_require_git_base_value(args))
 
@@ -4421,7 +4427,7 @@ def run_files_tokens(files: list[str]) -> None:
     @details Implements the run_files_tokens function behavior with deterministic control flow.
     @param files Input parameter `files`.
     @return {None} Function return value.
-    @satisfies SRS-408, SRS-410
+    @satisfies SRS-408
     """
     from .token_counter import count_files_metrics, format_pack_summary
 
@@ -4445,7 +4451,7 @@ def run_files_references(files: list[str]) -> None:
     @details Implements the run_files_references function behavior with deterministic control flow.
     @param files Input parameter `files`.
     @return {None} Function return value.
-    @satisfies SRS-234, SRS-408, SRS-410
+    @satisfies SRS-234, SRS-408
     """
     from .generate_markdown import generate_markdown
 
@@ -4464,7 +4470,7 @@ def run_files_compress(files: list[str], enable_line_numbers: bool = False) -> N
         @param enable_line_numbers If True, emits <n>: prefixes in compressed entries.
         @details Renders output header paths relative to current working directory.
     @return {None} Function return value.
-    @satisfies SRS-408, SRS-410
+    @satisfies SRS-408
     """
     from .compress_files import compress_files
 
@@ -4484,7 +4490,7 @@ def run_files_find(args_list: list[str], enable_line_numbers: bool = False) -> N
         @param enable_line_numbers If True, emits <n>: prefixes in output.
     @details Implements the run_files_find function behavior with deterministic control flow.
     @return {None} Function return value.
-    @satisfies SRS-236, SRS-408, SRS-410
+    @satisfies SRS-236, SRS-408
     """
     from .find_constructs import find_constructs_in_files
 
@@ -4513,7 +4519,7 @@ def run_references(args: Namespace) -> None:
     @details Implements the run_references function behavior with deterministic control flow.
     @param args Input parameter `args`.
     @return {None} Function return value.
-    @satisfies SRS-177, SRS-180, SRS-181, SRS-235, SRS-408, SRS-410
+    @satisfies SRS-177, SRS-180, SRS-181, SRS-235, SRS-396, SRS-408
     """
     from .generate_markdown import generate_markdown
 
@@ -4532,7 +4538,7 @@ def run_compress_cmd(args: Namespace) -> None:
         @param args Parsed CLI arguments namespace.
     @details Implements the run_compress_cmd function behavior with deterministic control flow.
     @return {None} Function return value.
-    @satisfies SRS-179, SRS-180, SRS-181, SRS-408, SRS-410
+    @satisfies SRS-179, SRS-180, SRS-181, SRS-396, SRS-408
     """
     from .compress_files import compress_files
 
@@ -4556,7 +4562,7 @@ def run_find(args: Namespace) -> None:
         @throws ReqError If no source files found or no constructs match criteria with available TAGs listing.
     @details Implements the run_find function behavior with deterministic control flow.
     @return {None} Function return value.
-    @satisfies SRS-180, SRS-237, SRS-408, SRS-410
+    @satisfies SRS-180, SRS-237, SRS-396, SRS-408
     """
     from .find_constructs import find_constructs_in_files
 
@@ -4589,7 +4595,7 @@ def run_tokens(args: Namespace) -> None:
       from ~/.config/usereq/config.json, selects only REQUIREMENTS.md/WORKFLOW.md/REFERENCES.md
       as direct regular files in fixed order, and delegates summary rendering to
       run_files_tokens.
-    @satisfies SRS-387, SRS-392, SRS-396, SRS-408, SRS-410
+    @satisfies SRS-387, SRS-392, SRS-396, SRS-408
     """
     project_base = _resolve_project_base(args)
     config = load_config()
@@ -4620,8 +4626,7 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
       Static-check configuration is loaded from `~/.config/usereq/config.json`.
       When the global configuration file cannot be located, emits a warning to stderr and
       continues with the SRS-424 default static-check configuration (SRS-254).
-      Project base for dispatch context is the mandatory `--prj-base` value (SRS-253,
-      SRS-410).
+      Project base for dispatch context is the mandatory `--prj-base` value (SRS-253).
       For each file:
       - Resolves absolute path; skips with warning if not a regular file.
       - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on the lowercase extension.
@@ -4632,11 +4637,11 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
       Dispatch context provides project root for checker runtime execution.
       All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-253).
       Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-253, SRS-255)
-    @see SRS-253, SRS-254, SRS-255, SRS-341, SRS-408, SRS-410
+    @see SRS-253, SRS-254, SRS-255, SRS-341, SRS-396, SRS-408
     """
     from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
 
-    # Resolve the mandatory project base for dispatch context (SRS-253, SRS-410).
+    # Resolve the mandatory project base for dispatch context (SRS-253, SRS-396).
     project_base = _require_prj_base(args)
 
     # SRS-254: warn on a missing configuration file, then continue with the SRS-424 defaults.
@@ -4702,7 +4707,7 @@ def run_project_static_check_cmd(args: Namespace) -> int:
       All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-256).
       Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
     @throws ReqError If no source files are found.
-    @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-408, SRS-410
+    @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408
     """
     from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
 
@@ -4882,10 +4887,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         if command == "show":
             run_show(args)
             return 0
-        # Bare analysis subcommands (SRS-408); both bases are mandatory (SRS-410).
+        # Bare analysis subcommands (SRS-408); --prj-base is enforced by the handlers
+        # that consume it (SRS-396, SRS-410) and no subcommand requires --git-base.
         if command is not None:
-            _require_prj_base(args)
-            _require_git_base_value(args)
             if command == "files-tokens":
                 run_files_tokens(args.files_tokens)
             elif command == "files-references":

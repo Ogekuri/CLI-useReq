@@ -224,26 +224,26 @@ A standalone testbed is available: `req --test-static-check {dummy,pylance,ruff,
 
 `req` can be run from any directory. Two path arguments drive location resolution:
 
-- `--prj-base <project-folder>` — mandatory for every command that reads or writes project files (`install`, `--update`, the analysis subcommands, `--docs-check`, `--set-*-dir`).
-- `--git-base <git-repository-folder>` — mandatory for every git command and for every analysis subcommand.
+- `--prj-base <project-folder>` — mandatory for commands that read or write project files (`install`, `--update`, `--docs-check`, `--set-*-dir`, and the project-scan subcommands `tokens`, `references`, `compress`, `find`, `static-check`, `files-static-check`).
+- `--git-base <git-repository-folder>` — mandatory for the git commands (`--git-check`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`); not required by any analysis subcommand.
 - `--prj-base` and `--git-base` are never persisted in `~/.config/usereq/config.json`.
 
 ### Analysis subcommands
 
-The analysis commands are bare subcommands (no `--` prefix) and each one requires both `--prj-base` and `--git-base`. Legacy `--`-prefixed forms are not accepted.
+The analysis commands are bare subcommands (no `--` prefix); the project-scan ones require `--prj-base`, and none of them requires `--git-base`. Legacy `--`-prefixed forms are not accepted.
 
 | Subcommand | Purpose |
 | --- | --- |
-| `files-tokens --prj-base P --git-base G FILE [FILE ...]` | Count tokens and chars for the given files |
-| `files-references --prj-base P --git-base G FILE [FILE ...]` | Generate LLM reference markdown for the given files |
-| `files-compress --prj-base P --git-base G [--enable-line-numbers] FILE [FILE ...]` | Generate compressed output for the given files |
-| `files-find --prj-base P --git-base G [--enable-line-numbers] TAG PATTERN FILE [FILE ...]` | Find and extract specific constructs from the given files |
-| `files-static-check --prj-base P --git-base G FILE [FILE ...]` | Run static analysis on the given files |
-| `tokens --prj-base P --git-base G` | Count tokens/chars for canonical docs (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`) in configured `docs-dir` |
-| `references --prj-base P --git-base G` | Reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` |
-| `compress --prj-base P --git-base G [--enable-line-numbers]` | Compressed output for the same project selection |
-| `find --prj-base P --git-base G [--enable-line-numbers] TAG PATTERN` | Extract constructs from the same project selection |
-| `static-check --prj-base P --git-base G` | Static analysis on `src-dir` + `tests-dir` selections (excluding `fixtures/`) |
+| `files-tokens FILE [FILE ...]` | Count tokens and chars for the given files |
+| `files-references FILE [FILE ...]` | Generate LLM reference markdown for the given files |
+| `files-compress [--enable-line-numbers] FILE [FILE ...]` | Generate compressed output for the given files |
+| `files-find [--enable-line-numbers] TAG PATTERN FILE [FILE ...]` | Find and extract specific constructs from the given files |
+| `files-static-check --prj-base P FILE [FILE ...]` | Run static analysis on the given files |
+| `tokens --prj-base P` | Count tokens/chars for canonical docs (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`) in configured `docs-dir` |
+| `references --prj-base P` | Reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` |
+| `compress --prj-base P [--enable-line-numbers]` | Compressed output for the same project selection |
+| `find --prj-base P [--enable-line-numbers] TAG PATTERN` | Extract constructs from the same project selection |
+| `static-check --prj-base P` | Static analysis on `src-dir` + `tests-dir` selections (excluding `fixtures/`) |
 
 Notes:
 

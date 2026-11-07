@@ -1301,19 +1301,21 @@ class TestPrjBaseRequirements(HomeIsolatedTestCase):
         self.assertEqual(rc, 1)
         self.assertIn("--prj-base", mock_stderr.getvalue())
 
-    def test_files_tokens_requires_git_base(self) -> None:
-        """SRS-410/SRS-405: analysis subcommands without --git-base exit with code 1."""
+    def test_files_tokens_requires_no_bases(self) -> None:
+        """SRS-396/SRS-410: files-tokens runs without --prj-base or --git-base.
+
+        expected_output: exit code 0 with neither base argument supplied.
+        """
         project = Path(tempfile.mkdtemp(prefix="usereq-prj-"))
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
         target = project / "sample.py"
         target.write_text("x = 1\n", encoding="utf-8")
         with (
             patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
+            patch("sys.stderr", new_callable=io.StringIO),
         ):
-            rc = cli.main(["files-tokens", "--prj-base", str(project), str(target)])
-        self.assertEqual(rc, 1)
-        self.assertIn("--git-base", mock_stderr.getvalue())
+            rc = cli.main(["files-tokens", str(target)])
+        self.assertEqual(rc, 0)
 
     def test_legacy_analysis_flags_are_not_parsed(self) -> None:
         """SRS-409/SRS-412: legacy --prefixed analysis command forms are rejected."""

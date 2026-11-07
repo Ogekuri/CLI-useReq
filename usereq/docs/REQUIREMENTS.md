@@ -129,8 +129,8 @@ No explicit performance optimizations identified.
 - **SRS-407**: MUST persist the effective `docs-dir`, `tests-dir`, and `src-dir` values in `~/.config/usereq/config.json` during installation and update.
 - **SRS-408**: MUST implement the following behavior: The CLI MUST accept exactly these ten analysis subcommand tokens without the `--` prefix: `files-tokens`, `files-references`, `files-compress`, `files-find`, `tokens`, `references`, `compress`, `find`, `files-static-check`, `static-check`.
 - **SRS-409**: MUST NOT parse the legacy `--`-prefixed forms of the SRS-408 subcommands (`--files-tokens`, `--files-references`, `--files-compress`, `--files-find`, `--tokens`, `--references`, `--compress`, `--find`, `--files-static-check`, `--static-check`).
-- **SRS-410**: MUST require both `--prj-base` and `--git-base` for every SRS-408 subcommand; absent arguments MUST trigger the SRS-395 error behavior.
-- **SRS-411**: MUST implement the following behavior: The CLI help output MUST document every SRS-408 subcommand together with its mandatory `--prj-base` and `--git-base` arguments.
+- **SRS-410**: MUST NOT require `--git-base` for any SRS-408 subcommand; `--prj-base` MUST be mandatory exactly for the SRS-408 subcommands listed in SRS-396, and its absence MUST trigger the SRS-395 error behavior.
+- **SRS-411**: MUST implement the following behavior: The CLI help output MUST document every SRS-408 subcommand together with exactly the mandatory base arguments required by SRS-396 and SRS-397.
 - **SRS-413**: MUST implement the following behavior: `--disable PROVIDER` MUST remove all persisted specs of `PROVIDER` from the `"providers"` array; absent specs MUST leave the configuration unchanged.
 - **SRS-414**: MUST implement the following behavior: `--disable-static-check LANG=MODULE[,CMD[,PARAM...]]` MUST remove entries matching the SRS-301 identity tuple; `--disable-static-check LANG` MUST remove the whole canonical language key.
 - **SRS-415**: MUST implement the following behavior: `--enable-static-check` and `--disable-static-check` MUST only update the `"static-check"` key in `~/.config/usereq/config.json` and MUST NOT require `--prj-base`.
@@ -270,10 +270,10 @@ No explicit performance optimizations identified.
 - **SRS-252**: MUST implement the following behavior: When `--enable-static-check` is used during installation or update, the global configuration file key `"static-check"` MUST be a JSON object keyed by canonical language name, and each language value MUST be a non-empty JSON array of entry objects with required `"module"` and optional `"cmd"`/`"params"` fields.
 
 ### 5.4 Static Analysis Execution Commands
-- **SRS-253**: MUST support `files-static-check FILE [FILE ...]` as a subcommand per SRS-408 requiring `--prj-base` and `--git-base`; for each FILE it MUST resolve the absolute path, detect the language, load the language array from `"static-check"`, and execute all configured entries sequentially with `fail_only` mode active and a dispatch context containing the mandatory `--prj-base` value.
+- **SRS-253**: MUST support `files-static-check FILE [FILE ...]` as a subcommand per SRS-408 requiring `--prj-base`; for each FILE it MUST resolve the absolute path, detect the language, load the language array from `"static-check"`, and execute all configured entries sequentially with `fail_only` mode active and a dispatch context containing the mandatory `--prj-base` value.
 - **SRS-254**: MUST implement the following behavior: When `--files-static-check` cannot locate `~/.config/usereq/config.json`, the command MUST print a warning to stderr, apply the SRS-424 default static-check configuration, and continue with SRS-255 exit-code semantics.
 - **SRS-255**: MUST implement the following behavior: The `--files-static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis.
-- **SRS-256**: MUST support `static-check` as a project-scan subcommand per SRS-408 requiring `--prj-base` and `--git-base`, with file selection from `git ls-files` under configured `src-dir` values and the `tests-dir` value plus SRS-131/SRS-180 filtering; all checks MUST execute with `fail_only` mode active and dispatch context containing `--prj-base`.
+- **SRS-256**: MUST support `static-check` as a project-scan subcommand per SRS-408 requiring `--prj-base`, with file selection from `git ls-files` under configured `src-dir` values and the `tests-dir` value plus SRS-131/SRS-180 filtering; all checks MUST execute with `fail_only` mode active and dispatch context containing `--prj-base`.
 - **SRS-257**: MUST implement the following behavior: The `static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis.
 - **SRS-336**: MUST implement the following behavior: The `--static-check` command MUST load the `tests-dir` value from `~/.config/usereq/config.json` and append it to the `src-dir` list for file selection; if `tests-dir` is missing or invalid the command MUST skip test directory inclusion without error.
 - **SRS-424**: MUST apply the SRS-425 and SRS-426 default static-check configuration when the configuration stores no `"static-check"` entry; a present entry, including an empty object, MUST suppress the defaults.
@@ -304,8 +304,8 @@ No explicit performance optimizations identified.
 - **SRS-393**: MUST accept `--git-base PATH` as the sole command-line source of the git repository base used for git operations.
 - **SRS-394**: MUST NOT persist `--prj-base` or `--git-base` in `~/.config/usereq/config.json` and MUST NOT load them from it.
 - **SRS-395**: MUST print an English error to stderr and exit with code 1 when a dispatched command requires `--prj-base` or `--git-base` and that argument is absent.
-- **SRS-396**: MUST require `--prj-base` for the `install` command, `--update`, `references`, `compress`, `tokens`, `find`, `static-check`, `files-tokens`, `files-references`, `files-compress`, `files-find`, `files-static-check`, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir`.
-- **SRS-397**: MUST require `--git-base` for `--git-check`, `--git-wt-name`, `--git-wt-create`, and `--git-wt-delete`, and for every SRS-408 subcommand per SRS-410.
+- **SRS-396**: MUST require `--prj-base` for the `install` command, `--update`, `references`, `compress`, `tokens`, `find`, `static-check`, `files-static-check`, `--docs-check`, `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir`.
+- **SRS-397**: MUST require `--git-base` for `--git-check`, `--git-wt-name`, `--git-wt-create`, and `--git-wt-delete`.
 - **SRS-310**: MUST implement the following behavior: When the global configuration file is loaded, ALL key-value parameters MUST be loaded and available to CLI command functions.
 
 ### 6.2 Git Check Command
