@@ -3,6 +3,7 @@
 import io
 import http.client
 import json
+import os
 import tempfile
 import urllib.error
 import unittest
@@ -569,6 +570,50 @@ class TestOnlineUpdateCheck(unittest.TestCase):
         # Assert
         self.assertEqual(raw_tag, "v9.9.9")
         self.assertEqual(normalized_tag, "9.9.9")
+
+    def test_fetch_github_latest_version_sends_github_token_bearer(self) -> None:
+        """A non-empty GITHUB_TOKEN must be sent as an Authorization bearer header.
+
+        @details Unauthenticated GitHub REST API calls fail with HTTP 403 once the
+        per-IP rate limit is exhausted, degrading the SRS-442 GitHub latest line and
+        the SRS-451 upgrade tag resolution to unknown/error even when a release is
+        fetchable. When GITHUB_TOKEN is unset or blank, no Authorization header may
+        be sent (SRS-442, SRS-451).
+        """
+        # Arrange
+        response_mock = MagicMock()
+        response_mock.read.return_value = json.dumps({"tag_name": "v9.9.9"}).encode("utf-8")
+        urlopen_cm = MagicMock()
+        urlopen_cm.__enter__.return_value = response_mock
+        urlopen_cm.__exit__.return_value = None
+
+        # Act / Assert: token set -> Authorization bearer with stripped value.
+        with patch("usereq.cli.load_package_version", return_value="0.0.1"):
+            with patch.dict(os.environ, {"GITHUB_TOKEN": " tok-123 "}):
+                with patch(
+                    "usereq.cli.urllib.request.urlopen", return_value=urlopen_cm
+                ) as urlopen_mock:
+                    cli.fetch_github_latest_version(raw_tag=True)
+                    request = urlopen_mock.call_args.args[0]
+                    self.assertEqual(
+                        request.headers.get("Authorization"),
+                        "Bearer tok-123",
+                        "GITHUB_TOKEN must be forwarded as Authorization bearer (SRS-442)",
+                    )
+
+        # Act / Assert: blank token -> no Authorization header.
+        with patch("usereq.cli.load_package_version", return_value="0.0.1"):
+            with patch.dict(os.environ, {"GITHUB_TOKEN": "   "}):
+                with patch(
+                    "usereq.cli.urllib.request.urlopen", return_value=urlopen_cm
+                ) as urlopen_mock:
+                    cli.fetch_github_latest_version()
+                    request = urlopen_mock.call_args.args[0]
+                    self.assertNotIn(
+                        "Authorization",
+                        request.headers,
+                        "No Authorization header may be sent without GITHUB_TOKEN",
+                    )
 
     def test_upgrade_command_with_github_installs_latest_release_tag(self) -> None:
         """--upgrade --develop must pin the raw latest GitHub release tag (SRS-440, SRS-451, SRS-452)."""

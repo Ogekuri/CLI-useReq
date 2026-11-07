@@ -1306,11 +1306,14 @@ def fetch_github_latest_version(
         @param raw_tag {bool} When True, return the raw `tag_name` value with its optional
         `v` prefix preserved; when False, normalize through `normalize_release_tag`.
     @details Issues `GET https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` with
-    GitHub JSON `Accept` headers and parses `tag_name`. The endpoint answers with the latest
-    tagged release independently of the branch holding the tag. Normalized output feeds the
-    `--ver`/`--version` display (SRS-441, SRS-442); raw output feeds the `--upgrade --develop`
-    tag resolution (SRS-451). The startup release-check never calls this function (SRS-430).
-    Complexity: O(1). Side effects: one HTTP request.
+    GitHub JSON `Accept` headers and parses `tag_name`. When the `GITHUB_TOKEN` environment
+    variable holds a non-empty value, the request carries `Authorization: Bearer <token>`
+    so authenticated calls bypass the unauthenticated per-IP rate limit that otherwise
+    turns fetchable releases into failures (SRS-442, SRS-451). The endpoint answers with the
+    latest tagged release independently of the branch holding the tag. Normalized output
+    feeds the `--ver`/`--version` display (SRS-441, SRS-442); raw output feeds the
+    `--upgrade --develop` tag resolution (SRS-451). The startup release-check never calls
+    this function (SRS-430). Complexity: O(1). Side effects: one HTTP request.
     @return {Optional[str]} Latest GitHub release tag: raw whitespace-stripped `tag_name` when
     `raw_tag` is True, `v`-prefix-stripped otherwise; None when `tag_name` is absent or not a
     non-empty string.
@@ -1320,12 +1323,19 @@ def fetch_github_latest_version(
     @throws {json.JSONDecodeError} When the response body is not valid JSON.
     @satisfies SRS-442, SRS-451
     """
+    request_headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"usereq/{load_package_version()}",
+    }
+    # SRS-442/SRS-451: unauthenticated GitHub REST API calls fail with HTTP 403 once the
+    # per-IP rate limit is exhausted; forwarding an optional GITHUB_TOKEN bearer mirrors
+    # the established prompts-update.sh pattern and keeps fetchable releases fetchable.
+    github_token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if github_token:
+        request_headers["Authorization"] = f"Bearer {github_token}"
     request = urllib.request.Request(
         GITHUB_RELEASES_LATEST_URL,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": f"usereq/{load_package_version()}",
-        },
+        headers=request_headers,
         method="GET",
     )
     with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
