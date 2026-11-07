@@ -1,8 +1,8 @@
 ---
 title: "useReq Requirements"
 description: "Software Requirements Specification"
-date: "2026-11-06"
-version: 1.17
+date: "2026-11-07"
+version: 1.18
 author: "Ogekuri"
 scope:
   paths:
@@ -192,6 +192,10 @@ No explicit performance optimizations identified.
 - **SRS-432**: MUST implement the following behavior: On canonical version-tag push, the workflow MUST execute package build, provenance attestation, and GitHub Release creation independently of `origin/master` reachability.
 - **SRS-433**: MUST implement the following behavior: The workflow MUST publish the built sdist and wheel to PyPI project `cli-usereq` through the official `pypa/gh-action-pypi-publish` GitHub Action authenticated via GitHub OIDC trusted publishing.
 - **SRS-434**: MUST implement the following behavior: The PyPI publish job MUST execute only when the tagged commit is reachable from `origin/master`; tags reachable only from `origin/develop` MUST skip PyPI publication.
+- **SRS-455**: MUST execute every JavaScript-based GitHub Action referenced by `.github/workflows/release-pypi.yml` on Node24 runtime or later.
+- **SRS-456**: MUST reference `actions/checkout@v5`, `actions/setup-python@v6`, `actions/upload-artifact@v6`, and `actions/download-artifact@v7` majors or later.
+- **SRS-457**: MUST reference `astral-sh/setup-uv@v7`, `actions/attest-build-provenance@v3`, `softprops/action-gh-release@v3`, and `mikepenz/release-changelog-builder-action@v6` majors or later.
+- **SRS-458**: MUST NOT set `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION` or `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` environment overrides in the workflow.
 
 ### 3.5.1 Package Distribution and Resource Inclusion
 - **SRS-272**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST enumerate only `resources/prompts/*.md`, `resources/docs/*.md`, and `resources/prompts-version.txt`.
@@ -256,6 +260,7 @@ No explicit performance optimizations identified.
 - **SRS-438**: MUST include unit tests in `tests/test_release_workflow.py` verifying the `.github/workflows/release-pypi.yml` location, the SRS-433 OIDC publication steps, the SRS-434 master-only publication gating, and the SRS-432 build/release independence from master reachability.
 - **SRS-439**: MUST include unit tests in `tests/test_dependency_manifests.py` verifying the SRS-435 project name, the SRS-436 author, and the SRS-437 repository URLs in `pyproject.toml`.
 - **SRS-444**: MUST include unit tests in `tests/test_update_check.py` verifying the SRS-430 PyPI endpoint, the SRS-343/SRS-440 upgrade commands, and the SRS-441/SRS-442 `--ver` output.
+- **SRS-459**: MUST include unit tests in `tests/test_release_workflow.py` verifying the SRS-455 Node24 runtime, the SRS-456/SRS-457 action-major floors, and the SRS-458 opt-out override prohibition.
 
 ## 5. Static Code Analysis Requirements
 

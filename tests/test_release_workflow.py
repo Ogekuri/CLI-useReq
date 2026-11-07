@@ -1,13 +1,20 @@
 """@brief Tests for GitHub release workflow trigger, gating, and PyPI publication configuration.
 @details Validates the release-pypi.yml workflow: manual dispatch and tag-push triggers,
 uv-based build step, master-independent build/release execution (SRS-432), artifact
-hand-off, and master-only OIDC trusted publishing to PyPI (SRS-433, SRS-434).
+hand-off, master-only OIDC trusted publishing to PyPI (SRS-433, SRS-434), Node24-or-later
+runtime execution of every JavaScript action (SRS-455, SRS-456, SRS-457), and absence of
+transitional Node20 opt-out overrides (SRS-458).
 @satisfies SRS-268
 @satisfies SRS-431
 @satisfies SRS-432
 @satisfies SRS-433
 @satisfies SRS-434
 @satisfies SRS-438
+@satisfies SRS-455
+@satisfies SRS-456
+@satisfies SRS-457
+@satisfies SRS-458
+@satisfies SRS-459
 """
 
 from __future__ import annotations
@@ -31,6 +38,43 @@ def _load_workflow() -> dict:
     """
 
     return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+
+# @brief Minimum action major versions whose runtime is Node24 or later (SRS-455..SRS-457).
+# @details Each entry maps an action slug referenced by `uses:` to the first major release
+# that executes on the Node24 runtime, verified against the upstream action metadata
+# (`runs.using: node24`). Composite `actions/attest-build-provenance` v3 delegates to the
+# Node24-runtime `actions/attest` v3 action. Docker-based actions (e.g.
+# `pypa/gh-action-pypi-publish`) do not execute on a Node runtime and are excluded.
+NODE24_MINIMUM_ACTION_MAJORS: dict[str, int] = {
+    "actions/checkout": 5,
+    "actions/setup-python": 6,
+    "astral-sh/setup-uv": 7,
+    "actions/upload-artifact": 6,
+    "actions/download-artifact": 7,
+    "actions/attest-build-provenance": 3,
+    "softprops/action-gh-release": 3,
+    "mikepenz/release-changelog-builder-action": 6,
+}
+
+
+def _workflow_uses_references(content: str) -> list[str]:
+    """@brief Extract every `uses:` action reference from the workflow text.
+    @details Matches YAML `uses:` keys regardless of indentation and strips trailing
+    inline comments and surrounding whitespace from each value.
+    @param {str} content Raw workflow file text.
+    @return {list[str]} Ordered action references such as `actions/checkout@v5`.
+    """
+
+    references: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("uses:"):
+            continue
+        value = stripped[len("uses:"):].split("#", 1)[0].strip()
+        if value:
+            references.append(value)
+    return references
 
 
 class TestReleaseWorkflowLocation(unittest.TestCase):
@@ -226,3 +270,71 @@ class TestReleaseWorkflowPyPITrustedPublishing(unittest.TestCase):
         self.assertEqual(permissions.get("id-token"), "write")
         self.assertEqual(permissions.get("attestations"), "write")
         self.assertEqual(permissions.get("contents"), "write")
+
+
+class TestReleaseWorkflowNode24Runtime(unittest.TestCase):
+    """SRS-455/SRS-456/SRS-457/SRS-458: Node24-or-later action runtime constraints."""
+
+    def test_all_javascript_actions_run_on_node24_or_later(self) -> None:
+        """@brief Every JavaScript action major must satisfy the Node24 floor map.
+        @details Resolves each `uses:` reference, extracts its `v<major>` tag, and
+        asserts the major is greater than or equal to the first Node24-runtime major
+        for that action (SRS-455, SRS-456, SRS-457). Docker-based actions are not
+        executed on a Node runtime and are exempt (SRS-455).
+        @return {None} No return value.
+        @satisfies SRS-455
+        @satisfies SRS-456
+        @satisfies SRS-457
+        @satisfies SRS-459
+        """
+
+        content = WORKFLOW_PATH.read_text(encoding="utf-8")
+        references = _workflow_uses_references(content)
+        self.assertTrue(references, "Workflow must reference at least one action")
+        referenced_slugs: set[str] = set()
+        for reference in references:
+            slug, _, ref = reference.partition("@")
+            self.assertTrue(ref, f"Action reference must pin a version: {reference}")
+            if slug not in NODE24_MINIMUM_ACTION_MAJORS:
+                continue
+            referenced_slugs.add(slug)
+            major_match = re.match(r"v(\d+)", ref)
+            self.assertIsNotNone(
+                major_match,
+                f"JavaScript action reference must use a v<major> tag: {reference}",
+            )
+            assert major_match is not None
+            major = int(major_match.group(1))
+            minimum = NODE24_MINIMUM_ACTION_MAJORS[slug]
+            self.assertGreaterEqual(
+                major,
+                minimum,
+                f"{slug}@v{major} runs on Node20; Node24 floor is v{minimum} (SRS-455)",
+            )
+        self.assertEqual(
+            referenced_slugs,
+            set(NODE24_MINIMUM_ACTION_MAJORS),
+            "Every Node24-constrained action must be referenced by the workflow",
+        )
+
+    def test_no_transitional_node_opt_out_env_overrides(self) -> None:
+        """@brief Transitional Node20 opt-out and Node24 force overrides must be absent.
+        @details The back-compatibility workarounds `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION`
+        and `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` MUST NOT appear anywhere in the workflow
+        (SRS-458): actions are migrated natively to Node24-runtime majors.
+        @return {None} No return value.
+        @satisfies SRS-458
+        @satisfies SRS-459
+        """
+
+        content = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertNotIn(
+            "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION",
+            content,
+            "Transitional Node20 opt-out override must be absent (SRS-458)",
+        )
+        self.assertNotIn(
+            "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24",
+            content,
+            "Transitional Node24 force override must be absent (SRS-458)",
+        )

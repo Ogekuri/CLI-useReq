@@ -30,7 +30,7 @@
 - `PROC:gha-release-pypi`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `GitHub Actions release workflow orchestration for tag-based and manual release execution with master-only PyPI OIDC trusted publishing`
+  - `role`: `GitHub Actions release workflow orchestration for tag-based and manual release execution with master-only PyPI OIDC trusted publishing; every JavaScript action executes on the Node24 runtime or later`
   - `entrypoints`: `.github/workflows/release-pypi.yml`
   - `defining_files`: `.github/workflows/release-pypi.yml`
   - `threads`: `no explicit threads detected`
@@ -256,12 +256,12 @@
 - **Type**: Process
 - **Parent Process**: `-`
 - **Entrypoint(s)**: `.github/workflows/release-pypi.yml` [`.github/workflows/release-pypi.yml`]
-- **Lifecycle/Trigger**: starts on GitHub Actions events (`push` on version tags and `workflow_dispatch`), evaluates master reachability of the tagged commit, and executes release build plus master-only PyPI publication jobs.
+- **Lifecycle/Trigger**: starts on GitHub Actions events (`push` on version tags and `workflow_dispatch`), evaluates master reachability of the tagged commit, and executes release build plus master-only PyPI publication jobs; every JavaScript action runs on Node24 or later (SRS-455..SRS-457) with no transitional Node20 opt-out overrides (SRS-458).
 - **Internal Call-Trace Tree**
   - `release-pypi.yml(...)`: workflow coordinator for release automation and PyPI OIDC trusted publishing [`.github/workflows/release-pypi.yml`]
     - `check-branch(...)`: verify tagged commit reachability from `origin/master` and export the `is_master` output consumed by downstream gating [`.github/workflows/release-pypi.yml`]
     - `build-release(...)`: run frozen-lock `uv run --with build` Python build, provenance attestation, `dist/` artifact upload, and GitHub release publication for every canonical version tag independently of master reachability [`.github/workflows/release-pypi.yml`]
-      - external boundaries: GitHub-hosted runners, checkout/setup actions, uv lock-resolved runtime/build tooling, GitHub release APIs, GitHub Actions artifact storage
+      - external boundaries: GitHub-hosted runners, Node24-runtime JavaScript actions (`actions/checkout@v5`, `actions/setup-python@v6`, `astral-sh/setup-uv@v7`, `actions/attest-build-provenance@v3`, `actions/upload-artifact@v6`, `softprops/action-gh-release@v3`, `mikepenz/release-changelog-builder-action@v6`), uv lock-resolved runtime/build tooling, GitHub release APIs, GitHub Actions artifact storage
     - `publish-pypi(...)`: download the `dist` artifact and publish sdist/wheel to PyPI project `cli-usereq` through `pypa/gh-action-pypi-publish` with GitHub OIDC trusted publishing only when `is_master` is `true`; develop-only tags skip publication [`.github/workflows/release-pypi.yml`]
       - external boundaries: GitHub Actions artifact storage, PyPI trusted-publisher OIDC exchange and upload endpoint
 
