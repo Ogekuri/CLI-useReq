@@ -20,14 +20,23 @@
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv">
 </p>
 
-**The `req` CLI provisions requirements-driven development prompts for LLM agents.**
-
+<p align="center">
+<strong>The `req` CLI provisions requirements-driven development prompts for LLM agents.</strong><br>
 In more detail: useReq packages a catalog of requirements-engineering prompts (write, create, change, implement, check, and more) and installs them as user-level prompts, commands, skills, and agents for the CLIs and agents you already use — exposed as `/req-<name>`, `/req:<name>`, `/skill:req-<name>`, `$req-<name>`, or `/req-<name>.prompt` depending on the provider. It also ships an embedded source-analysis toolkit (token counting, references, compression, construct extraction, static checks) that operates on your project across 20 programming languages, plus git-worktree helpers for parallel task execution. Everything is driven by one user-global configuration file (`~/.config/usereq/config.json`); nothing is written into your project repository. It runs as a Python package (installed as `req`, `usereq`, or `use-req`) or directly via `uvx`.
+</p>
 
-Quick index: [Feature Highlights](#feature-highlights) | [Quick Start](#quick-start) | [User's Guide](#users-guide) | [Acknowledgments](#acknowledgments)
+<p align="center">
+  <a href="#feature-highlights">Feature Highlights</a> |
+  <a href="#quick-start">Quick Start</a> |
+  <a href="#requirements">Requirements</a> |
+  <a href="#users-guide">User's Guide</a> |
+  <a href="#acknowledgments">Acknowledgments</a>
+</p>
 
-🚧 **Status: DRAFT — Proof-of-Concept (PoC) version, work in progress** 🚧
-⚠️ **IMPORTANT NOTICE**: Created with [PI-useReq/pi-usereq](https://www.npmjs.com/package/pi-usereq) 🤖✨ ⚠️
+<p align="center">
+🚧 <strong>STAGE:</strong> PRE-ALPHA 📝 - Proof-of-Concept (PoC) version 🏗️ 🚧<br>
+⚠️ <strong>IMPORTANT NOTICE</strong>: Created with <a href="https://www.npmjs.com/package/pi-usereq"><strong>PI-useReq/pi-usereq</strong></a> 🤖✨ ⚠️<br>
+</p>
 
 # Feature Highlights
 
