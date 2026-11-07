@@ -59,7 +59,7 @@
           - `format_unix_timestamp_utc(...)`: serialize Unix timestamps as UTC human-readable strings [`src/usereq/cli.py`]
     - `run_uninstall()`: for `--uninstall`, execute uv uninstall only on Linux, then remove release-check idle-state file and remove empty cache directory; on non-Linux emit manual uninstall command and skip uv process execution [`src/usereq/cli.py`]
       - `cleanup_release_check_idle_state_cache(...)`: delete idle-state file and remove empty `$HOME/.cache/<program_name>` directory [`src/usereq/cli.py`]
-    - `run_upgrade(...)`: for `--upgrade`, execute uv self-upgrade from the PyPI index only on Linux, or from the GitHub repository when `--github` is present in the invocation; on non-Linux emit manual upgrade command and skip uv process execution [`src/usereq/cli.py`]
+    - `run_upgrade(...)`: for `--upgrade`, execute uv self-upgrade from the PyPI index only on Linux, or from the GitHub repository when `--develop` (or equivalent alias `--dev`) is present in the invocation; on non-Linux emit manual upgrade command and skip uv process execution [`src/usereq/cli.py`]
       - `_maybe_auto_install_after_upgrade(...)`: after a successful `--upgrade`, run the provider installation flow with persisted providers when `auto-install` is enabled, warning and skipping when no provider is enabled or `--prj-base` is absent (SRS-421) [`src/usereq/cli.py`]
         - `load_auto_install_enabled()`: resolve the persisted `"auto-install"` flag with enabled default (SRS-420) [`src/usereq/cli.py`]
           - `_read_config_payload()`: read the raw user-global configuration payload [`src/usereq/cli.py`]

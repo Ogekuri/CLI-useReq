@@ -141,10 +141,11 @@ No explicit performance optimizations identified.
 - **SRS-420**: MUST implement the following behavior: `auto-install` MUST default to enabled; `--disable-auto-install` MUST persist `"auto-install": false` and `--enable-auto-install` MUST persist `"auto-install": true` in `~/.config/usereq/config.json`.
 - **SRS-421**: MUST implement the following behavior: When `--upgrade` succeeds and `auto-install` is enabled, the CLI MUST execute the provider installation flow with persisted providers; when `--prj-base` is absent it MUST print an English stderr warning and skip.
 - **SRS-422**: MUST implement the following behavior: `--disable-static-check` and `--disable` with unknown language or provider tokens MUST print an English error and exit with code 1.
-- **SRS-440**: MUST implement the following behavior: `--upgrade --github` MUST install from `git+https://github.com/Ogekuri/CLI-useReq.git` instead of the PyPI index; without `--github`, `--upgrade` MUST install from the PyPI index.
+- **SRS-440**: MUST implement the following behavior: `--upgrade --develop` MUST install from `git+https://github.com/Ogekuri/CLI-useReq.git` instead of the PyPI index; without `--develop`, `--upgrade` MUST install from the PyPI index.
+- **SRS-445**: MUST implement the following behavior: `--dev` MUST be accepted as an equivalent command-line alias of `--develop` when selecting the GitHub upgrade source for `--upgrade`.
 - **SRS-441**: MUST implement the following behavior: `--ver`/`--version` MUST print the installed version as the first line followed by `PyPI latest: <version>` and `GitHub latest: <version>` lines.
 - **SRS-442**: MUST implement the following behavior: `--ver`/`--version` MUST query the PyPI JSON API and the GitHub latest-release API bypassing idle gating; unfetchable versions MUST print `unknown`.
-- **SRS-443**: MUST implement the following behavior: `README.md` MUST present PyPI as the primary install/upgrade channel and a dedicated non-primary GitHub section covering GitHub installation and `--github` upgrades.
+- **SRS-443**: MUST implement the following behavior: `README.md` MUST present PyPI as the primary install/upgrade channel and a dedicated non-primary GitHub section covering GitHub installation and `--develop`/`--dev` upgrades.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider prompts, agents, and skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.

@@ -429,7 +429,7 @@ latest GitHub release tag for display purposes only and is never used by the def
 GITHUB_UPGRADE_SOURCE = (
     f"git+https://github.com/{GITHUB_REPOSITORY_OWNER}/{GITHUB_REPOSITORY_NAME}.git"
 )
-"""! @brief Hardcoded git source used only by `--upgrade --github` installs (SRS-440)."""
+"""! @brief Hardcoded git source used only by `--upgrade --develop` (alias `--dev`) installs (SRS-440, SRS-445)."""
 
 PYPI_PROJECT_JSON_URL = "https://pypi.org/pypi/cli-usereq/json"
 """! @brief Hardcoded PyPI JSON API endpoint for latest-version resolution (SRS-430).
@@ -588,11 +588,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--upgrade", action="store_true", help="Upgrade the tool with uv from PyPI."
     )
     parser.add_argument(
-        "--github",
+        "--develop",
+        "--dev",
         action="store_true",
         help=(
-            "With --upgrade: install from the GitHub repository "
-            "git+https://github.com/Ogekuri/CLI-useReq.git instead of PyPI."
+            "With --upgrade: install from the develop GitHub repository "
+            "git+https://github.com/Ogekuri/CLI-useReq.git instead of PyPI. "
+            "--dev is an equivalent alias of --develop."
         ),
     )
     parser.add_argument(
@@ -1013,14 +1015,16 @@ def run_upgrade(use_github: bool = False) -> None:
     """!
     @brief Executes the upgrade using uv from the PyPI index or the GitHub repository.
         @param use_github {bool} When True, install from `GITHUB_UPGRADE_SOURCE` instead of the
-        PyPI index (`--upgrade --github`, SRS-440).
+        PyPI index (`--upgrade --develop` or equivalent alias `--dev`, SRS-440, SRS-445).
     @details Builds `uv tool install cli-usereq --force` against the PyPI index by default
     (SRS-343); appends `--from git+https://github.com/Ogekuri/CLI-useReq.git` only when
     `use_github` is True (SRS-440). Executes the command only on Linux; on non-Linux platforms
     prints the manual command and skips uv execution.
     @throws ReqError If upgrade fails.
     @return {None} Function return value.
-    @satisfies SRS-343, SRS-440
+    @note The `--develop`/`--dev` argv alias mapping to `use_github=True` is resolved by
+    `main(...)` before calling this function.
+    @satisfies SRS-343, SRS-440, SRS-445
     """
     command = [
         "uv",
@@ -4860,7 +4864,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             run_uninstall()
             return 0
         if "--upgrade" in argv_list:
-            run_upgrade(use_github="--github" in argv_list)
+            run_upgrade(use_github=("--develop" in argv_list or "--dev" in argv_list))
             _maybe_auto_install_after_upgrade(argv_list)
             return 0
         if maybe_print_version(argv_list, pypi_latest=pypi_latest_from_check):
