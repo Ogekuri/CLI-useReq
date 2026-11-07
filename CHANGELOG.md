@@ -1,6 +1,9 @@
 # Changelog
 
-## [0.68.1](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.1) - 2026-11-07
+## [0.68.2](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.2) - 2026-11-07
+### ⛰️  Features
+- Update prompts.
+
 ### 🐛  Bug Fixes
 - correct and trim inline --help usage and descriptions [useReq] *(cli)*
   - Removed phantom 'req -c' token from the usage synopsis; the option
@@ -16,6 +19,20 @@
   - concise; tests/test_cli.py 120 passed; static-check clean.
 
 ### 🚜  Changes
+- rename upstream Prompts repository to CLI-Prompts [useReq] *(prompts-update)*
+  - SRS-375: update upstream repository URL to https://github.com/Ogekuri/CLI-Prompts
+  - scripts/prompts-update.sh: rename clone URLs (HTTPS/HTTPS-.git/SSH), releases API endpoint, Doxygen docs, log messages, and temp clone directory to CLI-Prompts
+  - README.md: update Development Notes and Acknowledgments upstream references
+  - WORKFLOW.md: update PROC:prompts-update-sh role and lifecycle naming
+- make install subcommand global-only with optional --prj-base [useReq] *(cli)*
+  - SRS-396/SRS-418: remove the mandatory --prj-base requirement for install
+  - SRS-447..449: install accepts optional --prj-base; without it the
+  - project scaffold, containment validation, and directory persistence
+  - are skipped; with it the combined flow is preserved
+  - SRS-421/SRS-450: auto-install after --upgrade runs regardless of
+  - --prj-base; warns only when no provider is enabled
+  - SRS-363/SRS-407: scaffold and dir-value persistence apply only when
+  - --prj-base is provided; help text and docs updated accordingly
 - BREAKING CHANGE: remove legacy flags, compat logic, and config refs in help [useReq] *(cli)*
   - Removed legacy --update and --remove flags (duplicates of the
   - canonical install and uninstall subcommands); SRS-034 lists them as
@@ -1434,7 +1451,7 @@
 - \[0.66.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.66.0
 - \[0.67.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.67.0
 - \[0.68.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.0
-- \[0.68.1\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.1
+- \[0.68.2\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.2
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1503,4 +1520,4 @@
 [0.66.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.65.0..v0.66.0
 [0.67.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.66.0..v0.67.0
 [0.68.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0
-[0.68.1]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.1
+[0.68.2]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.2
