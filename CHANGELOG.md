@@ -1,10 +1,19 @@
 # Changelog
 
-## [0.68.4](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.4) - 2026-11-07
+## [0.69.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.69.0) - 2026-11-07
 ### ⛰️  Features
 - Update prompts.
 
 ### 🐛  Bug Fixes
+- forward optional GITHUB_TOKEN bearer to GitHub API [useReq] *(update-check)*
+  - GitHub unauthenticated REST calls fail with HTTP 403 once the per-IP
+  - rate limit is exhausted, making --ver print 'GitHub latest: unknown'
+  - and --upgrade --develop fail even when a release is fetchable.
+  - fetch_github_latest_version now sends Authorization: Bearer $GITHUB_TOKEN
+  - when the variable is set and blank-stripped; no header when unset,
+  - mirroring the prompts-update.sh pattern (SRS-376 style auth).
+  - Add reproducer test asserting bearer presence with token and absence
+  - without token (SRS-442, SRS-451).
 - correct and trim inline --help usage and descriptions [useReq] *(cli)*
   - Removed phantom 'req -c' token from the usage synopsis; the option
   - does not exist and 'req -c' is not a valid invocation.
@@ -102,6 +111,9 @@
 
 ### 📚  Documentation
 - Update README.md file.
+
+### ◀️  Revert
+- Roll back branch to fe0502f9 (fe0502f9a015773dc1da42ae026790de485720bd).
 
 ## [0.68.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0) - 2026-11-06
 ### ⛰️  Features
@@ -1484,7 +1496,7 @@
 - \[0.66.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.66.0
 - \[0.67.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.67.0
 - \[0.68.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.0
-- \[0.68.4\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.4
+- \[0.69.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.69.0
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1553,4 +1565,4 @@
 [0.66.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.65.0..v0.66.0
 [0.67.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.66.0..v0.67.0
 [0.68.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0
-[0.68.4]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.68.4
+[0.69.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.69.0
