@@ -251,6 +251,69 @@ def provider_artifact_root(provider: str, artifact: str) -> Path:
         )
     return root
 
+PROVIDER_ARTIFACT_DISPLAY_PATTERNS: dict[str, dict[str, str]] = {
+    "antigravity": {
+        "prompts": "{prompt_name}.toml",
+        "skills": "req-{prompt_name}/SKILL.md",
+    },
+    "claude": {
+        "prompts": "{prompt_name}.md",
+        "agents": "req-{prompt_name}.md",
+        "skills": "req-{prompt_name}/SKILL.md",
+    },
+    "codex": {
+        "prompts": "req-{prompt_name}.md",
+        "skills": "req-{prompt_name}/SKILL.md",
+    },
+    "opencode": {
+        "prompts": "req-{prompt_name}.md",
+        "agents": "req-{prompt_name}.md",
+        "skills": "req-{prompt_name}/SKILL.md",
+    },
+    "pi": {
+        "prompts": "req-{prompt_name}.prompt.md",
+        "skills": "req-{prompt_name}/SKILL.md",
+    },
+}
+"""!
+@brief Installed filename patterns rendered by the `show` Providers table (SRS-462..SRS-466).
+@details Maps provider -> artifact -> installed filename pattern relative to the
+provider artifact root resolved by :func:`provider_artifact_root`. Patterns mirror
+the exact artifacts written by the installation flow: prompts use the installed
+base-name convention of each CLI (``{prompt_name}.toml`` for antigravity commands,
+``{prompt_name}.md`` for claude commands, ``req-{prompt_name}.md`` for codex and
+opencode, ``req-{prompt_name}.prompt.md`` for pi), agents use
+``req-{prompt_name}.md``, and skills use ``req-{prompt_name}/SKILL.md``.
+Missing provider/artifact keys denote unsupported pairs rendered as ``-`` (SRS-466).
+@satisfies SRS-462, SRS-463, SRS-464, SRS-465, SRS-466
+"""
+
+
+def provider_artifact_install_path(provider: str, artifact: str) -> str:
+    """!
+    @brief Render the home-relative installation path shown in the `show` Providers table.
+    @details Joins the hardcoded provider artifact root from
+    :func:`provider_artifact_root` (SRS-382..SRS-386) with the installed filename
+    pattern from :data:`PROVIDER_ARTIFACT_DISPLAY_PATTERNS` and renders the result
+    through :func:`format_home_relative_path` as a `~/`-prefixed POSIX path.
+    Unsupported provider/artifact pairs render exactly ``-`` (SRS-466).
+    Complexity: O(1). No side effects.
+    @param provider {str} Provider selector from ``{antigravity, claude, codex, opencode, pi}``.
+    @param artifact {str} Artifact selector from ``{prompts, agents, skills}``.
+    @return {str} Home-relative installation path pattern such as
+    ``~/.pi/agent/skills/req-{prompt_name}/SKILL.md``, or ``-`` when the provider
+    defines no installation target for the artifact.
+    @satisfies SRS-462, SRS-463, SRS-464, SRS-465, SRS-466, SRS-381
+    """
+    pattern = PROVIDER_ARTIFACT_DISPLAY_PATTERNS.get(provider, {}).get(artifact)
+    if pattern is None:
+        return "-"
+    try:
+        root = provider_artifact_root(provider, artifact)
+    except ReqError:
+        return "-"
+    return format_home_relative_path(root / pattern)
+
 INVALID_WT_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]')
 """! @brief Regex matching characters invalid in both Linux and Windows directory names."""
 
@@ -2978,11 +3041,12 @@ def run_show(args: Namespace) -> None:
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @details Prints the effective configuration table (`docs-dir`, `tests-dir`, `src-dir`,
-    `auto-install`), the provider enablement table, one dedicated component
-    installation-status table per enabled provider (SRS-417), and the enabled
-    static-check entries (SRS-416).
+    `auto-install`), the Providers table with `Prompts`, `Agents`, and `Skills` columns
+    rendering the home-relative installation path of each artifact type
+    (SRS-462..SRS-466), one dedicated component installation-status table per enabled
+    provider (SRS-417), and the enabled static-check entries (SRS-416).
     @throws ReqError If persisted provider SPECs are invalid.
-    @satisfies SRS-416, SRS-417, SRS-420
+    @satisfies SRS-416, SRS-417, SRS-420, SRS-462, SRS-463, SRS-464, SRS-465, SRS-466
     """
     config = load_config()
     doc_dir_value = str(config["docs-dir"])
@@ -3010,11 +3074,14 @@ def run_show(args: Namespace) -> None:
     print("Providers")
     print(
         _render_simple_table(
-            ["Provider", "Status"],
+            ["Provider", "Status", "Prompts", "Agents", "Skills"],
             [
                 [
                     name,
                     "enabled" if provider_configs[name]["enabled"] else "disabled",
+                    provider_artifact_install_path(name, "prompts"),
+                    provider_artifact_install_path(name, "agents"),
+                    provider_artifact_install_path(name, "skills"),
                 ]
                 for name in sorted(VALID_PROVIDERS)
             ],
