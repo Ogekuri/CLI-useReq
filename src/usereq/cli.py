@@ -718,8 +718,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         dest="git_wt_create",
         help=(
-            "Create a git worktree and branch with the given name, copying .venv when present "
-            "(requires --git-base)."
+            "Create a git worktree and branch with the given name, copying .venv from "
+            "--prj-base when present (requires --git-base and --prj-base)."
         ),
     )
     parser.add_argument(
@@ -752,18 +752,9 @@ def build_parser() -> argparse.ArgumentParser:
         dest="enable_line_numbers",
         help="Enable line number prefixes (<n>:) in output (disabled by default).",
     )
+    # SRS-447: the install subparser does not define or consume --prj-base; install
+    # is fully user-level and performs no project-side operations (SRS-448).
     install_options = argparse.ArgumentParser(add_help=False)
-    install_options.add_argument(
-        "--prj-base",
-        type=Path,
-        default=argparse.SUPPRESS,
-        dest="prj_base",
-        help=(
-            "Absolute project base directory; optional: when provided, installation "
-            "also creates the project directories and persists the directory "
-            "configuration."
-        ),
-    )
     subparsers = parser.add_subparsers(
         dest="command",
         title="subcommands",
@@ -883,7 +874,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "install",
         parents=[install_options],
-        usage="req install [--prj-base PRJ_BASE]",
+        usage="req install",
         help=(
             "Install or update the configured providers into user-level "
             "directories and print the installation report."
@@ -2950,15 +2941,15 @@ def _provider_artifact_installed(provider: str, artifact: str) -> bool:
 def run_install(args: Namespace) -> None:
     """!
     @brief Execute install: install or update the persisted providers globally.
-    @param args Parsed CLI namespace; `--prj-base` is optional (SRS-447).
+    @param args Parsed CLI namespace.
     @return {None} Function return value.
     @details Delegates to the config-driven installation flow (SRS-035, SRS-064, SRS-418)
     which requires at least one enabled provider and prints the installation summary
-    report (SRS-049). When `--prj-base` is absent, project-side scaffold, validation,
-    and persistence are skipped (SRS-448); when provided, the combined flow executes
-    (SRS-449).
+    report (SRS-049). Install performs no project-side operations and does not consume
+    `--prj-base` (SRS-447, SRS-448); scaffolding and directory persistence are removed
+    legacy behaviors (SRS-363, SRS-407, SRS-449).
     @throws ReqError If no provider is enabled.
-    @satisfies SRS-035, SRS-064, SRS-418, SRS-447, SRS-448, SRS-449
+    @satisfies SRS-035, SRS-064, SRS-418, SRS-447, SRS-448
     """
     run(args)
 
@@ -3201,95 +3192,25 @@ def _validate_enable_static_check_command_executables(
 def run(args: Namespace) -> None:
     """!
     @brief Handles the main installation/update flow for persisted providers.
-    @details Treats `--prj-base` as optional (SRS-447, SRS-418): loads the persisted
-    `"providers"` specs from `~/.config/usereq/config.json` (SRS-064, SRS-279) and
-    requires at least one enabled provider (SRS-035), orchestrates user-level provider
-    artifact generation with home-relative GUIDELINES_DIR token substitution
-    (SRS-402, SRS-403), and preserves the persisted static-check and auto-install
-    configuration (SRS-288, SRS-301, SRS-420). When `--prj-base` is provided, it
-    additionally loads the `docs-dir`, `tests-dir`, and `src-dir` values from the
-    user-global configuration with defaults `usereq`, `tests`, and `src` (SRS-359,
-    SRS-361, SRS-362), creates missing directories during installation (SRS-363),
-    validates containment under the project base, persists the effective directory
-    values, and rewrites the global configuration (SRS-288, SRS-301, SRS-420, SRS-407);
-    when `--prj-base` is absent, all project-side operations are skipped (SRS-448).
+    @details Loads the persisted `"providers"` specs from `~/.config/usereq/config.json`
+    (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), orchestrates
+    user-level provider artifact generation with home-relative GUIDELINES_DIR token
+    substitution (SRS-402, SRS-403), and never rewrites the user-global configuration
+    file (SRS-448). Install does not consume `--prj-base` (SRS-447); project scaffolding,
+    containment validation, and directory persistence are removed legacy behaviors
+    (SRS-363, SRS-407, SRS-449).
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError If no provider is enabled or configured paths are invalid.
-    @satisfies SRS-035, SRS-064, SRS-251, SRS-279, SRS-288, SRS-301, SRS-359, SRS-361, SRS-362, SRS-363, SRS-381, SRS-387, SRS-388, SRS-396, SRS-402, SRS-403, SRS-407, SRS-418, SRS-447, SRS-448, SRS-449
+    @throws ReqError If no provider is enabled.
+    @satisfies SRS-035, SRS-064, SRS-279, SRS-381, SRS-387, SRS-388, SRS-402, SRS-403, SRS-418, SRS-447, SRS-448
     """
     global VERBOSE, DEBUG
     VERBOSE = getattr(args, "verbose", False)
     DEBUG = getattr(args, "debug", False)
 
-    # Main flow: validates input, calculates paths, generates user-level resources.
-    # `--prj-base` is optional for install (SRS-447): when absent, project-side
-    # scaffold, containment validation, and directory persistence are skipped (SRS-448).
-    project_base: Optional[Path] = None
-    normalized_doc = ""
-    normalized_test = ""
-    normalized_src_dirs: list[str] = []
-    if getattr(args, "prj_base", None) is not None:
-        project_base = _resolve_project_base(args)
-
-        config = load_config()
-        doc_dir_value = config["docs-dir"]
-        test_dir_value = config["tests-dir"]
-        src_dir_values = config["src-dir"]
-
-        if not isinstance(doc_dir_value, str):
-            raise ReqError("Error: invalid docs configuration values", 11)
-        if not isinstance(test_dir_value, str):
-            raise ReqError("Error: invalid tests configuration value", 11)
-        if (
-            not isinstance(src_dir_values, list)
-            or not src_dir_values
-            or not all(isinstance(value, str) for value in src_dir_values)
-        ):
-            raise ReqError("Error: invalid src configuration values", 11)
-
-        create_missing_dirs = True
-        ensure_doc_directory(
-            doc_dir_value, project_base, create_missing=create_missing_dirs
-        )
-        ensure_test_directory(
-            test_dir_value, project_base, create_missing=create_missing_dirs
-        )
-        for src_dir_value in src_dir_values:
-            ensure_src_directory(
-                src_dir_value, project_base, create_missing=create_missing_dirs
-            )
-
-        normalized_doc = make_relative_if_contains_project(
-            doc_dir_value, project_base
-        ).rstrip("/\\")
-        normalized_test = make_relative_if_contains_project(
-            test_dir_value, project_base
-        ).rstrip("/\\")
-        for src_dir_value in src_dir_values:
-            normalized_src = make_relative_if_contains_project(
-                src_dir_value, project_base
-            )
-            normalized_src_dirs.append(normalized_src.rstrip("/\\"))
-
-        ensure_relative(normalized_doc, "DOCS_DIR", 4)
-        ensure_relative(normalized_test, "TESTS_DIR", 4)
-        for normalized_src in normalized_src_dirs:
-            ensure_relative(normalized_src, "SRC_DIR", 4)
-
-        abs_doc = resolve_absolute(normalized_doc, project_base)
-        abs_test = resolve_absolute(normalized_test, project_base)
-        abs_src_dirs = [
-            resolve_absolute(normalized_src, project_base)
-            for normalized_src in normalized_src_dirs
-        ]
-        if abs_doc and not abs_doc.resolve().is_relative_to(project_base):
-            raise ReqError("Error: docs-dir must be under the project base", 5)
-        if abs_test and not abs_test.resolve().is_relative_to(project_base):
-            raise ReqError("Error: tests-dir must be under the project base", 5)
-        for abs_src in abs_src_dirs:
-            if abs_src and not abs_src.resolve().is_relative_to(project_base):
-                raise ReqError("Error: src-dir must be under the project base", 5)
+    # Main flow: validates provider specs and generates user-level resources only.
+    # SRS-447/SRS-448: install never consumes --prj-base and performs no project-side
+    # operations; SRS-363/SRS-407/SRS-449 are removed legacy behaviors.
 
     # Resolve persisted provider specs (SRS-064, SRS-279); installation is config-driven.
     effective_provider_specs = load_persisted_provider_specs()
@@ -3334,36 +3255,15 @@ def run(args: Namespace) -> None:
             4,
         )
 
-    # Preserve the persisted static-check configuration unchanged; an absent key stays
-    # absent so the SRS-424 defaults keep tracking tool upgrades (SRS-301, SRS-415, SRS-424).
-    try:
-        raw_payload = _read_config_payload()
-    except ReqError:
-        raw_payload = {}
-    persisted_sc = raw_payload.get("static-check")
-    merged_static_check = persisted_sc if isinstance(persisted_sc, dict) else None
-
-    if project_base is not None:
-        # Persist the single user-global configuration file (SRS-279, SRS-288, SRS-407).
-        save_config(
-            normalized_doc,
-            normalized_test,
-            normalized_src_dirs,
-            static_check_config=merged_static_check if merged_static_check else None,
-            provider_specs=effective_provider_specs
-            if effective_provider_specs
-            else None,
-        )
+    # SRS-448: install never rewrites the user-global configuration file; persisted
+    # providers are already stored by --enable and directory persistence is a removed
+    # legacy behavior (SRS-363, SRS-407, SRS-449).
 
     # Resolve the installation-owned guidelines substitution values (SRS-360, SRS-402, SRS-403).
     guidelines_file_list = generate_guidelines_file_list()
     guidelines_path_value = f"{format_home_relative_path(guidelines_dir())}/"
 
-    dlog(f"project_base={project_base}")
-    dlog(f"DOCS_DIR={normalized_doc}")
     dlog(f"GUIDELINES_DIR={guidelines_path_value}")
-    dlog(f"TESTS_DIR={normalized_test}")
-    dlog(f"SRC_DIRS={normalized_src_dirs}")
     dlog(f"GUIDELINES_FILE_LIST={guidelines_file_list}")
 
     # Resolve user-level provider artifact roots under the user HOME (SRS-381..SRS-386).
@@ -4282,11 +4182,11 @@ def _rollback_worktree_create(git_path: Path, wt_path: Path, wt_name: str) -> No
 
 def run_git_wt_create(args: Namespace) -> None:
     """!
-    @brief Execute --git-wt-create: create a git worktree, branch, and optional .venv copy.
+    @brief Execute --git-wt-create: create a git worktree, branch, and .venv seeding from --prj-base.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @throws ReqError On invalid name, git command failure, or when CWD is outside a git repository.
-    @satisfies SRS-320, SRS-321, SRS-322, SRS-331, SRS-335, SRS-391, SRS-397
+    @throws ReqError On invalid name, missing or invalid `--prj-base` (SRS-395), git command failure, or when CWD is outside a git repository.
+    @satisfies SRS-320, SRS-321, SRS-322, SRS-331, SRS-335, SRS-391, SRS-395, SRS-397, SRS-460
     """
     wt_name: str = args.git_wt_create
     if not validate_wt_name(wt_name):
@@ -4294,8 +4194,8 @@ def run_git_wt_create(args: Namespace) -> None:
         print(msg)
         raise ReqError(msg, 1)
     git_path = _require_git_base(args)
-    prj_base_arg = getattr(args, "prj_base", None)
-    base_path = Path(prj_base_arg).resolve() if prj_base_arg else git_path
+    # SRS-320/SRS-395: --prj-base is mandatory and supplies the .venv copy source.
+    prj_base = _require_prj_base(args)
     parent_path = git_path.parent
     # SRS-322: create worktree + branch.
     wt_dest = parent_path / wt_name
@@ -4316,25 +4216,18 @@ def run_git_wt_create(args: Namespace) -> None:
     except subprocess.TimeoutExpired:
         raise ReqError("Error: git worktree add timed out.", 3)
     try:
-        # SRS-335: copy .venv from --prj-base first when provided, else --git-base.
-        src_venv: Optional[Path] = None
-        base_venv = base_path / ".venv"
-        git_venv = git_path / ".venv"
-        rel_venv = Path(".venv")
-        if base_venv.is_dir():
-            src_venv = base_venv
+        # SRS-335: copy only --prj-base/.venv into the worktree when present; an absent
+        # source skips the copy and --git-base is never used as a .venv source.
+        prj_venv = prj_base / ".venv"
+        if prj_venv.is_dir():
             try:
-                rel_venv = base_path.relative_to(git_path) / ".venv"
+                rel_venv = prj_base.relative_to(git_path) / ".venv"
             except ValueError:
                 rel_venv = Path(".venv")
-        elif git_venv.is_dir():
-            src_venv = git_venv
-            rel_venv = Path(".venv")
-        if src_venv is not None:
             dst_venv = wt_dest / rel_venv
             if not dst_venv.is_dir():
                 dst_venv.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(str(src_venv), str(dst_venv))
+                shutil.copytree(str(prj_venv), str(dst_venv))
     except (OSError, ReqError):
         _rollback_worktree_create(git_path, wt_dest, wt_name)
         raise ReqError(

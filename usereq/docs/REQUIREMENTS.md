@@ -2,7 +2,7 @@
 title: "useReq Requirements"
 description: "Software Requirements Specification"
 date: "2026-11-07"
-version: 1.18
+version: 1.19
 author: "Ogekuri"
 scope:
   paths:
@@ -119,14 +119,14 @@ No explicit performance optimizations identified.
 - **SRS-360**: MUST resolve `GUIDELINES_DIR` as the user-home-relative directory `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines`, which MUST NOT be configurable.
 - **SRS-361**: MUST use `tests` as the `tests-dir` default value when `~/.config/usereq/config.json` stores no `tests-dir` entry.
 - **SRS-362**: MUST use `src` as the sole `src-dir` list entry when `~/.config/usereq/config.json` stores no `src-dir` entry.
-- **SRS-363**: MUST create missing directories, including missing parents, for the configured `docs-dir`, `tests-dir`, and each `src-dir` entry under `--prj-base` during installation when `--prj-base` is provided.
+- **SRS-363**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-387**: MUST persist all configuration state in the single user-global file `~/.config/usereq/config.json` and MUST create missing parent directories on first write.
 - **SRS-388**: MUST NOT create, read, or require the `.req` project directory or any per-project configuration file under the project base or git repository path.
 - **SRS-398**: MUST support `--set-docs-dir PATH` to persist the project-relative `docs-dir` value in `~/.config/usereq/config.json`.
 - **SRS-399**: MUST support repeatable `--set-src-dir PATH` to persist the ordered project-relative `src-dir` list in `~/.config/usereq/config.json`, replacing previous entries.
 - **SRS-400**: MUST support `--set-tests-dir PATH` to persist the project-relative `tests-dir` value in `~/.config/usereq/config.json`.
 - **SRS-401**: MUST preserve all unrelated configuration keys when `--set-docs-dir`, `--set-src-dir`, or `--set-tests-dir` writes `~/.config/usereq/config.json`.
-- **SRS-407**: MUST persist the effective `docs-dir`, `tests-dir`, and `src-dir` values in `~/.config/usereq/config.json` during installation and update when `--prj-base` is provided.
+- **SRS-407**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-408**: MUST implement the following behavior: The CLI MUST accept exactly these ten analysis subcommand tokens without the `--` prefix: `files-tokens`, `files-references`, `files-compress`, `files-find`, `tokens`, `references`, `compress`, `find`, `files-static-check`, `static-check`.
 - **SRS-409**: MUST NOT parse the legacy `--`-prefixed forms of the SRS-408 subcommands (`--files-tokens`, `--files-references`, `--files-compress`, `--files-find`, `--tokens`, `--references`, `--compress`, `--find`, `--files-static-check`, `--static-check`).
 - **SRS-410**: MUST NOT require `--git-base` for any SRS-408 subcommand; `--prj-base` MUST be mandatory exactly for the SRS-408 subcommands listed in SRS-396, and its absence MUST trigger the SRS-395 error behavior.
@@ -139,7 +139,7 @@ No explicit performance optimizations identified.
 - **SRS-418**: MUST implement the following behavior: The `install` subcommand MUST install or update the providers persisted under `"providers"` and MUST print the installation summary report.
 - **SRS-419**: MUST implement the following behavior: The `uninstall` subcommand MUST remove `req-*` artifacts of the providers persisted under `"providers"` per SRS-390 semantics.
 - **SRS-420**: MUST implement the following behavior: `auto-install` MUST default to enabled; `--disable-auto-install` MUST persist `"auto-install": false` and `--enable-auto-install` MUST persist `"auto-install": true` in `~/.config/usereq/config.json`.
-- **SRS-421**: MUST implement the following behavior: When `--upgrade` succeeds and `auto-install` is enabled, the CLI MUST execute the provider installation flow with persisted providers regardless of `--prj-base` presence.
+- **SRS-421**: MUST implement the following behavior: When `--upgrade` succeeds and `auto-install` is enabled, the CLI MUST execute the provider installation flow with the persisted providers.
 - **SRS-450**: MUST implement the following behavior: When post-upgrade auto-install runs and no provider spec is persisted, the CLI SHOULD print an English stderr warning and skip installation.
 - **SRS-422**: MUST implement the following behavior: `--disable-static-check` and `--disable` with unknown language or provider tokens MUST print an English error and exit with code 1.
 - **SRS-440**: MUST implement the following behavior: `--upgrade --develop` MUST install the latest tagged GitHub release resolved per SRS-451; without `--develop`/`--dev`, `--upgrade` MUST install from the PyPI index.
@@ -148,9 +148,9 @@ No explicit performance optimizations identified.
 - **SRS-442**: MUST implement the following behavior: `--ver`/`--version` MUST query the PyPI JSON API and the GitHub latest-release API bypassing idle gating; unfetchable versions MUST print `unknown`.
 - **SRS-443**: MUST implement the following behavior: `README.md` MUST present PyPI as the primary install/upgrade channel and a dedicated non-primary GitHub section covering GitHub installation and `--develop`/`--dev` upgrades.
 - **SRS-446**: MUST implement the following behavior: The CLI help output MUST NOT reference `~/.config/usereq/config.json` or configuration-file persistence and removal operations.
-- **SRS-447**: MUST accept the `install` subcommand without `--prj-base` and treat `--prj-base` as an optional argument for it.
-- **SRS-448**: MUST implement the following behavior: When `install` runs without `--prj-base`, the CLI MUST skip project scaffold creation, path containment validation, and `docs-dir`/`tests-dir`/`src-dir` persistence without error.
-- **SRS-449**: MUST implement the following behavior: When `install` runs with `--prj-base`, the CLI MUST execute the combined scaffold, containment validation, directory persistence, and installation flow.
+- **SRS-447**: MUST accept the `install` subcommand without `--prj-base`; the `install` subparser MUST NOT define or consume `--prj-base`.
+- **SRS-448**: MUST implement the following behavior: The `install` subcommand MUST NOT create project directories, validate project-path containment, or persist `docs-dir`/`tests-dir`/`src-dir` values.
+- **SRS-449**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-451**: MUST implement the following behavior: `--upgrade --develop` MUST resolve the installation tag by querying `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` and reading `tag_name`, regardless of the branch holding that tag.
 - **SRS-452**: MUST implement the following behavior: On Linux, `--upgrade --develop` MUST execute `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`; non-Linux MUST print this manual command and MUST NOT execute `uv`.
 - **SRS-453**: MUST implement the following behavior: When the SRS-451 GitHub query fails, `--upgrade --develop` MUST print an English stderr error, MUST NOT execute `uv`, and MUST exit with code 1.
@@ -261,6 +261,7 @@ No explicit performance optimizations identified.
 - **SRS-439**: MUST include unit tests in `tests/test_dependency_manifests.py` verifying the SRS-435 project name, the SRS-436 author, and the SRS-437 repository URLs in `pyproject.toml`.
 - **SRS-444**: MUST include unit tests in `tests/test_update_check.py` verifying the SRS-430 PyPI endpoint, the SRS-343/SRS-440 upgrade commands, and the SRS-441/SRS-442 `--ver` output.
 - **SRS-459**: MUST include unit tests in `tests/test_release_workflow.py` verifying the SRS-455 Node24 runtime, the SRS-456/SRS-457 action-major floors, and the SRS-458 opt-out override prohibition.
+- **SRS-461**: MUST include unit tests in `tests/test_cli.py` verifying that `install` neither accepts `--prj-base` nor performs project-side operations, and that `--git-wt-create` exits with code 1 without `--prj-base` and copies only `--prj-base/.venv`.
 
 ## 5. Static Code Analysis Requirements
 
@@ -338,11 +339,12 @@ No explicit performance optimizations identified.
 - **SRS-319**: MUST implement the following behavior: The `--git-wt-name` command MUST print exactly `useReq-<PROJECT_NAME>-<ORIGINAL_BRANCH>-<EXECUTION_ID>` where `<PROJECT_NAME>` is the basename of the runtime-resolved git repository root, `<ORIGINAL_BRANCH>` is the current git branch name with characters incompatible with Linux or Windows paths replaced by `-`, and `<EXECUTION_ID>` is the current timestamp formatted as `YYYYMMDDHHmmss`.
 
 ### 6.5 Git Worktree Create Command
-- **SRS-320**: MUST support `--git-wt-create WT_NAME` as a command that requires the mandatory `--git-base` argument; `WT_NAME` is mandatory.
+- **SRS-320**: MUST support `--git-wt-create WT_NAME` as a command that requires the mandatory `--git-base` and `--prj-base` arguments; `WT_NAME` is mandatory.
 - **SRS-321**: MUST implement the following behavior: The `--git-wt-create` command MUST validate that `WT_NAME` contains only characters compatible with both Linux and Windows directory names; if invalid, it MUST print `ERROR: Invalid worktree/branch name: <WT_NAME>.\n` and exit with non-zero code.
 - **SRS-322**: MUST implement the following behavior: The `--git-wt-create` command MUST execute `git worktree add "<parent-path>/<WT_NAME>" -b <WT_NAME>` from within the runtime-resolved git repository root.
 - **SRS-331**: MUST implement the following behavior: The `--git-wt-create` command MUST NOT change the current directory on success or failure; if post-create operations fail, it MUST rollback created worktree and branch and exit with non-zero code.
-- **SRS-335**: MUST check for a `.venv` directory under `--prj-base` first when provided, otherwise under `--git-base`; when found and the destination is absent, it MUST copy `.venv` preserving its relative path from the git repository root.
+- **SRS-335**: MUST copy `--prj-base/.venv` into the created worktree preserving its relative path when the source exists and the destination is absent; an absent source `.venv` MUST skip the copy without error.
+- **SRS-460**: MUST document in the `--git-wt-create` inline help that `--prj-base` is mandatory and supplies the `.venv` source copied into the created worktree.
 
 ### 6.6 Git Worktree Delete Command
 - **SRS-326**: MUST support `--git-wt-delete WT_NAME` as a command that requires the mandatory `--git-base` argument; `WT_NAME` is mandatory.
@@ -357,4 +359,4 @@ No explicit performance optimizations identified.
 
 ### 6.8 Git Integration Test Requirements
 - **SRS-329**: MUST include unit tests in `tests/test_cli.py` verifying that git-integration commands execute git operations with `--git-base` as working directory.
-- **SRS-330**: MUST include unit tests in `tests/test_cli.py` verifying the `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create` (including `.venv` copy behavior), and `--git-wt-delete` commands behave per their respective requirements.
+- **SRS-330**: MUST include unit tests in `tests/test_cli.py` verifying the `--git-check`, `--docs-check`, `--git-wt-name`, `--git-wt-create` (including mandatory `--prj-base` validation and `.venv` copy behavior), and `--git-wt-delete` commands behave per their respective requirements.

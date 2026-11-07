@@ -468,7 +468,7 @@ class TestProviderSpecPersistence(HomeIsolatedTestCase):
         """SRS-280/SRS-064: install without --enable reuses persisted specs."""
         self.run_cli(self.base_argv + ["--enable", "codex:prompts", "install"])
         shutil.rmtree(self.HOME / ".codex")
-        rc = self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
+        rc = self.run_cli(["install"])
         self.assertEqual(rc, 0)
         self.assertTrue(
             (self.HOME / ".codex" / "prompts" / f"req-{EXPECTED_PROMPTS[0]}.md").exists()
@@ -550,51 +550,43 @@ class TestPromptsUseAgents(HomeIsolatedTestCase):
 
 
 class TestInstallDefaultDirectories(HomeIsolatedTestCase):
-    """SRS-359..SRS-363: configured directory defaults and creation."""
+    """SRS-448: install performs no project-side directory operations."""
 
     def setUp(self) -> None:
         super().setUp()
         self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-defaults-"))
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
-    def test_install_uses_default_directories_without_configuration(self) -> None:
-        """SRS-359/SRS-361/SRS-362: defaults are usereq, tests, and src."""
-        rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--enable", "codex:prompts", "install"]
-        )
+    def test_install_does_not_persist_default_directories(self) -> None:
+        """SRS-448: install persists no docs-dir/tests-dir/src-dir keys."""
+        rc = self.run_cli(["--enable", "codex:prompts", "install"])
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["docs-dir"], "usereq")
-        self.assertEqual(data["tests-dir"], "tests")
-        self.assertEqual(data["src-dir"], ["src"])
+        self.assertNotIn("docs-dir", data)
+        self.assertNotIn("tests-dir", data)
+        self.assertNotIn("src-dir", data)
 
-    def test_install_creates_missing_directories(self) -> None:
-        """SRS-363: installation creates configured directories under --prj-base."""
-        rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--enable", "codex:prompts", "install"]
-        )
+    def test_install_does_not_create_missing_directories(self) -> None:
+        """SRS-448: installation creates no project directories."""
+        rc = self.run_cli(["--enable", "codex:prompts", "install"])
         self.assertEqual(rc, 0)
-        self.assertTrue((self.TEST_DIR / "usereq").is_dir())
-        self.assertTrue((self.TEST_DIR / "tests").is_dir())
-        self.assertTrue((self.TEST_DIR / "src").is_dir())
+        self.assertFalse((self.TEST_DIR / "usereq").is_dir())
+        self.assertFalse((self.TEST_DIR / "tests").is_dir())
+        self.assertFalse((self.TEST_DIR / "src").is_dir())
 
-    def test_install_creates_nested_configured_directories(self) -> None:
-        """SRS-363: nested configured directories are created with their parents."""
+    def test_install_ignores_configured_directories(self) -> None:
+        """SRS-448: seeded directory configuration stays untouched by install."""
         self.seed_directory_config(docs="req/docs")
-        rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--enable", "codex:prompts", "install"]
-        )
+        rc = self.run_cli(["--enable", "codex:prompts", "install"])
         self.assertEqual(rc, 0)
-        self.assertTrue((self.TEST_DIR / "req" / "docs").is_dir())
+        self.assertFalse((self.TEST_DIR / "req" / "docs").is_dir())
 
-    def test_install_keeps_configured_directories(self) -> None:
-        """SRS-407: install reuses the persisted directory configuration."""
+    def test_install_does_not_touch_persisted_configuration(self) -> None:
+        """SRS-448: install persists no directory keys and rewrites nothing."""
         self.seed_directory_config()
-        self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--enable", "codex:prompts", "install"]
-        )
-        rc = self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
+        self.run_cli(["--enable", "codex:prompts"])
+        rc = self.run_cli(["install"])
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -1033,7 +1025,7 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "usereq-roundtrip-wt", "--git-base", str(self.TEST_DIR)])
+                rc = cli.main(["--git-wt-create", "usereq-roundtrip-wt", "--git-base", str(self.TEST_DIR), "--prj-base", str(self.TEST_DIR)])
             self.assertEqual(rc, 0)
             self.assertTrue(wt_path.is_dir())
             self.assertEqual(Path.cwd(), self.TEST_DIR)
@@ -1058,7 +1050,7 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "usereq-partial-full", "--git-base", str(self.TEST_DIR)])
+                rc = cli.main(["--git-wt-create", "usereq-partial-full", "--git-base", str(self.TEST_DIR), "--prj-base", str(self.TEST_DIR)])
             self.assertEqual(rc, 0)
             rc = cli.main(["--git-wt-delete", "usereq-partial", "--git-base", str(self.TEST_DIR)])
             self.assertNotEqual(rc, 0)
@@ -1091,16 +1083,52 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         finally:
             os.chdir(prev_cwd)
 
-    def test_wt_create_copies_venv_when_present(self) -> None:
-        venv = self.TEST_DIR / ".venv"
-        venv.mkdir(exist_ok=True)
+    def test_wt_create_requires_prj_base(self) -> None:
+        """SRS-320/SRS-395/SRS-461: --git-wt-create without --prj-base exits non-zero."""
+        prev_cwd = Path.cwd()
+        wt_path = self.TEST_DIR.parent / "usereq-noprj-wt"
+        try:
+            os.chdir(self.TEST_DIR)
+            with (
+                patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+                patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
+            ):
+                rc = cli.main(
+                    [
+                        "--git-wt-create",
+                        "usereq-noprj-wt",
+                        "--git-base",
+                        str(self.TEST_DIR),
+                    ]
+                )
+            self.assertNotEqual(rc, 0)
+            self.assertIn("--prj-base", mock_stderr.getvalue())
+            self.assertFalse(wt_path.exists())
+        finally:
+            os.chdir(prev_cwd)
+
+    def test_wt_create_copies_venv_from_prj_base(self) -> None:
+        """SRS-330/SRS-335: .venv is copied from --prj-base into the worktree."""
+        prj_dir = Path(tempfile.mkdtemp(prefix="usereq-prj-venv-"))
+        self.addCleanup(shutil.rmtree, prj_dir, ignore_errors=True)
+        venv = prj_dir / ".venv"
+        venv.mkdir()
         (venv / "pyvenv.cfg").write_text("cfg\n", encoding="utf-8")
         prev_cwd = Path.cwd()
         wt_path = self.TEST_DIR.parent / "usereq-venv-wt"
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "usereq-venv-wt", "--git-base", str(self.TEST_DIR)])
+                rc = cli.main(
+                    [
+                        "--git-wt-create",
+                        "usereq-venv-wt",
+                        "--git-base",
+                        str(self.TEST_DIR),
+                        "--prj-base",
+                        str(prj_dir),
+                    ]
+                )
             self.assertEqual(rc, 0)
             self.assertTrue((wt_path / ".venv" / "pyvenv.cfg").exists())
         finally:
@@ -1111,6 +1139,77 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
             )
             subprocess.run(
                 ["git", "branch", "-D", "usereq-venv-wt"],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
+            os.chdir(prev_cwd)
+
+    def test_wt_create_skips_copy_when_prj_venv_absent(self) -> None:
+        """SRS-335: absent --prj-base/.venv skips the copy without error."""
+        prj_dir = Path(tempfile.mkdtemp(prefix="usereq-prj-noven-"))
+        self.addCleanup(shutil.rmtree, prj_dir, ignore_errors=True)
+        prev_cwd = Path.cwd()
+        wt_path = self.TEST_DIR.parent / "usereq-noven-wt"
+        try:
+            os.chdir(self.TEST_DIR)
+            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+                rc = cli.main(
+                    [
+                        "--git-wt-create",
+                        "usereq-noven-wt",
+                        "--git-base",
+                        str(self.TEST_DIR),
+                        "--prj-base",
+                        str(prj_dir),
+                    ]
+                )
+            self.assertEqual(rc, 0)
+            self.assertFalse((wt_path / ".venv").exists())
+        finally:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(wt_path)],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "branch", "-D", "usereq-noven-wt"],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
+            os.chdir(prev_cwd)
+
+    def test_wt_create_never_copies_git_base_venv(self) -> None:
+        """SRS-335/SRS-461: --git-base/.venv is never used as the .venv copy source."""
+        git_venv = self.TEST_DIR / ".venv"
+        git_venv.mkdir(exist_ok=True)
+        (git_venv / "pyvenv.cfg").write_text("cfg\n", encoding="utf-8")
+        prj_dir = Path(tempfile.mkdtemp(prefix="usereq-prj-nofb-"))
+        self.addCleanup(shutil.rmtree, prj_dir, ignore_errors=True)
+        prev_cwd = Path.cwd()
+        wt_path = self.TEST_DIR.parent / "usereq-nofb-wt"
+        try:
+            os.chdir(self.TEST_DIR)
+            with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
+                rc = cli.main(
+                    [
+                        "--git-wt-create",
+                        "usereq-nofb-wt",
+                        "--git-base",
+                        str(self.TEST_DIR),
+                        "--prj-base",
+                        str(prj_dir),
+                    ]
+                )
+            self.assertEqual(rc, 0)
+            self.assertFalse((wt_path / ".venv").exists())
+        finally:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(wt_path)],
+                cwd=str(self.TEST_DIR),
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "branch", "-D", "usereq-nofb-wt"],
                 cwd=str(self.TEST_DIR),
                 capture_output=True,
             )
@@ -1187,8 +1286,6 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
                 "--enable-static-check",
                 "Python=Ruff",
                 "install",
-                "--prj-base",
-                str(self.TEST_DIR),
             ]
         )
         self.assertEqual(rc, 0)
@@ -1289,11 +1386,20 @@ class TestSetDirectoryCommands(HomeIsolatedTestCase):
 class TestPrjBaseRequirements(HomeIsolatedTestCase):
     """SRS-396/SRS-405: project commands require --prj-base."""
 
-    def test_install_requires_prj_base(self) -> None:
-        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
-            rc = self.run_cli(["--enable", "codex:prompts", "install"])
-        self.assertEqual(rc, 1)
-        self.assertIn("--prj-base", mock_stderr.getvalue())
+    def test_install_is_independent_of_prj_base(self) -> None:
+        """SRS-447/SRS-448/SRS-461: install neither accepts nor consumes --prj-base."""
+        project_dir = Path(tempfile.mkdtemp(prefix="usereq-install-prj-"))
+        self.addCleanup(shutil.rmtree, project_dir, ignore_errors=True)
+        self.run_cli(["--enable", "codex:prompts"])
+        with (
+            patch("sys.stdout", new_callable=io.StringIO),
+            patch("sys.stderr", new_callable=io.StringIO),
+        ):
+            rc = self.run_cli(["install"])
+        self.assertEqual(rc, 0)
+        with patch("sys.stderr", new_callable=io.StringIO):
+            with self.assertRaises(SystemExit):
+                self.run_cli(["install", "--prj-base", str(project_dir)])
 
     def test_references_requires_prj_base(self) -> None:
         with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
@@ -1529,7 +1635,7 @@ class TestProviderLifecycleCommands(HomeIsolatedTestCase):
             patch("sys.stderr", new_callable=io.StringIO),
             patch("sys.stdout", new_callable=io.StringIO),
         ):
-            rc = self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
+            rc = self.run_cli(["install"])
         self.assertEqual(rc, 4)
 
 
@@ -1628,18 +1734,17 @@ class TestAutoInstallLifecycle(HomeIsolatedTestCase):
         self.assertEqual(rc, 0)
         mock_install.assert_called_once()
 
-    def test_upgrade_auto_install_skipped_without_prj_base(self) -> None:
-        """SRS-421: missing --prj-base warns on stderr and skips the install flow."""
+    def test_upgrade_auto_install_runs_without_prj_base(self) -> None:
+        """SRS-421: successful --upgrade triggers auto-install without --prj-base."""
         self.run_cli(["--enable", "pi:skills"])
         with (
             patch("usereq.cli.run_upgrade"),
             patch("usereq.cli.run_install") as mock_install,
-            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
+            patch("sys.stderr", new_callable=io.StringIO),
         ):
             rc = cli.main(["--upgrade"])
         self.assertEqual(rc, 0)
-        mock_install.assert_not_called()
-        self.assertIn("skipping auto-install", mock_stderr.getvalue())
+        mock_install.assert_called_once()
 
     def test_upgrade_auto_install_disabled_skips_install(self) -> None:
         """SRS-420/SRS-421: disabled auto-install skips the install flow."""
@@ -1670,7 +1775,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
         """SRS-418/SRS-419: install creates artifacts, uninstall removes them."""
         self.run_cli(["--enable", "pi:skills"])
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-            rc = self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
+            rc = self.run_cli(["install"])
         self.assertEqual(rc, 0)
         self.assertIn("Modules Installed", mock_stdout.getvalue())
         skills_root = self.HOME / ".pi" / "agent" / "skills"
@@ -1697,7 +1802,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
                 "Python=Ruff",
             ]
         )
-        self.run_cli(["install", "--prj-base", str(self.TEST_DIR)])
+        self.run_cli(["install"])
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["show"])
         self.assertEqual(rc, 0)
