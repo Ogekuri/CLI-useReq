@@ -20,6 +20,13 @@
   - `entrypoints`: `scripts/test-install.sh`
   - `defining_files`: `scripts/test-install.sh`
   - `threads`: `no explicit threads detected`
+- `PROC:pre-release-check-sh`
+  - `type`: `Process`
+  - `parent_process`: `-`
+  - `role`: `Pre-release verification pipeline that gates official releases through uv availability, worktree cleanliness, frozen-lock environment sync, sdist/wheel build with artifact verification, project static analysis, and the full unit-test suite`
+  - `entrypoints`: `scripts/pre-release-check.sh`
+  - `defining_files`: `scripts/pre-release-check.sh`
+  - `threads`: `no explicit threads detected`
 - `PROC:prompts-update-sh`
   - `type`: `Process`
   - `parent_process`: `-`
@@ -237,6 +244,21 @@
   - `test-install.sh(...)`: disposable installation smoke-test orchestrator [`scripts/test-install.sh`]
     - external boundaries: `rm -rf`, `mkdir -p`, shell directory tests, and child-process invocation of `scripts/req.sh`
 
+### `PROC:pre-release-check-sh`
+- **Type**: Process
+- **Parent Process**: `-`
+- **Entrypoint(s)**: `scripts/pre-release-check.sh` [`scripts/pre-release-check.sh`]
+- **Lifecycle/Trigger**: starts on shell invocation (optionally with `--allow-dirty`), resolves the repository root from its own location, validates arguments, and executes the ordered stages `environment`, `worktree-cleanliness` (skipped with `--allow-dirty`), `dependency-sync` (`uv sync --frozen`), `build` (untracked `dist/` reset plus `uv run --frozen --with build python -m build` with `.tar.gz`/`.whl` artifact verification), `static-analysis` (`static-check` with `--prj-base`), and `unit-tests` (`uv run pytest`); stops at the first failing stage with `Pre-release check failed at stage <stage>.` and exit code 1, or prints `Pre-release check passed.` with exit code 0 (SRS-471..SRS-481).
+- **Internal Call-Trace Tree**
+  - `pre-release-check.sh(...)`: pre-release stage orchestrator with first-failure abort semantics [`scripts/pre-release-check.sh`]
+    - `run_stage(...)`: assign the stage name, print progress, execute the stage command, and abort on first failure [`scripts/pre-release-check.sh`]
+      - `check_uv_available(...)`: verify `uv` executable availability (SRS-473) [`scripts/pre-release-check.sh`]
+      - `check_worktree_clean(...)`: abort on non-empty `git status --porcelain` unless `--allow-dirty` (SRS-472, SRS-474) [`scripts/pre-release-check.sh`]
+      - `build_distribution_artifacts(...)`: reset untracked `dist/`, build sdist and wheel, and verify artifact presence (SRS-476, SRS-477, SRS-481) [`scripts/pre-release-check.sh`]
+      - `run_static_analysis(...)`: execute the project `static-check` command with `--prj-base` on the repository root (SRS-478) [`scripts/pre-release-check.sh`]
+      - `run_unit_tests(...)`: execute `uv run pytest` for the full unit-test suite (SRS-479) [`scripts/pre-release-check.sh`]
+    - external boundaries: `readlink -f`/`dirname` path resolution, `git status --porcelain`, `uv sync --frozen`, `uv run --frozen --with build python -m build`, `find`/`wc` artifact counting, child-process invocations of `uv run python -m usereq.cli --prj-base <root> static-check` and `uv run pytest`, stdout/stderr stage diagnostics
+
 ### `PROC:prompts-update-sh`
 - **Type**: Process
 - **Parent Process**: `-`
@@ -268,3 +290,7 @@
   - `mechanism`: `child-process spawn`
   - `endpoint/channel`: `scripts/req.sh`
   - `payload`: `CLI argument vector for disposable installation under an isolated HOME, including `--enable` specs for antigravity/claude/codex/opencode/pi, static-check enablement entries, and the `install` subcommand invocation`
+- `PROC:pre-release-check-sh -> PROC:main`
+  - `mechanism`: `child-process spawn`
+  - `endpoint/channel`: `uv run --project <repo-root> python -m usereq.cli --prj-base <repo-root> static-check`
+  - `payload`: `static-analysis stage argv dispatching the SRS-256 project-scan static-check subcommand with the repository root as `--prj-base`; exit code 0 continues the pipeline and non-zero aborts at stage `static-analysis``

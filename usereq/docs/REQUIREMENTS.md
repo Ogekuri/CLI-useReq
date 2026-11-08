@@ -243,6 +243,19 @@ No explicit performance optimizations identified.
 - **SRS-379**: `scripts/prompts-update.sh` MUST clone the upstream `develop` branch into a temporary directory using the `.git` URL first and the plain URL as fallback, and MUST remove temporary directories on every exit path.
 - **SRS-380**: `scripts/prompts-update.sh` MUST preserve upstream file timestamps during synchronization and MUST NOT modify any repository content outside `src/usereq/resources/prompts` and `src/usereq/resources/prompts-version.txt`.
 
+### 3.13 Pre-Release Verification Script
+- **SRS-471**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST resolve the repository root from its own filesystem location, MUST execute every stage from that root, and MUST NOT depend on the caller working directory.
+- **SRS-472**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST accept an optional `--allow-dirty` argument that skips the working-tree cleanliness gate; any other argument MUST produce an English error and exit code 1.
+- **SRS-473**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST verify that the `uv` command is executable and MUST print an English error and exit with code 1 when it is absent.
+- **SRS-474**: MUST implement the following behavior: Without `--allow-dirty`, `scripts/pre-release-check.sh` MUST print an English error and exit with a non-zero code when `git status --porcelain` output is non-empty.
+- **SRS-475**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST run `uv sync --frozen` to synchronize the SRS-055 lockfile environment and MUST exit with a non-zero code when synchronization fails.
+- **SRS-476**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST build the sdist and wheel into `dist/` via `uv run --with build python -m build` and MUST exit with a non-zero code when the build fails.
+- **SRS-477**: MUST implement the following behavior: After a successful build, `scripts/pre-release-check.sh` MUST verify that `dist/` contains at least one `.tar.gz` and one `.whl` file and MUST exit with a non-zero code otherwise.
+- **SRS-478**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST execute the project `static-check` command with `--prj-base` set to the repository root and MUST exit with a non-zero code when static analysis fails.
+- **SRS-479**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST execute the unit-test suite through `uv run pytest` and MUST exit with a non-zero code when any test fails.
+- **SRS-480**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST stop at the first failing stage, MUST print `Pre-release check failed at stage <stage>.` on failure, and MUST print `Pre-release check passed.` only when every stage succeeds.
+- **SRS-481**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST NOT modify or delete any git-tracked repository file, and build outputs MUST be confined to the `dist/` directory.
+
 ## 4. Test Requirements
 
 ### 4.1 Test and Verification Requirements
