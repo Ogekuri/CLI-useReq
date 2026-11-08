@@ -16,8 +16,8 @@ SRS-345..351 (release check helpers), SRS-359..363 (install defaults),
 SRS-364..366 (provider grammar), SRS-368 (SKILL.md front matter),
 SRS-371/374 (flowchart artifacts), SRS-381..390 (user-level install,
 global config, model removal), SRS-391 (runtime git resolution),
-SRS-462..SRS-487 (show providers table, alphabetical order, skills
-path).
+SRS-462..SRS-492 (show providers table, installation status, alphabetical
+order, skills path).
 """
 
 import json
@@ -1679,7 +1679,7 @@ class TestAutoInstallLifecycle(HomeIsolatedTestCase):
 
 
 class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
-    """SRS-280/SRS-416/SRS-417/SRS-418/SRS-419: lifecycle subcommands."""
+    """SRS-280/SRS-416/SRS-417/SRS-418/SRS-419/SRS-462/SRS-487/SRS-492: lifecycle subcommands."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -1711,7 +1711,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
         self.assertIn("not found", mock_stderr.getvalue())
 
     def test_show_prints_configuration_and_status_tables(self) -> None:
-        """SRS-416/SRS-417: show prints configuration, provider, and status tables."""
+        """SRS-416/SRS-417: show prints configuration, Providers, and Installation Status tables."""
         self.run_cli(
             [
                 "--enable",
@@ -1733,20 +1733,23 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             "auto-install",
             "enabled",
             "Providers",
+            "CLI",
+            "Enabled",
             "Skills Path",
             "~/.pi/agent/skills",
-            "Provider pi",
-            "Component",
-            "Configured",
-            "Status",
-            "installed",
+            "Installation Status",
+            "Type",
+            "Name",
+            "Installed",
+            "OK",
+            "MISSING",
             "Static Checks",
             "Ruff",
         ):
             self.assertIn(token, output)
 
     def test_show_providers_table_is_alphabetical_with_skills_path(self) -> None:
-        """SRS-462/SRS-463/SRS-485/SRS-487: alphabetical rows with the Skills Path column."""
+        """SRS-462/SRS-463/SRS-485/SRS-487/SRS-488: every configurable provider row."""
         self.run_cli(
             ["--enable", "pi", "--enable", "openclaw", "--enable", "codex"]
         )
@@ -1754,40 +1757,110 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             rc = self.run_cli(["show"])
         self.assertEqual(rc, 0)
         output = mock_stdout.getvalue()
-        self.assertIn("Provider", output)
-        self.assertIn("Skills Path", output)
+        self.assertIn("Providers", output)
         self.assertNotIn("Prompts", output)
         self.assertNotIn("Agents", output)
-        self.assertIn("~/.pi/agent/skills", output)
-        self.assertIn("~/.openclaw/workspace/skills", output)
-        self.assertIn("~/.agents/skills", output)
-        codex_row = output.index("\u2502 codex ")
-        openclaw_row = output.index("\u2502 openclaw ")
-        pi_row = output.index("\u2502 pi ")
-        self.assertLess(codex_row, openclaw_row)
-        self.assertLess(openclaw_row, pi_row)
-        provider_tables = [
-            output.index("Provider codex"),
-            output.index("Provider openclaw"),
-            output.index("Provider pi"),
+        for skills_path in (
+            "~/.gemini/config/skills",
+            "~/.claude/skills",
+            "~/.agents/skills",
+            "~/.openclaw/workspace/skills",
+            "~/.config/opencode/skills",
+            "~/.pi/agent/skills",
+        ):
+            self.assertIn(skills_path, output)
+        providers_table = output.split("Providers", 1)[1].split(
+            "Installation Status", 1
+        )[0]
+        rows = [
+            line
+            for line in providers_table.splitlines()
+            if line.startswith("\u2502 ")
         ]
-        self.assertEqual(provider_tables, sorted(provider_tables))
+        # Header row plus exactly every configurable provider (SRS-462).
+        self.assertEqual(len(rows), 1 + len(EXPECTED_SKILL_ROOTS))
+        header_cells = [cell.strip() for cell in rows[0].split("\u2502")[1:-1]]
+        self.assertEqual(header_cells, ["CLI", "Enabled", "Skills Path"])
+        expected_enabled = {
+            "antigravity": "no",
+            "claude": "no",
+            "codex": "yes",
+            "openclaw": "yes",
+            "opencode": "no",
+            "pi": "yes",
+        }
+        provider_rows = [row.split("\u2502")[1:-1] for row in rows[1:]]
+        self.assertEqual(
+            [cells[0].strip() for cells in provider_rows],
+            sorted(EXPECTED_SKILL_ROOTS),
+        )
+        for cells in provider_rows:
+            name = cells[0].strip()
+            self.assertEqual(cells[1].strip(), expected_enabled[name])
+            self.assertEqual(
+                cells[2].strip(),
+                "~/" + "/".join(EXPECTED_SKILL_ROOTS[name]),
+            )
+
+    def test_show_installation_status_single_table(self) -> None:
+        """SRS-417/SRS-489/SRS-490/SRS-491/SRS-492: unified Installation Status table."""
+        self.run_cli(["--enable", "pi"])
+        self.run_cli(["install"])
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["show"])
+        self.assertEqual(rc, 0)
+        output = mock_stdout.getvalue()
+        self.assertEqual(output.count("Installation Status"), 1)
+        status_section = output.split("Installation Status", 1)[1].split(
+            "Static Checks", 1
+        )[0]
+        rows = [
+            line
+            for line in status_section.splitlines()
+            if line.startswith("\u2502 ")
+        ]
+        self.assertEqual(
+            [cell.strip() for cell in rows[0].split("\u2502")[1:-1]],
+            ["Type", "Name", "CLI", "Enabled", "Installed"],
+        )
+        expected_pairs = {
+            (prompt, provider)
+            for prompt in EXPECTED_PROMPTS
+            for provider in EXPECTED_SKILL_ROOTS
+        }
+        seen_pairs: set[tuple[str, str]] = set()
+        row_order: list[tuple[str, str]] = []
+        for row in rows[1:]:
+            cells = [cell.strip() for cell in row.split("\u2502")[1:-1]]
+            self.assertEqual(cells[0], "Skill")
+            pair = (cells[1][len("req-"):], cells[2])
+            seen_pairs.add(pair)
+            row_order.append(pair)
+            if cells[2] == "pi":
+                self.assertEqual(cells[3], "yes")
+                self.assertEqual(cells[4], "OK")
+            else:
+                self.assertEqual(cells[3], "no")
+                self.assertEqual(cells[4], "MISSING")
+        self.assertEqual(seen_pairs, expected_pairs)
+        self.assertEqual(row_order, sorted(row_order))
 
     def test_show_reports_not_installed_skills(self) -> None:
-        """SRS-417: skills without artifacts are reported as not installed."""
+        """SRS-417/SRS-490: skills without artifacts are reported as MISSING."""
         self.run_cli(["--enable", "codex"])
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["show"])
         self.assertEqual(rc, 0)
-        self.assertIn("not installed", mock_stdout.getvalue())
+        self.assertIn("MISSING", mock_stdout.getvalue())
 
     def test_show_tolerates_legacy_persisted_provider_entries(self) -> None:
         """Defect: legacy persisted SPEC entries must not crash provider commands.
 
-        expected_output: exit code 0 with the Providers table listing only the
-        valid provider (`pi`), the legacy `antigravity:skills` entry ignored with
-        an English stderr warning, and uninstall completing with exit code 0
-        (SRS-416, SRS-417, SRS-419, SRS-462, SRS-064).
+        expected_output: exit code 0 with the Providers table listing every
+        configurable provider and only `pi` enabled, the legacy
+        `antigravity:skills` entry ignored with an English stderr warning, and
+        uninstall completing with exit code 0 (SRS-416, SRS-417, SRS-419,
+        SRS-462, SRS-488, SRS-064).
         """
         # Arrange: seed a legacy SPEC entry persisted by the pre-1.20 CLI grammar.
         config_path = self.HOME / ".config" / "usereq" / "config.json"
@@ -1800,12 +1873,18 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
         ):
             rc = self.run_cli(["show"])
-        # Assert: no crash; only the valid provider is reported as enabled.
+        # Assert: no crash; every provider renders and only `pi` is enabled.
         self.assertEqual(rc, 0)
         output = mock_stdout.getvalue()
         self.assertIn("Skills Path", output)
         self.assertIn("~/.pi/agent/skills", output)
-        self.assertNotIn("antigravity", output)
+        antigravity_rows = [
+            line
+            for line in output.splitlines()
+            if line.startswith("\u2502 antigravity ")
+        ]
+        self.assertTrue(antigravity_rows)
+        self.assertIn("\u2502 no ", antigravity_rows[0])
         self.assertIn(
             "ignoring invalid persisted provider entry 'antigravity:skills'",
             mock_stderr.getvalue(),

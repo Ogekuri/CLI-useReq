@@ -2731,22 +2731,37 @@ def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def _provider_skills_installed(provider: str) -> bool:
+def _provider_skill_installed(provider: str, skill_name: str) -> bool:
     """!
-    @brief Detect whether at least one `req-*` skill artifact exists for a provider.
+    @brief Detect whether one named skill artifact exists for a provider.
     @param provider {str} Provider selector from `{antigravity, claude, codex, openclaw, opencode, pi}`.
-    @return {bool} True when the provider skills root contains a `req-*` entry.
-    @details Installation status detection for the `show` subcommand (SRS-417); unknown
-    providers and absent roots report `False`.
-    @satisfies SRS-417
+    @param skill_name {str} Skill directory name such as `req-<prompt_name>`.
+    @return {bool} True when the skill path exists under the provider skills root.
+    @details Per-skill installation-status detection for the `show` `Installation Status`
+    table (SRS-417, SRS-490); unknown providers and absent roots report `False`.
+    Complexity: O(1). Side effects: none (read-only filesystem probe).
+    @satisfies SRS-417, SRS-490
     """
     try:
         root = provider_skills_root(provider)
     except ReqError:
         return False
-    if not root.is_dir():
-        return False
-    return any(entry.name.startswith("req-") for entry in root.iterdir())
+    return (root / skill_name).exists()
+
+
+def _packaged_prompt_names() -> list[str]:
+    """!
+    @brief List the packaged prompt stem names defining installable skills.
+    @return {list[str]} Sorted prompt file stems under the packaged `resources/prompts` directory.
+    @details Enumeration source for the `show` `Installation Status` rows (SRS-489);
+    returns an empty list when the packaged prompts directory is absent.
+    Complexity: O(P log P) over P packaged prompts. Side effects: none (read-only).
+    @satisfies SRS-489
+    """
+    prompts_dir = RESOURCE_ROOT / "prompts"
+    if not prompts_dir.is_dir():
+        return []
+    return sorted(path.stem for path in prompts_dir.glob("*.md"))
 
 
 def run_install(args: Namespace) -> None:
@@ -2789,13 +2804,14 @@ def run_show(args: Namespace) -> None:
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @details Prints the effective configuration table (`docs-dir`, `tests-dir`, `src-dir`,
-    `auto-install`), the Providers table with `Provider` and `Skills Path` columns
-    rendering the home-relative hardcoded skills root of every enabled provider in
-    alphabetical order (SRS-462, SRS-463, SRS-485), one dedicated skills
-    installation-status table per enabled provider in alphabetical order (SRS-417,
-    SRS-485), and the enabled static-check entries (SRS-416).
+    `auto-install`), the Providers table listing every configurable provider with the
+    `CLI`, `Enabled`, and `Skills Path` columns in alphabetical order (SRS-462, SRS-463,
+    SRS-485, SRS-488), exactly one `Installation Status` table with `Type`, `Name`,
+    `CLI`, `Enabled`, and `Installed` columns reporting one row per packaged prompt and
+    provider pair ordered by prompt name then provider name (SRS-417, SRS-489, SRS-490,
+    SRS-491), and the enabled static-check entries (SRS-416).
     @throws ReqError If persisted provider names are invalid.
-    @satisfies SRS-416, SRS-417, SRS-462, SRS-463, SRS-485
+    @satisfies SRS-416, SRS-417, SRS-462, SRS-463, SRS-485, SRS-488, SRS-489, SRS-490, SRS-491
     """
     config = load_config()
     doc_dir_value = str(config["docs-dir"])
@@ -2819,42 +2835,49 @@ def run_show(args: Namespace) -> None:
 
     persisted_providers = load_persisted_providers()
     provider_configs = resolve_provider_configs(persisted_providers)
-    enabled_providers = sorted(
-        name for name, enabled in provider_configs.items() if enabled
-    )
+    provider_names = sorted(provider_configs)
     print()
     print("Providers")
-    if enabled_providers:
+    print(
+        _render_simple_table(
+            ["CLI", "Enabled", "Skills Path"],
+            [
+                [
+                    name,
+                    "yes" if provider_configs[name] else "no",
+                    provider_skills_path(name),
+                ]
+                for name in provider_names
+            ],
+        )
+    )
+
+    prompt_names = _packaged_prompt_names()
+    status_rows = [
+        [
+            "Skill",
+            f"req-{prompt_name}",
+            name,
+            "yes" if provider_configs[name] else "no",
+            (
+                "OK"
+                if _provider_skill_installed(name, f"req-{prompt_name}")
+                else "MISSING"
+            ),
+        ]
+        for prompt_name in prompt_names
+        for name in provider_names
+    ]
+    print()
+    print("Installation Status")
+    if status_rows:
         print(
             _render_simple_table(
-                ["Provider", "Skills Path"],
-                [
-                    [name, provider_skills_path(name)]
-                    for name in enabled_providers
-                ],
+                ["Type", "Name", "CLI", "Enabled", "Installed"], status_rows
             )
         )
     else:
         print("(none)")
-    for name in enabled_providers:
-        print()
-        print(f"Provider {name}")
-        component_rows = [
-            [
-                "skills",
-                "yes",
-                (
-                    "installed"
-                    if _provider_skills_installed(name)
-                    else "not installed"
-                ),
-            ]
-        ]
-        print(
-            _render_simple_table(
-                ["Component", "Configured", "Status"], component_rows
-            )
-        )
 
     sc_config = load_static_check_from_config()
     sc_rows = [

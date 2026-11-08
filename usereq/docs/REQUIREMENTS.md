@@ -135,8 +135,8 @@ No explicit performance optimizations identified.
 - **SRS-414**: MUST implement the following behavior: `--disable-static-check LANG=MODULE[,CMD[,PARAM...]]` MUST remove entries matching the SRS-301 identity tuple; `--disable-static-check LANG` MUST remove the whole canonical language key.
 - **SRS-415**: MUST implement the following behavior: `--enable-static-check` and `--disable-static-check` MUST only update the `"static-check"` key in `~/.config/usereq/config.json` and MUST NOT require `--prj-base`.
 - **SRS-416**: MUST implement the following behavior: The `show` subcommand MUST print the active configuration in tabular form, including `docs-dir`, `tests-dir`, `src-dir`, `auto-install`, enabled providers, and enabled static-check entries.
-- **SRS-417**: MUST implement the following behavior: For every enabled provider, `show` MUST print a dedicated table reporting the installation status of the `skills` component detected from user-level directories.
-- **SRS-462**: MUST implement the following behavior: The `show` Providers table MUST print the `Provider` and `Skills Path` columns rendering, for every enabled provider row, the hardcoded skills installation root.
+- **SRS-417**: MUST implement the following behavior: The `show` subcommand MUST print exactly one installation-status table titled `Installation Status` covering all configurable providers.
+- **SRS-462**: MUST implement the following behavior: The `show` Providers table MUST print every configurable provider with the `CLI`, `Enabled`, and `Skills Path` columns.
 - **SRS-463**: MUST implement the following behavior: Each `Skills Path` cell MUST render the home-relative `~/`-prefixed hardcoded provider skills root from SRS-382..SRS-386 and SRS-486.
 - **SRS-464**: MUST implement the following behavior: Provider skill installation MUST write `{skills_root}/req-{prompt_name}/SKILL.md` files for every enabled provider.
 - **SRS-465**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
@@ -159,7 +159,11 @@ No explicit performance optimizations identified.
 - **SRS-451**: MUST implement the following behavior: `--upgrade --develop` MUST resolve the installation tag by querying `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` and reading `tag_name`, regardless of the branch holding that tag.
 - **SRS-452**: MUST implement the following behavior: On Linux, `--upgrade --develop` MUST execute `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`; non-Linux MUST print this manual command and MUST NOT execute `uv`.
 - **SRS-453**: MUST implement the following behavior: When the SRS-451 GitHub query fails, `--upgrade --develop` MUST print an English stderr error, MUST NOT execute `uv`, and MUST exit with code 1.
-- **SRS-485**: MUST implement the following behavior: The `show` subcommand MUST print enabled providers in alphabetical order by provider name in every provider table.
+- **SRS-485**: MUST implement the following behavior: The `show` subcommand MUST print providers in alphabetical order by provider name in every provider table.
+- **SRS-488**: MUST implement the following behavior: The Providers table `Enabled` cell MUST print `yes` when the provider is enabled and `no` when the provider is disabled.
+- **SRS-489**: MUST implement the following behavior: The installation-status table MUST contain one row for every packaged prompt name and configurable provider pair, ordered by prompt name then provider name.
+- **SRS-490**: MUST implement the following behavior: Each installation-status `Installed` cell MUST print `OK` when `req-<prompt_name>` exists under the provider skills root and `MISSING` otherwise.
+- **SRS-491**: MUST implement the following behavior: Each installation-status row MUST report `Type` `Skill`, the skill name `req-<prompt_name>`, the provider CLI name, and the provider enabled state.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
@@ -289,7 +293,8 @@ No explicit performance optimizations identified.
 - **SRS-444**: MUST include unit tests in `tests/test_update_check.py` verifying the SRS-430 PyPI endpoint, the SRS-343/SRS-440 upgrade commands, and the SRS-441/SRS-442 `--ver` output.
 - **SRS-459**: MUST include unit tests in `tests/test_release_workflow.py` verifying the SRS-455 Node24 runtime, the SRS-456/SRS-457 action-major floors, and the SRS-458 opt-out override prohibition.
 - **SRS-461**: MUST include unit tests in `tests/test_cli.py` verifying that `install` neither accepts `--prj-base` nor performs project-side operations, and that `--git-wt-create` exits with code 1 without `--prj-base` and copies only `--prj-base/.venv`.
-- **SRS-487**: MUST include unit tests in `tests/test_cli.py` verifying that the `show` Providers table renders the `Skills Path` column and alphabetical provider ordering.
+- **SRS-487**: MUST include unit tests in `tests/test_cli.py` verifying that the `show` Providers table renders every configurable provider with `CLI`, `Enabled`, and `Skills Path` columns in alphabetical order.
+- **SRS-492**: MUST include unit tests in `tests/test_cli.py` verifying the single `Installation Status` table with `Type`, `Name`, `CLI`, `Enabled`, and `Installed` columns reporting `OK` and `MISSING` rows.
 
 ## 5. Static Code Analysis Requirements
 
