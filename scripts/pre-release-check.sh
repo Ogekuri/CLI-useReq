@@ -18,7 +18,7 @@
 #    repository root (SRS-478).
 # 6. `unit-tests`: run the full unit-test suite through `uv run pytest` (SRS-479).
 # 7. `cleanup` (EXIT trap): on every termination path remove the `dist/`, `build/`,
-#    `.pytest_cache/`, `src/*.egg-info`, and `src/`- or `tests/`-scoped `__pycache__`
+#    `.pytest_cache/`, `.ruff_cache/`, `src/*.egg-info`, and `src/`- or `tests/`-scoped `__pycache__`
 #    directories so the repository is left with only git-tracked files and the uv-managed
 #    `.venv` environment (SRS-482, SRS-484); cleanup targets containing git-tracked files
 #    are skipped with an English warning (SRS-483).
@@ -195,7 +195,7 @@ run_unit_tests() {
 # @brief Remove every build and test intermediate artifact from the repository on any exit path.
 # @details Registered as an `EXIT` trap so it executes on success, on stage failure, and on
 # unexpected termination (SRS-482). Collects the fixed targets `dist/`, `build/`, and
-# `.pytest_cache/` plus every existing `*.egg-info` or `__pycache__` directory discovered by
+# `.pytest_cache/`, and `.ruff_cache/` plus every existing `*.egg-info` or `__pycache__` directory discovered by
 # `find` under `src/` and `tests/`. For each existing target, the git-tracked file check via
 # `git ls-files` guards SRS-481: tracked targets are skipped with an English stderr warning
 # identifying the path (SRS-483); untracked targets are removed with `rm -rf`. After this
@@ -206,7 +206,10 @@ run_unit_tests() {
 #          the original script exit status.
 # @satisfies SRS-481, SRS-482, SRS-483, SRS-484
 cleanup_repository_artifacts() {
-  local cleanup_targets=("${BASE_DIR}/dist" "${BASE_DIR}/build" "${BASE_DIR}/.pytest_cache")
+  local cleanup_targets=(
+    "${BASE_DIR}/dist" "${BASE_DIR}/build"
+    "${BASE_DIR}/.pytest_cache" "${BASE_DIR}/.ruff_cache"
+  )
   local target
   local relative_target
   local tracked_files
