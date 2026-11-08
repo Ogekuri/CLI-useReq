@@ -112,7 +112,7 @@
           - `provider_artifact_root(...)`: resolve user-level artifact root under HOME [`src/usereq/cli.py`]
         - `load_static_check_from_config(...)`: load static-check entries from `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when the `"static-check"` entry is absent [`src/usereq/cli.py`]
         - `_render_simple_table(...)`: render one Unicode box-drawing table (SRS-416, SRS-417) [`src/usereq/cli.py`]
-    - analysis subcommand dispatch on `args.command` for the ten bare subcommands (SRS-408); `--prj-base` is enforced by the handlers that consume it (SRS-396, SRS-410) and no subcommand requires `--git-base` [`src/usereq/cli.py`]
+    - analysis subcommand dispatch on `args.command` for the ten bare subcommands (SRS-408); every subcommand parser accepts optional `--prj-base` and `--git-base` before or after the subcommand token through the shared SUPPRESS-default `base_options` parent parser, `--prj-base` is enforced by the handlers that consume it (SRS-396, SRS-410), and no subcommand requires `--git-base` [`src/usereq/cli.py`]
       - `run_files_tokens(...)`: process explicit file list for token counting [`src/usereq/cli.py`]
         - `count_files_metrics(...)`: compute token and char metrics per file [`src/usereq/token_counter.py`]
         - `format_pack_summary(...)`: render pack summary output [`src/usereq/token_counter.py`]

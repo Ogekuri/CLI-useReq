@@ -569,7 +569,11 @@ def build_parser() -> argparse.ArgumentParser:
     @return Configured ArgumentParser instance.
     @details Defines all supported CLI arguments, flags, and help texts. Provider enablement,
     artifact selection, and per-provider options are configured exclusively via the repeatable
-    ``--enable SPEC`` argument (SRS-275, SRS-034).
+    ``--enable SPEC`` argument (SRS-275, SRS-034). Every SRS-408 analysis subcommand accepts the
+    global base arguments ``--prj-base`` and ``--git-base`` both before and after the subcommand
+    token; ``--prj-base`` is mandatory only for the SRS-396 project-scan subcommands (enforced by
+    ``_require_prj_base``) and ``--git-base`` is never mandatory for any SRS-408 subcommand
+    (SRS-392, SRS-393, SRS-396, SRS-397, SRS-410).
     """
     usage = (
         "req [-h] [--upgrade] [--develop] [--dev] [--uninstall] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
@@ -801,7 +805,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     # Bare analysis subcommands (SRS-408). Legacy --prefixed forms are not parsed
-    # (SRS-409); --prj-base is mandatory exactly per SRS-396/SRS-410.
+    # (SRS-409); --prj-base is mandatory exactly per SRS-396/SRS-410 and --git-base is
+    # never mandatory for SRS-408 subcommands (SRS-410).
     # SUPPRESS defaults prevent subparser defaults from clobbering values parsed
     # by the main parser before the subcommand token.
     base_options = argparse.ArgumentParser(add_help=False)
@@ -811,6 +816,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
         dest="prj_base",
         help="Absolute project base directory; required by project-scan analysis subcommands.",
+    )
+    base_options.add_argument(
+        "--git-base",
+        type=Path,
+        default=argparse.SUPPRESS,
+        dest="git_base",
+        help="Absolute git repository base directory; optional runtime context for analysis subcommands.",
     )
     line_number_options = argparse.ArgumentParser(add_help=False)
     line_number_options.add_argument(
@@ -840,6 +852,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = subparsers.add_parser(
         "files-tokens",
+        parents=[base_options],
         usage="req files-tokens FILE [FILE ...]",
         help="Count tokens and chars for the given files.",
     )
@@ -847,6 +860,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = subparsers.add_parser(
         "files-references",
+        parents=[base_options],
         usage="req files-references FILE [FILE ...]",
         help="Generate LLM reference markdown for the given files.",
     )
@@ -854,7 +868,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = subparsers.add_parser(
         "files-compress",
-        parents=[line_number_options],
+        parents=[base_options, line_number_options],
         usage="req files-compress [--enable-line-numbers] FILE [FILE ...]",
         help="Generate compressed output for the given files.",
     )
@@ -862,7 +876,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = subparsers.add_parser(
         "files-find",
-        parents=[line_number_options],
+        parents=[base_options, line_number_options],
         usage="req files-find [--enable-line-numbers] TAG PATTERN FILE [FILE ...]",
         help=(
             "Find and extract specific constructs: files-find TAG PATTERN FILE ... "
