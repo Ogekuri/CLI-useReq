@@ -17,18 +17,22 @@
 # 5. `static-analysis`: run the project `static-check` command with `--prj-base` on the
 #    repository root (SRS-478).
 # 6. `unit-tests`: run the full unit-test suite through `uv run pytest` (SRS-479).
+# 7. `cleanup` (EXIT trap): on every termination path remove the `dist/`, `build/`,
+#    `.pytest_cache/`, `src/*.egg-info`, and `src/`- or `tests/`-scoped `__pycache__`
+#    directories so the repository is left with only git-tracked files and the uv-managed
+#    `.venv` environment (SRS-482, SRS-484); cleanup targets containing git-tracked files
+#    are skipped with an English warning (SRS-483).
 # Execution stops at the first failing stage with the diagnostic
 # `Pre-release check failed at stage <stage>.` and exit code 1; `Pre-release check passed.`
 # is printed only when every stage succeeds (SRS-480). The script never modifies or deletes
-# git-tracked repository files; generated content is confined to the untracked `dist/`
-# directory and the uv-managed environment (SRS-481).
+# git-tracked repository files (SRS-481).
 # @param[in] $1 Optional literal `--allow-dirty` flag skipping the `worktree-cleanliness` gate (SRS-472).
 # @retval 0 Every stage succeeded and `Pre-release check passed.` was printed.
 # @retval 1 A stage failed, `uv` is unavailable, or an unknown argument was supplied.
 # @warning Requires `bash`, `git`, and the Astral `uv` tool; network access is required by the
 #          build isolation and dependency resolution steps.
 # @see scripts/req.sh
-# @satisfies SRS-471, SRS-472, SRS-473, SRS-474, SRS-475, SRS-476, SRS-477, SRS-478, SRS-479, SRS-480, SRS-481
+# @satisfies SRS-471, SRS-472, SRS-473, SRS-474, SRS-475, SRS-476, SRS-477, SRS-478, SRS-479, SRS-480, SRS-481, SRS-482, SRS-483, SRS-484
 ##
 
 set -euo pipefail
@@ -186,6 +190,42 @@ run_static_analysis() {
 run_unit_tests() {
   uv run --project "${BASE_DIR}" pytest
 }
+
+##
+# @brief Remove every build and test intermediate artifact from the repository on any exit path.
+# @details Registered as an `EXIT` trap so it executes on success, on stage failure, and on
+# unexpected termination (SRS-482). Collects the fixed targets `dist/`, `build/`, and
+# `.pytest_cache/` plus every existing `*.egg-info` or `__pycache__` directory discovered by
+# `find` under `src/` and `tests/`. For each existing target, the git-tracked file check via
+# `git ls-files` guards SRS-481: tracked targets are skipped with an English stderr warning
+# identifying the path (SRS-483); untracked targets are removed with `rm -rf`. After this
+# function returns, the repository directory contains only git-tracked files plus the
+# uv-managed `.venv` environment (SRS-484).
+# @return {None} Function return value.
+# @warning Must stay failure-tolerant: any error raised inside this EXIT trap would override
+#          the original script exit status.
+# @satisfies SRS-481, SRS-482, SRS-483, SRS-484
+cleanup_repository_artifacts() {
+  local cleanup_targets=("${BASE_DIR}/dist" "${BASE_DIR}/build" "${BASE_DIR}/.pytest_cache")
+  local target
+  local relative_target
+  local tracked_files
+  while IFS= read -r found_dir; do
+    cleanup_targets+=("${found_dir}")
+  done < <(find "${BASE_DIR}/src" "${BASE_DIR}/tests" -maxdepth 4 -type d \( -name '*.egg-info' -o -name '__pycache__' \) 2>/dev/null || true)
+  for target in "${cleanup_targets[@]}"; do
+    [ -e "${target}" ] || continue
+    relative_target="${target#"${BASE_DIR}/"}"
+    tracked_files="$(git -C "${BASE_DIR}" ls-files -- "${relative_target}")"
+    if [ -n "${tracked_files}" ]; then
+      echo "WARNING: cleanup skipped for '${relative_target}' because it contains git-tracked files" >&2
+      continue
+    fi
+    rm -rf "${target}"
+  done
+}
+
+trap cleanup_repository_artifacts EXIT
 
 cd "${BASE_DIR}"
 

@@ -254,7 +254,10 @@ No explicit performance optimizations identified.
 - **SRS-478**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST execute the project `static-check` command with `--prj-base` set to the repository root and MUST exit with a non-zero code when static analysis fails.
 - **SRS-479**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST execute the unit-test suite through `uv run pytest` and MUST exit with a non-zero code when any test fails.
 - **SRS-480**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST stop at the first failing stage, MUST print `Pre-release check failed at stage <stage>.` on failure, and MUST print `Pre-release check passed.` only when every stage succeeds.
-- **SRS-481**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST NOT modify or delete any git-tracked repository file, and build outputs MUST be confined to the `dist/` directory.
+- **SRS-481**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST NOT modify or delete any git-tracked repository file, and build intermediates MUST be confined to the `dist/`, `build/`, and `src/*.egg-info` paths.
+- **SRS-482**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST remove the `dist/`, `build/`, `.pytest_cache/`, `src/*.egg-info`, and `src/`- or `tests/`-scoped `__pycache__` directories on every termination path.
+- **SRS-483**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST skip removing any cleanup target containing git-tracked files and MUST print an English warning identifying it.
+- **SRS-484**: MUST implement the following behavior: After termination, `scripts/pre-release-check.sh` MUST leave the repository directory containing only git-tracked files and the uv-managed `.venv` environment.
 
 ## 4. Test Requirements
 
