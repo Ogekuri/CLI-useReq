@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.70.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.69.0..v0.70.0) - 2026-11-08
+### ⛰️  Features
+- Update prompts.
+- add pre-release verification pipeline script [useReq] *(pre-release-check)*
+  - Add scripts/pre-release-check.sh executing ordered release gates:
+  - uv availability, worktree cleanliness (optional --allow-dirty),
+  - uv sync --frozen, sdist/wheel build with artifact verification,
+  - project static-check, and the full pytest suite (SRS-471..SRS-481)
+  - Stops at the first failing stage with an English diagnostic and
+  - exit code 1; prints a success summary only when all stages pass
+  - Never modifies or deletes git-tracked files; outputs confined to
+  - the gitignored dist/ directory
+  - Add SRS section 3.13 with requirements SRS-471..SRS-481 and update
+  - WORKFLOW.md runtime model with PROC:pre-release-check-sh
+
+### 🐛  Bug Fixes
+- repair stale venv pytest entry points before unit tests [useReq] *(pre-release-check)*
+  - Root cause: a .venv copied from a relocated repository keeps foreign console-script shebangs; uv sync --frozen reuses installed dist-infos without rewriting them, so uv run pytest executes under a foreign interpreter lacking tiktoken and the unit-tests stage fails with a misleading ModuleNotFoundError. Fix: the dependency-sync stage now verifies .venv/bin/pytest targets the project venv and repairs it via uv sync --frozen --reinstall-package pytest, else fails with actionable English guidance. Adds parametrized regression tests for repair and unrepairable gating; updates WORKFLOW.md runtime model. Full suite: 1981 passed.
+- resolve usereq imports from repository src in test runs [useReq] *(pytest)*
+  - Execution: 20261108112930-unit-tests-import-shadow
+  - Root cause: a stale foreign usereq distribution exported through PYTHONPATH
+  - shadows the venv editable install, so conftest raises ModuleNotFoundError
+  - for usereq.source_analyzer in the pre-release unit-tests stage.
+  - Fix: pin pytest sys.path to repository src via pythonpath ini option.
+  - Add subprocess regression test proving the shadow no longer wins.
+  - Static-check clean; full pre-release pipeline passes 1979 tests.
+- clean Ruff cache and test protected cleanup [useReq] *(pre-release)*
+  - Execution: 20261108111222-pre-release-cleanup
+  - Include Ruff cache in the existing tracked-file-guarded EXIT cleanup.
+  - Test success, sync failure, and tracked cache preservation in isolation.
+  - Update the runtime model; regenerate unchanged source references.
+  - Keep requirements and application interfaces unchanged.
+- accept optional base args after files-* subcommands [useReq] *(cli)*
+  - Extend the shared base_options subparser parent with optional --git-base
+  - (SUPPRESS default) and attach it to files-tokens, files-references,
+  - files-compress, and files-find so --prj-base/--git-base parse uniformly
+  - before or after the subcommand token (SRS-392, SRS-393, SRS-410)
+  - --prj-base stays mandatory only for SRS-396 project-scan subcommands;
+  - --git-base stays never-required for SRS-408 subcommands
+  - Resolves test_update_check files-references release-check failure
+  - (SystemExit 2 from unrecognized arguments); suite now 1975 passed
+  - Update WORKFLOW.md runtime model and regenerate REFERENCES.md
+
+### 🚜  Changes
+- clean build/test artifacts on every exit [useReq] *(pre-release-check)*
+  - Add EXIT-trap cleanup_repository_artifacts removing dist/, build/,
+  - .pytest_cache/, src/*.egg-info, and src/tests __pycache__ directories
+  - after success, failure, and unexpected termination (SRS-482)
+  - Skip and warn (English) when a cleanup target contains git-tracked
+  - files, preserving the SRS-481 no-tracked-file guarantee (SRS-483)
+  - End-state guarantee: after termination the repository keeps only
+  - git-tracked files plus the uv-managed .venv environment (SRS-484)
+  - Revise SRS-481 to confine build intermediates to dist/, build/, and
+  - src/*.egg-info; update WORKFLOW.md runtime model accordingly
+- BREAKING CHANGE: relocate prompt/agent/skill installation targets per provider table [useReq] *(provider-paths)*
+  - Move antigravity artifacts to ~/.gemini/config (workflows/agents/skills); prompts switch from TOML commands to req-<name>.md workflows (SRS-384, SRS-467, SRS-468)
+  - Add codex agents as ~/.codex/agents/req-<name>.toml; move codex skills to ~/.agents/skills; keep deprecated codex prompts (SRS-383, SRS-469, SRS-470)
+  - Move opencode roots to plural commands/req, agents, skills (SRS-385)
+  - Rename pi prompts to req-<name>.md (SRS-353)
+  - Update show Providers table patterns (SRS-464..SRS-466), tests, test-install.sh, README, WORKFLOW.md
+- add install-path columns to show Providers table [useReq] *(cli)*
+  - The show Providers table now prints Prompts, Agents, Skills columns
+  - rendering the home-relative installation path of each artifact type,
+  - mirroring the hardcoded per-CLI roots (SRS-462..SRS-466 over
+  - SRS-382..SRS-386); unsupported pairs render '-'. Requirements updated
+  - with SRS-462..SRS-466; WORKFLOW.md run_show call-trace and
+  - REFERENCES.md symbol index regenerated.
+
 ## [0.69.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.69.0) - 2026-11-07
 ### ⛰️  Features
 - Update prompts.
@@ -1497,6 +1565,7 @@
 - \[0.67.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.67.0
 - \[0.68.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.0
 - \[0.69.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.69.0
+- \[0.70.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.70.0
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1566,3 +1635,4 @@
 [0.67.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.66.0..v0.67.0
 [0.68.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0
 [0.69.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.69.0
+[0.70.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.69.0..v0.70.0
