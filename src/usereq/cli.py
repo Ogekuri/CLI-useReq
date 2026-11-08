@@ -115,20 +115,9 @@ GUIDELINES_DIR_RELATIVE_TO_HOME = (
 """! @brief Home-relative, non-configurable installation path of GUIDELINES_DIR (SRS-360)."""
 
 VALID_PROVIDERS = frozenset(
-    {"antigravity", "claude", "codex", "opencode", "pi"}
+    {"antigravity", "claude", "codex", "openclaw", "opencode", "pi"}
 )
-"""! @brief Valid provider names accepted by ``--enable`` SPECs (SRS-275, SRS-364)."""
-
-VALID_ARTIFACTS = frozenset({"prompts", "agents", "skills"})
-"""! @brief Valid artifact type tokens accepted in ``--enable`` SPECs (SRS-275, SRS-364)."""
-
-VALID_PROVIDER_OPTIONS = frozenset({"prompts-use-agents"})
-"""! @brief Valid provider-scoped option tokens accepted in ``PROVIDER_OPTIONS`` (SRS-365)."""
-
-PROVIDER_OPTION_APPLICABILITY: dict[str, frozenset[str]] = {
-    "prompts-use-agents": frozenset({"prompts"}),
-}
-"""! @brief Artifact applicability map for provider-scoped options during installation-table rendering."""
+"""! @brief Valid provider names accepted by ``--enable PROVIDER`` and ``--disable PROVIDER`` (SRS-275, SRS-364)."""
 
 GLOBAL_CONFIG_DIRNAME = ".config"
 """! @brief Root configuration directory name located under the user HOME (SRS-387)."""
@@ -198,249 +187,100 @@ def format_home_relative_path(path: Path) -> str:
     return f"~/{relative}"
 
 
-def provider_artifact_root(provider: str, artifact: str) -> Path:
+def provider_skills_root(provider: str) -> Path:
     """!
-    @brief Resolve the user-level installation root for one provider artifact.
-    @details Maps ``provider`` and ``artifact`` selectors to user-level CLI configuration
-    directories under the user HOME (antigravity -> ``~/.gemini/config``, claude ->
-    ``~/.claude``, codex -> ``~/.codex`` with skills under ``~/.agents``, opencode ->
-    ``~/.config/opencode``, pi -> ``~/.pi/agent``). Paths are computed lazily from
-    :func:`home_dir` so HOME redirection stays consistent across a single process run.
-    @param provider {str} Provider selector from ``{antigravity, claude, codex, opencode, pi}``.
-    @param artifact {str} Artifact selector from ``{prompts, agents, skills}``.
-    @return {Path} Absolute user-level target directory for the artifact.
-    @throws {ReqError} Raised when the provider/artifact pair has no user-level target.
-    @satisfies SRS-381, SRS-382, SRS-383, SRS-384, SRS-385, SRS-386
+    @brief Resolve the user-level skills installation root for one provider.
+    @details Maps ``provider`` to its hardcoded user-level skills directory under the
+    user HOME (antigravity -> ``~/.gemini/config/skills``, claude -> ``~/.claude/skills``,
+    codex -> ``~/.agents/skills``, openclaw -> ``~/.openclaw/workspace/skills``, opencode
+    -> ``~/.config/opencode/skills``, pi -> ``~/.pi/agent/skills``). Paths are computed
+    lazily from :func:`home_dir` so HOME redirection stays consistent across a single
+    process run. Skills are the only supported artifact type (SRS-381).
+    @param provider {str} Provider selector from ``{antigravity, claude, codex, openclaw, opencode, pi}``.
+    @return {Path} Absolute user-level skills target directory for the provider.
+    @throws {ReqError} Raised when the provider defines no user-level skills root.
+    @satisfies SRS-381, SRS-382, SRS-383, SRS-384, SRS-385, SRS-386, SRS-486
     """
     home = home_dir()
-    roots: dict[str, dict[str, Path]] = {
-        "antigravity": {
-            "prompts": home / ".gemini" / "config" / "workflows",
-            "agents": home / ".gemini" / "config" / "agents",
-            "skills": home / ".gemini" / "config" / "skills",
-        },
-        "claude": {
-            "prompts": home / ".claude" / "commands" / "req",
-            "agents": home / ".claude" / "agents",
-            "skills": home / ".claude" / "skills",
-        },
-        "codex": {
-            "prompts": home / ".codex" / "prompts",
-            "agents": home / ".codex" / "agents",
-            "skills": home / ".agents" / "skills",
-        },
-        "opencode": {
-            "prompts": home / ".config" / "opencode" / "commands" / "req",
-            "agents": home / ".config" / "opencode" / "agents",
-            "skills": home / ".config" / "opencode" / "skills",
-        },
-        "pi": {
-            "prompts": home / ".pi" / "agent" / "prompts",
-            "skills": home / ".pi" / "agent" / "skills",
-        },
+    roots: dict[str, Path] = {
+        "antigravity": home / ".gemini" / "config" / "skills",
+        "claude": home / ".claude" / "skills",
+        "codex": home / ".agents" / "skills",
+        "openclaw": home / ".openclaw" / "workspace" / "skills",
+        "opencode": home / ".config" / "opencode" / "skills",
+        "pi": home / ".pi" / "agent" / "skills",
     }
-    provider_roots = roots.get(provider)
-    if not provider_roots:
-        raise ReqError(
-            f"Error: provider '{provider}' does not define a user-level artifact root",
-            1,
-        )
-    root = provider_roots.get(artifact)
+    root = roots.get(provider)
     if root is None:
         raise ReqError(
-            f"Error: artifact '{artifact}' is not supported for provider '{provider}'",
+            f"Error: provider '{provider}' does not define a user-level skills root",
             1,
         )
     return root
 
-PROVIDER_ARTIFACT_DISPLAY_PATTERNS: dict[str, dict[str, str]] = {
-    "antigravity": {
-        "prompts": "req-{prompt_name}.md",
-        "agents": "req-{prompt_name}/agent.md",
-        "skills": "req-{prompt_name}/SKILL.md",
-    },
-    "claude": {
-        "prompts": "{prompt_name}.md",
-        "agents": "req-{prompt_name}.md",
-        "skills": "req-{prompt_name}/SKILL.md",
-    },
-    "codex": {
-        "prompts": "req-{prompt_name}.md",
-        "agents": "req-{prompt_name}.toml",
-        "skills": "req-{prompt_name}/SKILL.md",
-    },
-    "opencode": {
-        "prompts": "{prompt_name}.md",
-        "agents": "req-{prompt_name}.md",
-        "skills": "req-{prompt_name}/SKILL.md",
-    },
-    "pi": {
-        "prompts": "req-{prompt_name}.md",
-        "skills": "req-{prompt_name}/SKILL.md",
-    },
-}
-"""!
-@brief Installed filename patterns rendered by the `show` Providers table (SRS-462..SRS-466).
-@details Maps provider -> artifact -> installed filename pattern relative to the
-provider artifact root resolved by :func:`provider_artifact_root`. Patterns mirror
-the exact artifacts written by the installation flow: prompts use the installed
-base-name convention of each CLI (``req-{prompt_name}.md`` for antigravity, codex,
-and pi, ``{prompt_name}.md`` for claude and opencode), agents use
-``req-{prompt_name}.md`` for claude and opencode, ``req-{prompt_name}.toml`` for
-codex, and ``req-{prompt_name}/agent.md`` for antigravity, while skills use
-``req-{prompt_name}/SKILL.md``. Missing provider/artifact keys denote unsupported
-pairs rendered as ``-`` (SRS-466).
-@satisfies SRS-462, SRS-463, SRS-464, SRS-465, SRS-466
-"""
 
-
-def provider_artifact_install_path(provider: str, artifact: str) -> str:
+def provider_skills_path(provider: str) -> str:
     """!
-    @brief Render the home-relative installation path shown in the `show` Providers table.
-    @details Joins the hardcoded provider artifact root from
-    :func:`provider_artifact_root` (SRS-382..SRS-386) with the installed filename
-    pattern from :data:`PROVIDER_ARTIFACT_DISPLAY_PATTERNS` and renders the result
-    through :func:`format_home_relative_path` as a `~/`-prefixed POSIX path.
-    Unsupported provider/artifact pairs render exactly ``-`` (SRS-466).
-    Complexity: O(1). No side effects.
-    @param provider {str} Provider selector from ``{antigravity, claude, codex, opencode, pi}``.
-    @param artifact {str} Artifact selector from ``{prompts, agents, skills}``.
-    @return {str} Home-relative installation path pattern such as
-    ``~/.pi/agent/skills/req-{prompt_name}/SKILL.md``, or ``-`` when the provider
-    defines no installation target for the artifact.
-    @satisfies SRS-462, SRS-463, SRS-464, SRS-465, SRS-466, SRS-381
+    @brief Render the home-relative hardcoded skills root shown in the `show` Providers table.
+    @details Joins the effective user HOME with the hardcoded provider skills root from
+    :func:`provider_skills_root` (SRS-382..SRS-386, SRS-486) and renders the result through
+    :func:`format_home_relative_path` as a `~/`-prefixed POSIX path. Complexity: O(1).
+    No side effects.
+    @param provider {str} Provider selector from ``{antigravity, claude, codex, openclaw, opencode, pi}``.
+    @return {str} Home-relative skills installation root such as
+    ``~/.pi/agent/skills``.
+    @satisfies SRS-462, SRS-463, SRS-485
     """
-    pattern = PROVIDER_ARTIFACT_DISPLAY_PATTERNS.get(provider, {}).get(artifact)
-    if pattern is None:
-        return "-"
-    try:
-        root = provider_artifact_root(provider, artifact)
-    except ReqError:
-        return "-"
-    return format_home_relative_path(root / pattern)
+    return format_home_relative_path(provider_skills_root(provider))
 
 INVALID_WT_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]')
 """! @brief Regex matching characters invalid in both Linux and Windows directory names."""
 
 
-def _parse_provider_artifact_item(spec: str, artifact_item: str) -> tuple[str, list[str]]:
+def validate_provider_name(name: str) -> str:
     """!
-    @brief Parse one artifact item from an ``--enable`` SPEC.
-    @details Splits `ARTIFACT_ITEM` on `+`, validates the artifact token and artifact-local option tokens, preserves first-seen option order, rejects provider-scoped option placement inside the artifact item, and raises deterministic `ReqError` payloads for all invalid tokens. Complexity: O(N) in artifact-item token count. No side effects.
-    @param spec {str} Full raw ``--enable`` SPEC used for diagnostics.
-    @param artifact_item {str} One comma-delimited `ARTIFACT_ITEM` fragment from `SPEC`.
-    @return {tuple[str, list[str]]} Tuple `(artifact_name, ordered_artifact_options)`.
-    @throws {ReqError} Raised when the artifact token is missing, unknown, or contains invalid option placement.
-    @satisfies SRS-275, SRS-278, SRS-364, SRS-365
+    @brief Validate one provider name token supplied via ``--enable`` or ``--disable``.
+    @details Normalizes the token to lowercase and validates membership in
+    :data:`VALID_PROVIDERS`; unknown tokens raise a deterministic English `ReqError`
+    payload identifying the invalid token (SRS-278, SRS-422). Complexity: O(1).
+    No side effects.
+    @param name {str} Raw provider name token as supplied on the command line or read
+    from the persisted `"providers"` array.
+    @return {str} Normalized lowercase provider name.
+    @throws {ReqError} Raised with exit code 1 when the token is not a valid provider.
+    @satisfies SRS-275, SRS-278, SRS-364, SRS-422
     """
-    artifact = artifact_item.strip().lower()
-    if not artifact:
+    normalized = (name or "").strip().lower()
+    if normalized not in VALID_PROVIDERS:
         raise ReqError(
-            f"Error: invalid artifact item '{artifact_item}' in --provider spec '{spec}'",
-            1,
-        )
-    if artifact not in VALID_ARTIFACTS:
-        raise ReqError(
-            f"Error: unknown artifact '{artifact}' in --provider spec '{spec}'; "
-            f"valid artifacts: {', '.join(sorted(VALID_ARTIFACTS))}",
-            1,
-        )
-    return artifact, []
-
-
-def _parse_provider_options(spec: str, raw_options: str) -> list[str]:
-    """!
-    @brief Parse provider-scoped options from an ``--enable`` SPEC.
-    @details Splits `PROVIDER_OPTIONS` on commas, preserves first-seen option order, and accepts only the provider-scoped `prompts-use-agents` token (SRS-365). Complexity: O(N) in provider-option token count. No side effects.
-    @param spec {str} Full raw ``--enable`` SPEC used for diagnostics.
-    @param raw_options {str} Raw provider-options field from `SPEC` without leading separators.
-    @return {list[str]} Ordered provider-scoped option tokens.
-    @throws {ReqError} Raised when an option token is unknown or positioned in the wrong field.
-    @satisfies SRS-275, SRS-278, SRS-365
-    """
-    ordered_options: list[str] = []
-    for option in [token.strip().lower() for token in raw_options.split(",") if token.strip()]:
-        if option not in VALID_PROVIDER_OPTIONS:
-            raise ReqError(
-                f"Error: unknown option '{option}' in --provider spec '{spec}'; "
-                f"valid options: {', '.join(sorted(VALID_PROVIDER_OPTIONS))}",
-                1,
-            )
-        if option not in ordered_options:
-            ordered_options.append(option)
-    return ordered_options
-
-
-def parse_provider_spec(spec: str) -> tuple[str, list[tuple[str, list[str]]], list[str]]:
-    """!
-    @brief Parse a single ``--enable`` SPEC into ordered provider, artifact-item, and provider-option components.
-    @details Splits `SPEC` on `:`, validates provider token membership, parses each comma-delimited bare `ARTIFACT` item (SRS-364), parses optional provider-scoped options, preserves first-seen artifact order and option order, and rejects unknown tokens. Complexity: O(A + O) where A is artifact-item token count and O is provider-option token count. No side effects.
-    @param spec {str} Raw ``--enable`` SPEC in format `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`.
-    @return {tuple[str, list[tuple[str, list[str]]], list[str]]} Tuple `(provider_name, ordered_artifact_items, ordered_provider_options)`.
-    @throws {ReqError} Raised when provider, artifact, option, or option placement validation fails.
-    @satisfies SRS-275, SRS-276, SRS-278, SRS-364, SRS-365
-    @see resolve_provider_configs
-    """
-    parts = spec.split(":")
-    if len(parts) < 2 or len(parts) > 3:
-        raise ReqError(
-            f"Error: invalid --provider spec '{spec}': expected PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]",
-            1,
-        )
-    provider = parts[0].strip().lower()
-    if provider not in VALID_PROVIDERS:
-        raise ReqError(
-            f"Error: unknown provider '{provider}' in --provider spec '{spec}'; "
+            f"Error: unknown provider '{name}'; "
             f"valid providers: {', '.join(sorted(VALID_PROVIDERS))}",
             1,
         )
-    raw_artifact_items = [token.strip() for token in parts[1].split(",") if token.strip()]
-    if not raw_artifact_items:
-        raise ReqError(
-            f"Error: --provider spec '{spec}' must list at least one artifact item",
-            1,
-        )
-    ordered_artifact_items: list[tuple[str, list[str]]] = []
-    for raw_artifact_item in raw_artifact_items:
-        ordered_artifact_items.append(
-            _parse_provider_artifact_item(spec, raw_artifact_item)
-        )
-    provider_options: list[str] = []
-    if len(parts) == 3:
-        provider_options = _parse_provider_options(spec, parts[2])
-    return provider, ordered_artifact_items, provider_options
+    return normalized
 
 
 def resolve_provider_configs(
-    provider_specs: list[str],
-) -> dict[str, dict[str, Any]]:
+    provider_names: list[str],
+) -> dict[str, bool]:
     """!
-    @brief Resolve per-provider configurations from ``--enable`` SPEC strings only.
-    @details Initializes every provider as disabled, then merges parsed `ARTIFACT_ITEM` and `PROVIDER_OPTIONS` data across all raw specs for that provider. Artifact enablement is tracked in top-level `prompts`/`agents`/`skills` booleans. Provider-scoped `prompts-use-agents` remains a top-level boolean. Complexity: O(P * (A + O)) where P is spec count. No external side effects.
-    @param provider_specs {list[str]} Raw ``--enable`` SPEC strings.
-    @return {dict[str, dict[str, Any]]} Mapping provider -> configuration dict with keys `enabled`, `prompts`, `agents`, `skills`, and `prompts-use-agents`.
-    @satisfies SRS-275, SRS-276, SRS-364, SRS-365
-    @see parse_provider_spec
+    @brief Resolve per-provider enablement from ``--enable PROVIDER`` names only.
+    @details Initializes every provider as disabled, validates each supplied name
+    through :func:`validate_provider_name`, and marks validated providers as enabled;
+    enabling a provider implicitly enables its skills, the only supported artifact
+    (SRS-035, SRS-464). Complexity: O(N) in provider-name token count. No external
+    side effects.
+    @param provider_names {list[str]} Raw provider name strings from ``--enable`` or the
+    persisted `"providers"` array.
+    @return {dict[str, bool]} Mapping provider -> enabled flag covering every valid provider.
+    @throws {ReqError} Raised when a provider name is unknown (SRS-278).
+    @satisfies SRS-275, SRS-279, SRS-364
+    @see validate_provider_name
     """
-    configs: dict[str, dict[str, Any]] = {}
-    for prov in sorted(VALID_PROVIDERS):
-        configs[prov] = {
-            "enabled": False,
-            "prompts": False,
-            "agents": False,
-            "skills": False,
-            "prompts-use-agents": False,
-        }
-
-    for spec_str in provider_specs:
-        provider, artifact_items, provider_options = parse_provider_spec(spec_str)
-        cfg = configs[provider]
-        cfg["enabled"] = True
-        for artifact_name, _artifact_options in artifact_items:
-            cfg[artifact_name] = True
-        for option_name in provider_options:
-            cfg[option_name] = True
-
+    configs: dict[str, bool] = {name: False for name in sorted(VALID_PROVIDERS)}
+    for raw_name in provider_names:
+        provider = validate_provider_name(raw_name)
+        configs[provider] = True
     return configs
 
 
@@ -567,9 +407,11 @@ def vlog(msg: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     """! @brief Builds the CLI argument parser.
     @return Configured ArgumentParser instance.
-    @details Defines all supported CLI arguments, flags, and help texts. Provider enablement,
-    artifact selection, and per-provider options are configured exclusively via the repeatable
-    ``--enable SPEC`` argument (SRS-275, SRS-034). Every SRS-408 analysis subcommand accepts the
+    @details Defines all supported CLI arguments, flags, and help texts. Provider enablement
+    is configured exclusively via the repeatable ``--enable PROVIDER`` argument, which
+    accepts only the provider CLI name exactly like ``--disable PROVIDER`` (SRS-275,
+    SRS-034); skills are the only supported artifact type. Every SRS-408 analysis subcommand
+    accepts the
     global base arguments ``--prj-base`` and ``--git-base`` both before and after the subcommand
     token; ``--prj-base`` is mandatory only for the SRS-396 project-scan subcommands (enforced by
     ``_require_prj_base``) and ``--git-base`` is never mandatory for any SRS-408 subcommand
@@ -578,7 +420,7 @@ def build_parser() -> argparse.ArgumentParser:
     usage = (
         "req [-h] [--upgrade] [--develop] [--dev] [--uninstall] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
-        "[--enable SPEC] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
+        "[--enable PROVIDER] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
         "[--enable-static-check SPEC] [--disable-static-check SPEC] "
         "[--test-static-check {dummy,pylance,ruff,command} [FILES...]] "
@@ -670,15 +512,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--enable",
         action="append",
-        metavar="SPEC",
+        metavar="PROVIDER",
         dest="enable_provider",
         help=(
-            "Configure provider enablement without installing (repeatable); "
-            "run the 'install' subcommand to install. "
-            "Format: PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]. "
-            "PROVIDER: antigravity|claude|codex|opencode|pi. "
-            "ARTIFACT_ITEM: one of prompts|agents|skills. "
-            "PROVIDER_OPTIONS: comma-separated from {prompts-use-agents}."
+            "Enable a provider without installing (repeatable); run the "
+            "'install' subcommand to install its skills. "
+            "PROVIDER: one of antigravity|claude|codex|openclaw|opencode|pi."
         ),
     )
     parser.add_argument(
@@ -688,7 +527,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="disable_provider",
         help=(
             "Disable a provider (repeatable); one of "
-            "antigravity|claude|codex|opencode|pi."
+            "antigravity|claude|codex|openclaw|opencode|pi."
         ),
     )
     parser.add_argument(
@@ -958,8 +797,8 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[install_options],
         usage="req install",
         help=(
-            "Install or update the configured providers into user-level "
-            "directories and print the installation report."
+            "Install or update the skills of the configured providers into "
+            "user-level directories and print the installation report."
         ),
     )
 
@@ -967,7 +806,7 @@ def build_parser() -> argparse.ArgumentParser:
         "uninstall",
         usage="req uninstall",
         help=(
-            "Remove req-* artifacts of the configured providers."
+            "Remove req-* skill artifacts of the configured providers."
         ),
     )
 
@@ -975,8 +814,9 @@ def build_parser() -> argparse.ArgumentParser:
         "show",
         usage="req show",
         help=(
-            "Print the active configuration, enabled providers with component "
-            "installation status, and enabled static-check entries as tables."
+            "Print the active configuration, enabled providers in alphabetical "
+            "order with their hardcoded skills path and installation status, "
+            "and enabled static-check entries as tables."
         ),
     )
     return parser
@@ -2060,7 +1900,7 @@ def save_config(
     test_dir_value: str,
     src_dir_values: list[str],
     static_check_config: Optional[dict] = None,
-    provider_specs: Optional[list[str]] = None,
+    providers: Optional[list[str]] = None,
 ) -> None:
     """!
     @brief Saves normalized directory parameters to the user-global configuration file.
@@ -2069,8 +1909,8 @@ def save_config(
     @param src_dir_values Ordered project-relative source directory values.
     @param static_check_config Optional dict of static-check config to persist under key
       `"static-check"`; preserved unchanged when None.
-    @param provider_specs Optional list of raw ``--enable`` SPEC strings to
-      persist under the `"providers"` key (SRS-279).
+    @param providers Optional list of provider names to persist under the `"providers"`
+      key (SRS-279).
     @details Writes the configuration payload to `~/.config/usereq/config.json`, creating
     missing parent directories on first write, via read-modify-write so unspecified
     canonical keys (including `"auto-install"`) are preserved. Only canonical keys from
@@ -2085,8 +1925,8 @@ def save_config(
     payload["src-dir"] = src_dir_values
     if static_check_config:
         payload["static-check"] = static_check_config
-    if provider_specs:
-        payload["providers"] = provider_specs
+    if providers:
+        payload["providers"] = providers
     _write_config_payload(payload)
 
 
@@ -2245,10 +2085,10 @@ def _static_check_entry_identity(
     return (canonical_lang, module, cmd, params)
 
 
-def load_persisted_provider_specs() -> list[str]:
+def load_persisted_providers() -> list[str]:
     """!
-    @brief Load persisted ``--enable`` SPEC strings from the user-global configuration file.
-    @return List of raw SPEC strings; empty list if key is missing or config is unreadable.
+    @brief Load persisted provider names from the user-global configuration file.
+    @return List of provider names; empty list if key is missing or config is unreadable.
     @details Reads the ``"providers"`` key from `~/.config/usereq/config.json` (SRS-064,
     SRS-279). All providers are disabled by default because the key defaults to an empty
     list. Returns ``[]`` on any read or parse error rather than raising.
@@ -2262,9 +2102,9 @@ def load_persisted_provider_specs() -> list[str]:
         payload = json.loads(config_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return []
-    specs = payload.get("providers", [])
-    if isinstance(specs, list) and all(isinstance(s, str) for s in specs):
-        return specs
+    providers = payload.get("providers", [])
+    if isinstance(providers, list) and all(isinstance(p, str) for p in providers):
+        return providers
     return []
 
 
@@ -2323,81 +2163,58 @@ def load_auto_install_enabled() -> bool:
     return payload.get(AUTO_INSTALL_CONFIG_KEY, DEFAULT_AUTO_INSTALL) is not False
 
 
-def _persisted_provider_spec_provider(spec: str) -> Optional[str]:
+def apply_enabled_providers(names: list[str]) -> None:
     """!
-    @brief Resolve the provider token of one persisted SPEC string.
-    @param spec {str} Raw persisted SPEC string.
-    @return {Optional[str]} Provider name, or None when the SPEC is invalid.
-    @details Invalid persisted SPECs are treated as unmatched and dropped by callers.
-    """
-    try:
-        return parse_provider_spec(spec)[0]
-    except ReqError:
-        return None
-
-
-def apply_enable_provider_specs(specs: list[str]) -> None:
-    """!
-    @brief Persist `--enable` specs replacing the named providers' entries.
-    @param specs {list[str]} Raw SPEC strings in CLI order.
+    @brief Persist ``--enable PROVIDER`` names replacing the named providers' entries.
+    @param names {list[str]} Raw provider name tokens in CLI order.
     @return {None} Function return value.
-    @details Validates every SPEC through `parse_provider_spec` (SRS-275, SRS-278),
-    removes all previously persisted specs of the named providers, appends the new
-    specs in CLI order, and preserves every other provider (SRS-279). No artifact is
-    installed (SRS-276).
-    @throws {ReqError} Raised on invalid SPEC tokens with exit code 1 (SRS-278).
+    @details Validates every token through `validate_provider_name` (SRS-275, SRS-278),
+    removes all previously persisted entries of the named providers, appends the new
+    names deduplicated in CLI order, and preserves every other provider (SRS-279).
+    No artifact is installed (SRS-276).
+    @throws {ReqError} Raised on invalid provider tokens with exit code 1 (SRS-278).
     @satisfies SRS-275, SRS-276, SRS-278, SRS-279
     """
     validated: list[str] = []
-    named_providers: list[str] = []
-    for spec in specs:
-        provider_name = parse_provider_spec(spec)[0]
-        validated.append(spec)
-        if provider_name not in named_providers:
-            named_providers.append(provider_name)
+    for raw_name in names:
+        provider_name = validate_provider_name(raw_name)
+        if provider_name not in validated:
+            validated.append(provider_name)
     payload = _read_config_payload()
     persisted = payload.get("providers", [])
-    persisted_specs = (
+    persisted_names = (
         persisted
-        if isinstance(persisted, list) and all(isinstance(s, str) for s in persisted)
+        if isinstance(persisted, list) and all(isinstance(p, str) for p in persisted)
         else []
     )
-    kept = [
-        spec
-        for spec in persisted_specs
-        if _persisted_provider_spec_provider(spec) not in named_providers
-    ]
+    named = set(validated)
+    kept = [provider for provider in persisted_names if provider not in named]
     payload["providers"] = kept + validated
     _write_config_payload(payload)
 
 
-def apply_disable_provider_specs(names: list[str]) -> None:
+def apply_disabled_providers(names: list[str]) -> None:
     """!
-    @brief Remove all persisted specs of the named providers.
+    @brief Remove the named providers from the persisted `"providers"` array.
     @param names {list[str]} Provider names supplied via `--disable`.
     @return {None} Function return value.
-    @details Removes every persisted SPEC of each named provider; absent specs leave the
-    configuration unchanged; the `"providers"` key is removed when no specs remain
+    @details Removes every persisted entry of each named provider; absent entries leave
+    the configuration unchanged; the `"providers"` key is removed when no entries remain
     (SRS-413).
     @throws {ReqError} Raised on unknown provider tokens with exit code 1 (SRS-422).
     @satisfies SRS-413, SRS-422
     """
-    for name in names:
-        if name not in VALID_PROVIDERS:
-            raise ReqError(f"Error: unknown provider '{name}'.", 1)
+    for raw_name in names:
+        validate_provider_name(raw_name)
     payload = _read_config_payload()
     persisted = payload.get("providers", [])
-    persisted_specs = (
+    persisted_names = (
         persisted
-        if isinstance(persisted, list) and all(isinstance(s, str) for s in persisted)
+        if isinstance(persisted, list) and all(isinstance(p, str) for p in persisted)
         else []
     )
-    disabled = set(names)
-    remaining = [
-        spec
-        for spec in persisted_specs
-        if _persisted_provider_spec_provider(spec) not in disabled
-    ]
+    disabled = {name.strip().lower() for name in names}
+    remaining = [provider for provider in persisted_names if provider not in disabled]
     if remaining:
         payload["providers"] = remaining
     else:
@@ -2546,10 +2363,10 @@ def run_config_commands(args: Namespace) -> None:
     """
     enable_provider = getattr(args, "enable_provider", None) or []
     if enable_provider:
-        apply_enable_provider_specs(enable_provider)
+        apply_enabled_providers(enable_provider)
     disable_provider = getattr(args, "disable_provider", None) or []
     if disable_provider:
-        apply_disable_provider_specs(disable_provider)
+        apply_disabled_providers(disable_provider)
     enable_sc = getattr(args, "enable_static_check", None) or []
     if enable_sc:
         apply_enable_static_check_specs(enable_sc)
@@ -2666,62 +2483,6 @@ def copy_with_replacements(
     write_text_file(dst, updated)
 
 
-def normalize_description(value: str) -> str:
-    """!
-    @brief Normalizes a description by removing superfluous quotes and escapes.
-    @details Implements the normalize_description function behavior with deterministic control flow.
-    @param value Input parameter `value`.
-    @return {str} Function return value.
-    """
-    trimmed = value.strip()
-    if len(trimmed) >= 2 and trimmed.startswith('"') and trimmed.endswith('"'):
-        trimmed = trimmed[1:-1]
-    if len(trimmed) >= 4 and trimmed.startswith('\\"') and trimmed.endswith('\\"'):
-        trimmed = trimmed[2:-2]
-    return trimmed.replace('\\"', '"')
-
-
-def md_to_toml(md_path: Path, toml_path: Path, force: bool) -> None:
-    """!
-    @brief Converts a Markdown prompt to a TOML agent definition for codex.
-    @details Reads the packaged prompt template, extracts the front-matter description,
-    and writes a TOML payload with a ``description`` string key and a ``prompt``
-    multi-line string key containing the template body. Raises a deterministic
-    `ReqError` when the template lacks a leading ``---`` front-matter block or when
-    the destination exists and `force` is false.
-    @param md_path {Path} Packaged Markdown prompt template to convert.
-    @param toml_path {Path} Destination TOML agent file to write.
-    @param force {bool} When true, overwrite an existing destination file.
-    @return {None} Function return value.
-    @throws {ReqError} Raised when the template has no front matter or the destination exists without `force`.
-    @satisfies SRS-469
-    """
-    if toml_path.exists() and not force:
-        raise ReqError(
-            f"Destination TOML already exists (use --force to overwrite): {toml_path}",
-            3,
-        )
-    content = md_path.read_text(encoding="utf-8")
-    match = re.match(r"^\s*---\s*\n(.*?)\n---\s*\n(.*)$", content, re.S)
-    if not match:
-        raise ReqError("No leading '---' block found at start of Markdown file.", 4)
-    frontmatter, rest = match.groups()
-    desc = extract_description(frontmatter)
-    desc_escaped = desc.replace("\\", "\\\\").replace('"', '\\"')
-    rest_text = rest if rest.endswith("\n") else rest + "\n"
-    toml_body = [
-        f'description = "{desc_escaped}"',
-        "",
-        'prompt = """',
-        rest_text,
-        '"""',
-        "",
-    ]
-    toml_path.parent.mkdir(parents=True, exist_ok=True)
-    toml_path.write_text("\n".join(toml_body), encoding="utf-8")
-    dlog(f"Wrote TOML to: {toml_path}")
-
-
 def extract_frontmatter(content: str) -> tuple[str, str]:
     """!
     @brief Extracts front matter and body from Markdown.
@@ -2734,32 +2495,6 @@ def extract_frontmatter(content: str) -> tuple[str, str]:
         raise ReqError("No leading '---' block found at start of Markdown file.", 4)
     # Explicitly return two strings to satisfy type annotation.
     return match.group(1), match.group(2)
-
-
-def extract_description(frontmatter: str) -> str:
-    """!
-    @brief Extracts the description from front matter.
-    @details Implements the extract_description function behavior with deterministic control flow.
-    @param frontmatter Input parameter `frontmatter`.
-    @return {str} Function return value.
-    """
-    desc_match = re.search(r"^description:\s*(.*)$", frontmatter, re.M)
-    if not desc_match:
-        raise ReqError("No 'description:' field found inside the leading block.", 5)
-    return normalize_description(desc_match.group(1).strip())
-
-
-def extract_argument_hint(frontmatter: str) -> str:
-    """!
-    @brief Extracts the argument-hint from front matter, if present.
-    @details Implements the extract_argument_hint function behavior with deterministic control flow.
-    @param frontmatter Input parameter `frontmatter`.
-    @return {str} Function return value.
-    """
-    match = re.search(r"^argument-hint:\s*(.*)$", frontmatter, re.M)
-    if not match:
-        return ""
-    return normalize_description(match.group(1).strip())
 
 
 def extract_purpose_first_bullet(body: str) -> str:
@@ -2832,20 +2567,6 @@ def extract_skill_description(frontmatter: str) -> str:
     if not usage:
         return ""
     return " ".join(str(usage).split())
-
-
-def replace_tokens(path: Path, replacements: Mapping[str, str]) -> None:
-    """!
-    @brief Replaces tokens in the specified file.
-    @details Implements the replace_tokens function behavior with deterministic control flow.
-    @param path Input parameter `path`.
-    @param replacements Input parameter `replacements`.
-    @return {None} Function return value.
-    """
-    text = path.read_text(encoding="utf-8")
-    for token, replacement in replacements.items():
-        text = text.replace(token, replacement)
-    path.write_text(text, encoding="utf-8")
 
 
 def yaml_double_quote_escape(value: str) -> str:
@@ -2930,51 +2651,35 @@ def prune_empty_dirs(root: Path) -> None:
 
 def remove_generated_resources() -> None:
     """!
-    @brief Removes `req-*` artifacts generated by the tool from user-level provider directories.
+    @brief Removes `req-*` skill artifacts generated by the tool from user-level provider directories.
     @details Loads the persisted `providers` array from the user-global configuration file,
-    resolves each enabled provider/artifact user-level root via :func:`provider_artifact_root`,
-    and deletes only `req-*` files and `req-*` skill directories. Empty user-level provider
-    subdirectories are pruned afterwards; unrelated user content is never touched.
+    resolves each enabled provider skills root via :func:`provider_skills_root`, and
+    deletes only `req-*` skill directories and files. Empty user-level skills roots are
+    pruned afterwards; unrelated user content is never touched.
     @return {None} Function return value.
-    @satisfies SRS-390
+    @satisfies SRS-419
     """
-    specs = load_persisted_provider_specs()
-    configs = resolve_provider_configs(specs)
-    for provider, cfg in configs.items():
-        if not cfg.get("enabled"):
+    providers = load_persisted_providers()
+    configs = resolve_provider_configs(providers)
+    for provider, enabled in configs.items():
+        if not enabled:
             continue
-        for artifact in sorted(VALID_ARTIFACTS):
-            if not cfg.get(artifact):
-                continue
-            root = provider_artifact_root(provider, artifact)
-            if not root.is_dir():
-                continue
-            if root.name == "req":
-                # usereq-owned namespace directory (e.g. ~/.claude/commands/req):
-                # all content inside is generated by this tool, so remove it entirely.
-                for path in sorted(root.iterdir()):
-                    if path.is_dir():
-                        shutil.rmtree(path)
-                    elif path.is_file():
-                        path.unlink()
-                continue
-            for path in sorted(root.iterdir()):
-                if not path.name.startswith("req-"):
-                    continue
-                if path.is_dir():
-                    shutil.rmtree(path)
-                elif path.is_file():
-                    path.unlink()
-    for provider in sorted(VALID_PROVIDERS):
-        cfg = configs[provider]
-        if not cfg.get("enabled"):
+        root = provider_skills_root(provider)
+        if not root.is_dir():
             continue
-        for artifact in sorted(VALID_ARTIFACTS):
-            if not cfg.get(artifact):
+        for path in sorted(root.iterdir()):
+            if not path.name.startswith("req-"):
                 continue
-            root = provider_artifact_root(provider, artifact)
-            if root.is_dir():
-                prune_empty_dirs(root)
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.is_file():
+                path.unlink()
+    for provider, enabled in configs.items():
+        if not enabled:
+            continue
+        root = provider_skills_root(provider)
+        if root.is_dir():
+            prune_empty_dirs(root)
 
 def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
     """!
@@ -3007,18 +2712,17 @@ def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def _provider_artifact_installed(provider: str, artifact: str) -> bool:
+def _provider_skills_installed(provider: str) -> bool:
     """!
-    @brief Detect whether at least one `req-*` artifact exists for a provider component.
-    @param provider {str} Provider selector from `{antigravity, claude, codex, opencode, pi}`.
-    @param artifact {str} Artifact selector from `{prompts, agents, skills}`.
-    @return {bool} True when the provider/artifact user-level root contains a `req-*` entry.
-    @details Installation status detection for the `show` subcommand (SRS-417); unsupported
-    provider/artifact pairs and absent roots report `False`.
+    @brief Detect whether at least one `req-*` skill artifact exists for a provider.
+    @param provider {str} Provider selector from `{antigravity, claude, codex, openclaw, opencode, pi}`.
+    @return {bool} True when the provider skills root contains a `req-*` entry.
+    @details Installation status detection for the `show` subcommand (SRS-417); unknown
+    providers and absent roots report `False`.
     @satisfies SRS-417
     """
     try:
-        root = provider_artifact_root(provider, artifact)
+        root = provider_skills_root(provider)
     except ReqError:
         return False
     if not root.is_dir():
@@ -3044,11 +2748,11 @@ def run_install(args: Namespace) -> None:
 
 def run_uninstall_providers(args: Namespace) -> None:
     """!
-    @brief Execute uninstall: remove artifacts of the configured providers.
+    @brief Execute uninstall: remove skill artifacts of the configured providers.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
-    @details Requires the user-global configuration file and removes `req-*` artifacts of
-    the providers persisted under `"providers"` (SRS-390, SRS-419).
+    @details Requires the user-global configuration file and removes `req-*` skill
+    artifacts of the providers persisted under `"providers"` (SRS-419).
     @throws ReqError If the global configuration file is missing.
     @satisfies SRS-419
     """
@@ -3066,12 +2770,13 @@ def run_show(args: Namespace) -> None:
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @details Prints the effective configuration table (`docs-dir`, `tests-dir`, `src-dir`,
-    `auto-install`), the Providers table with `Prompts`, `Agents`, and `Skills` columns
-    rendering the home-relative installation path of each artifact type
-    (SRS-462..SRS-466), one dedicated component installation-status table per enabled
-    provider (SRS-417), and the enabled static-check entries (SRS-416).
-    @throws ReqError If persisted provider SPECs are invalid.
-    @satisfies SRS-416, SRS-417, SRS-420, SRS-462, SRS-463, SRS-464, SRS-465, SRS-466
+    `auto-install`), the Providers table with `Provider` and `Skills Path` columns
+    rendering the home-relative hardcoded skills root of every enabled provider in
+    alphabetical order (SRS-462, SRS-463, SRS-485), one dedicated skills
+    installation-status table per enabled provider in alphabetical order (SRS-417,
+    SRS-485), and the enabled static-check entries (SRS-416).
+    @throws ReqError If persisted provider names are invalid.
+    @satisfies SRS-416, SRS-417, SRS-462, SRS-463, SRS-485
     """
     config = load_config()
     doc_dir_value = str(config["docs-dir"])
@@ -3093,42 +2798,38 @@ def run_show(args: Namespace) -> None:
         )
     )
 
-    persisted_specs = load_persisted_provider_specs()
-    provider_configs = resolve_provider_configs(persisted_specs)
+    persisted_providers = load_persisted_providers()
+    provider_configs = resolve_provider_configs(persisted_providers)
+    enabled_providers = sorted(
+        name for name, enabled in provider_configs.items() if enabled
+    )
     print()
     print("Providers")
-    print(
-        _render_simple_table(
-            ["Provider", "Status", "Prompts", "Agents", "Skills"],
-            [
+    if enabled_providers:
+        print(
+            _render_simple_table(
+                ["Provider", "Skills Path"],
                 [
-                    name,
-                    "enabled" if provider_configs[name]["enabled"] else "disabled",
-                    provider_artifact_install_path(name, "prompts"),
-                    provider_artifact_install_path(name, "agents"),
-                    provider_artifact_install_path(name, "skills"),
-                ]
-                for name in sorted(VALID_PROVIDERS)
-            ],
+                    [name, provider_skills_path(name)]
+                    for name in enabled_providers
+                ],
+            )
         )
-    )
-    for name in sorted(VALID_PROVIDERS):
-        provider_cfg = provider_configs[name]
-        if not provider_cfg["enabled"]:
-            continue
+    else:
+        print("(none)")
+    for name in enabled_providers:
         print()
         print(f"Provider {name}")
         component_rows = [
             [
-                artifact,
-                "yes" if provider_cfg[artifact] else "no",
+                "skills",
+                "yes",
                 (
                     "installed"
-                    if _provider_artifact_installed(name, artifact)
+                    if _provider_skills_installed(name)
                     else "not installed"
                 ),
             ]
-            for artifact in sorted(VALID_ARTIFACTS)
         ]
         print(
             _render_simple_table(
@@ -3172,7 +2873,7 @@ def _maybe_auto_install_after_upgrade(argv_list: list[str]) -> None:
     """
     if not load_auto_install_enabled():
         return
-    if not load_persisted_provider_specs():
+    if not load_persisted_providers():
         print(
             "Warning: no enabled providers in ~/.config/usereq/config.json; skipping auto-install after upgrade.",
             file=sys.stderr,
@@ -3283,10 +2984,11 @@ def _validate_enable_static_check_command_executables(
 
 def run(args: Namespace) -> None:
     """!
-    @brief Handles the main installation/update flow for persisted providers.
-    @details Loads the persisted `"providers"` specs from `~/.config/usereq/config.json`
-    (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), orchestrates
-    user-level provider artifact generation with home-relative GUIDELINES_DIR token
+    @brief Handles the main installation flow installing skills for persisted providers.
+    @details Loads the persisted `"providers"` names from `~/.config/usereq/config.json`
+    (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), installs
+    `req-<prompt_name>/SKILL.md` skill artifacts into the user-level hardcoded skills
+    roots (SRS-381..SRS-386, SRS-464, SRS-486) with home-relative GUIDELINES_DIR token
     substitution (SRS-402, SRS-403), and never rewrites the user-global configuration
     file (SRS-448). Install does not consume `--prj-base` (SRS-447); project scaffolding,
     containment validation, and directory persistence are removed legacy behaviors
@@ -3300,50 +3002,23 @@ def run(args: Namespace) -> None:
     VERBOSE = getattr(args, "verbose", False)
     DEBUG = getattr(args, "debug", False)
 
-    # Main flow: validates provider specs and generates user-level resources only.
+    # Main flow: validates persisted providers and generates user-level skills only.
     # SRS-447/SRS-448: install never consumes --prj-base and performs no project-side
     # operations; SRS-363/SRS-407/SRS-449 are removed legacy behaviors.
 
-    # Resolve persisted provider specs (SRS-064, SRS-279); installation is config-driven.
-    effective_provider_specs = load_persisted_provider_specs()
-    # Validate all specs (will raise ReqError on invalid tokens, SRS-278).
-    for spec_str in effective_provider_specs:
-        parse_provider_spec(spec_str)
-    # Resolve per-provider configs (spec-driven only, SRS-275).
-    provider_configs = resolve_provider_configs(effective_provider_specs)
+    # Resolve persisted providers (SRS-064, SRS-279); installation is config-driven.
+    persisted_providers = load_persisted_providers()
+    # Resolve per-provider enablement; raises ReqError on unknown names (SRS-278).
+    provider_configs = resolve_provider_configs(persisted_providers)
+    enabled_providers = sorted(
+        provider_name for provider_name, enabled in provider_configs.items() if enabled
+    )
 
-    # Derive flat enable_* variables from per-provider configs (spec-driven only).
-    enable_antigravity = provider_configs["antigravity"]["enabled"]
-    enable_claude = provider_configs["claude"]["enabled"]
-    enable_codex = provider_configs["codex"]["enabled"]
-    enable_opencode = provider_configs["opencode"]["enabled"]
-    enable_pi = provider_configs["pi"]["enabled"]
-
-    # A provider's artifacts are enabled only via the per-provider spec.
-    enable_prompts = any(pc["prompts"] for pc in provider_configs.values())
-    enable_agents = any(pc["agents"] for pc in provider_configs.values())
-    enable_skills = any(pc["skills"] for pc in provider_configs.values())
-
-    if not any(
-        (
-            enable_antigravity,
-            enable_claude,
-            enable_codex,
-            enable_opencode,
-            enable_pi,
-        )
-    ):
+    if not enabled_providers:
         parser = build_parser()
         parser.print_help()
         raise ReqError(
-            "Error: at least one enabled provider is required in ~/.config/usereq/config.json (configure it with --enable SPEC)",
-            4,
-        )
-    if not any((enable_prompts, enable_agents, enable_skills)):
-        parser = build_parser()
-        parser.print_help()
-        raise ReqError(
-            "Error: at least one enabled provider with artifact types is required in ~/.config/usereq/config.json",
+            "Error: at least one enabled provider is required in ~/.config/usereq/config.json (configure it with --enable PROVIDER)",
             4,
         )
 
@@ -3358,30 +3033,16 @@ def run(args: Namespace) -> None:
     dlog(f"GUIDELINES_DIR={guidelines_path_value}")
     dlog(f"GUIDELINES_FILE_LIST={guidelines_file_list}")
 
-    # Resolve user-level provider artifact roots under the user HOME (SRS-381..SRS-386).
-    skills_roots: dict[str, Path] = {}
-    target_folders: list[Path] = []
-    for provider_name, provider_cfg in provider_configs.items():
-        if not provider_cfg["enabled"]:
-            continue
-        for artifact_name in sorted(VALID_ARTIFACTS):
-            if not provider_cfg[artifact_name]:
-                continue
-            try:
-                root = provider_artifact_root(provider_name, artifact_name)
-            except ReqError:
-                continue
-            if artifact_name == "skills":
-                skills_roots[provider_name] = root
-            else:
-                target_folders.append(root)
-    for folder in target_folders:
-        folder.mkdir(parents=True, exist_ok=True)
+    # Resolve user-level skills roots under the user HOME (SRS-381..SRS-386, SRS-486).
+    skills_roots: dict[str, Path] = {
+        provider_name: provider_skills_root(provider_name)
+        for provider_name in enabled_providers
+    }
     for skills_root in skills_roots.values():
         skills_root.mkdir(parents=True, exist_ok=True)
     if VERBOSE:
         log(
-            "OK: ensured user-level provider folders for the requested target CLIs under "
+            "OK: ensured user-level skills folders for the requested target CLIs under "
             f"{home_dir()}"
         )
 
@@ -3391,338 +3052,43 @@ def run(args: Namespace) -> None:
             f"Error: prompts directory not found at {prompts_dir} (RESOURCE_ROOT/prompts required)",
             9,
         )
-    prompts_installed: dict[str, set[str]] = {
-        "antigravity": set(),
-        "claude": set(),
-        "codex": set(),
-        "opencode": set(),
-        "pi": set(),
+    skills_installed: dict[str, set[str]] = {
+        provider_name: set() for provider_name in enabled_providers
     }
-    modules_installed: dict[str, set[str]] = {
-        key: set() for key in prompts_installed.keys()
-    }
-    prompt_sources: list[tuple[str, Path]] = [
-        *[("prompts", path) for path in sorted(prompts_dir.glob("*.md"))],
-    ]
-    for source_kind, prompt_path in prompt_sources:
-        is_prompt_source = source_kind == "prompts"
-        PROMPT = prompt_path.stem
+    for prompt_path in sorted(prompts_dir.glob("*.md")):
+        prompt_name = prompt_path.stem
         content = prompt_path.read_text(encoding="utf-8")
         frontmatter, prompt_body = extract_frontmatter(content)
-        description = extract_description(frontmatter)
-        argument_hint = extract_argument_hint(frontmatter)
         prompt_body = prompt_body if prompt_body.endswith("\n") else prompt_body + "\n"
 
-        base_replacements = {
+        # Skills are the only generated artifact: every enabled provider receives
+        # req-<prompt_name>/SKILL.md under its hardcoded user-level skills root
+        # (SRS-095, SRS-368, SRS-464).
+        skill_replacements = {
             "%%GUIDELINES_FILES%%": guidelines_file_list,
             "%%GUIDELINES_PATH%%": guidelines_path_value,
-        }
-        prompt_replacements = {
-            **base_replacements,
             "%%ARGS%%": "$ARGUMENTS",
         }
-        prompt_with_replacements = apply_replacements(content, prompt_replacements)
-        prompt_body_replaced = apply_replacements(prompt_body, prompt_replacements)
-
-        # Precompute description metadata so provider blocks can reuse them safely.
-        desc_yaml = yaml_double_quote_escape(description)
         skill_desc_yaml = yaml_double_quote_escape(
             extract_skill_description(frontmatter)
         )
-
-        pc_antigravity = provider_configs["antigravity"]
-        pc_claude = provider_configs["claude"]
-        pc_codex = provider_configs["codex"]
-        pc_opencode = provider_configs["opencode"]
-        pc_pi = provider_configs["pi"]
-
-        if is_prompt_source and pc_codex["enabled"] and pc_codex["prompts"]:
-            # ~/.codex/prompts (deprecated, SRS-470)
-            dst_codex_prompt = provider_artifact_root("codex", "prompts") / f"req-{PROMPT}.md"
-            existed = dst_codex_prompt.exists()
-            write_text_file(dst_codex_prompt, prompt_with_replacements)
+        skill_body = apply_replacements(prompt_body, skill_replacements)
+        if not skill_body.endswith("\n"):
+            skill_body += "\n"
+        skill_text = (
+            "---\n"
+            f"name: req-{prompt_name}\n"
+            f'description: "{skill_desc_yaml}"\n'
+            "---\n\n" + skill_body
+        )
+        for provider_name in enabled_providers:
+            skill_dir = skills_roots[provider_name] / f"req-{prompt_name}"
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            skill_file = skill_dir / "SKILL.md"
+            write_text_file(skill_file, skill_text)
             if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_codex_prompt}")
-            prompts_installed["codex"].add(PROMPT)
-            modules_installed["codex"].add("prompts")
-
-        if is_prompt_source and pc_codex["enabled"] and pc_codex["agents"]:
-            # ~/.codex/agents/req-<PROMPT>.toml (SRS-469)
-            dst_codex_agent = (
-                provider_artifact_root("codex", "agents") / f"req-{PROMPT}.toml"
-            )
-            existed = dst_codex_agent.exists()
-            md_to_toml(prompt_path, dst_codex_agent, force=existed)
-            codex_agent_replacements = {
-                **base_replacements,
-                "%%ARGS%%": "$ARGUMENTS",
-            }
-            replace_tokens(dst_codex_agent, codex_agent_replacements)
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_codex_agent}")
-            prompts_installed["codex"].add(PROMPT)
-            modules_installed["codex"].add("agents")
-
-        if pc_codex["enabled"] and pc_codex["skills"]:
-            # ~/.agents/skills/req-<prompt>/SKILL.md (SRS-383)
-            codex_skill_dir = skills_roots["codex"] / f"req-{PROMPT}"
-            codex_skill_dir.mkdir(parents=True, exist_ok=True)
-            codex_skill_text = (
-                "---\n"
-                f"name: req-{PROMPT}\n"
-                f'description: "{skill_desc_yaml}"\n'
-                "---\n\n" + prompt_body_replaced
-            )
-            if not codex_skill_text.endswith("\n"):
-                codex_skill_text += "\n"
-            write_text_file(codex_skill_dir / "SKILL.md", codex_skill_text)
-            prompts_installed["codex"].add(PROMPT)
-            modules_installed["codex"].add("skills")
-
-        if is_prompt_source and pc_antigravity["enabled"] and pc_antigravity["prompts"]:
-            # ~/.gemini/config/workflows/req-<PROMPT>.md (SRS-467)
-            dst_antigravity_prompt = (
-                provider_artifact_root("antigravity", "prompts") / f"req-{PROMPT}.md"
-            )
-            existed = dst_antigravity_prompt.exists()
-            antigravity_replacements = {
-                **base_replacements,
-                "%%ARGS%%": "{{args}}",
-            }
-            workflow_header_lines = ["---", f'description: "{desc_yaml}"']
-            if argument_hint:
-                workflow_header_lines.append(
-                    f'argument-hint: "{yaml_double_quote_escape(argument_hint)}"'
-                )
-            antigravity_workflow_text = (
-                "\n".join(workflow_header_lines)
-                + "\n---\n\n"
-                + apply_replacements(prompt_body, antigravity_replacements)
-            )
-            dst_antigravity_prompt.parent.mkdir(parents=True, exist_ok=True)
-            if not antigravity_workflow_text.endswith("\n"):
-                antigravity_workflow_text += "\n"
-            dst_antigravity_prompt.write_text(
-                antigravity_workflow_text, encoding="utf-8"
-            )
-            if VERBOSE:
-                log(
-                    f"{'OVERWROTE' if existed else 'COPIED'}: {dst_antigravity_prompt}"
-                )
-            prompts_installed["antigravity"].add(PROMPT)
-            modules_installed["antigravity"].add("prompts")
-
-        if is_prompt_source and pc_antigravity["enabled"] and pc_antigravity["agents"]:
-            # ~/.gemini/config/agents/req-<PROMPT>/agent.md (SRS-468)
-            antigravity_agent_dir = (
-                provider_artifact_root("antigravity", "agents") / f"req-{PROMPT}"
-            )
-            dst_antigravity_agent = antigravity_agent_dir / "agent.md"
-            existed = dst_antigravity_agent.exists()
-            antigravity_agent_text = (
-                "---\n"
-                f"name: req-{PROMPT}\n"
-                f'description: "{desc_yaml}"\n'
-                "\n---\n\n" + prompt_body_replaced
-            )
-            antigravity_agent_dir.mkdir(parents=True, exist_ok=True)
-            if not antigravity_agent_text.endswith("\n"):
-                antigravity_agent_text += "\n"
-            write_text_file(dst_antigravity_agent, antigravity_agent_text)
-            if VERBOSE:
-                log(
-                    f"{'OVERWROTE' if existed else 'COPIED'}: {dst_antigravity_agent}"
-                )
-            prompts_installed["antigravity"].add(PROMPT)
-            modules_installed["antigravity"].add("agents")
-
-        if is_prompt_source and pc_claude["enabled"] and pc_claude["agents"]:
-            # ~/.claude/agents
-            dst_claude_agent = provider_artifact_root("claude", "agents") / f"req-{PROMPT}.md"
-            existed = dst_claude_agent.exists()
-            claude_header_lines = [
-                "---",
-                f"name: req-{PROMPT}",
-                f'description: "{desc_yaml}"',
-            ]
-            claude_text = (
-                "\n".join(claude_header_lines) + "\n---\n\n" + prompt_body_replaced
-            )
-            dst_claude_agent.parent.mkdir(parents=True, exist_ok=True)
-            if not claude_text.endswith("\n"):
-                claude_text += "\n"
-            dst_claude_agent.write_text(claude_text, encoding="utf-8")
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_claude_agent}")
-            prompts_installed["claude"].add(PROMPT)
-            modules_installed["claude"].add("agents")
-
-        if is_prompt_source and pc_pi["enabled"] and pc_pi["prompts"]:
-            # ~/.pi/agent/prompts/req-<PROMPT>.md (SRS-353)
-            dst_pi_prompt = (
-                provider_artifact_root("pi", "prompts") / f"req-{PROMPT}.md"
-            )
-            existed = dst_pi_prompt.exists()
-            if pc_pi["prompts-use-agents"]:
-                pi_prompt_text = f"---\nagent: req-{PROMPT}\n---\n"
-            else:
-                pi_header_lines = [
-                    "---",
-                    f"description: {frontmatter.splitlines()[0].split(':', 1)[1].strip() if 'description:' in frontmatter else description}",
-                ]
-                if argument_hint:
-                    pi_header_lines.append(f"argument-hint: {argument_hint}")
-                pi_header = "\n".join(pi_header_lines) + "\n---\n\n"
-                pi_prompt_text = pi_header + prompt_body_replaced
-            dst_pi_prompt.parent.mkdir(parents=True, exist_ok=True)
-            dst_pi_prompt.write_text(pi_prompt_text, encoding="utf-8")
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_pi_prompt}")
-            prompts_installed["pi"].add(PROMPT)
-            modules_installed["pi"].add("prompts")
-
-        if is_prompt_source and pc_opencode["enabled"] and pc_opencode["agents"]:
-            # ~/.config/opencode/agents (SRS-385)
-            dst_opencode_agent = (
-                provider_artifact_root("opencode", "agents") / f"req-{PROMPT}.md"
-            )
-            existed = dst_opencode_agent.exists()
-            opencode_header_lines = ["---", f'description: "{desc_yaml}"', "mode: all"]
-            opencode_text = (
-                "\n".join(opencode_header_lines) + "\n---\n\n" + prompt_body_replaced
-            )
-            dst_opencode_agent.parent.mkdir(parents=True, exist_ok=True)
-            if not opencode_text.endswith("\n"):
-                opencode_text += "\n"
-            dst_opencode_agent.write_text(opencode_text, encoding="utf-8")
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_opencode_agent}")
-            prompts_installed["opencode"].add(PROMPT)
-            modules_installed["opencode"].add("agent")
-
-        if is_prompt_source and pc_opencode["enabled"] and pc_opencode["prompts"]:
-            # ~/.config/opencode/commands/req (SRS-385)
-            dst_opencode_command = (
-                provider_artifact_root("opencode", "prompts") / f"{PROMPT}.md"
-            )
-            existed = dst_opencode_command.exists()
-            if pc_opencode["prompts-use-agents"]:
-                command_text = f"---\nagent: req-{PROMPT}\n---\n"
-            else:
-                command_header_lines = [
-                    "---",
-                    f'description: "{desc_yaml}"',
-                ]
-                if argument_hint:
-                    command_header_lines.append(
-                        f'argument-hint: "{yaml_double_quote_escape(argument_hint)}"'
-                    )
-                command_text = (
-                    "\n".join(command_header_lines) + "\n---\n\n" + prompt_body_replaced
-                )
-            dst_opencode_command.parent.mkdir(parents=True, exist_ok=True)
-            if not command_text.endswith("\n"):
-                command_text += "\n"
-            dst_opencode_command.write_text(command_text, encoding="utf-8")
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_opencode_command}")
-            prompts_installed["opencode"].add(PROMPT)
-            modules_installed["opencode"].add("command")
-
-        if is_prompt_source and pc_claude["enabled"] and pc_claude["prompts"]:
-            # ~/.claude/commands/req
-            dst_claude_command = (
-                provider_artifact_root("claude", "prompts") / f"{PROMPT}.md"
-            )
-            existed = dst_claude_command.exists()
-            if pc_claude["prompts-use-agents"]:
-                command_header_lines = ["---", f"agent: req-{PROMPT}"]
-                claude_command_text = "\n".join(command_header_lines) + "\n---\n"
-            else:
-                command_header_lines = ["---"]
-                if description:
-                    command_header_lines.append(f'description: "{desc_yaml}"')
-                if argument_hint:
-                    command_header_lines.append(
-                        f'argument-hint: "{yaml_double_quote_escape(argument_hint)}"'
-                    )
-                claude_command_text = (
-                    "\n".join(command_header_lines) + "\n---\n\n" + prompt_body_replaced
-                )
-            dst_claude_command.parent.mkdir(parents=True, exist_ok=True)
-            if not claude_command_text.endswith("\n"):
-                claude_command_text += "\n"
-            dst_claude_command.write_text(claude_command_text, encoding="utf-8")
-            if VERBOSE:
-                log(f"{'OVERWROTE' if existed else 'COPIED'}: {dst_claude_command}")
-            prompts_installed["claude"].add(PROMPT)
-            modules_installed["claude"].add("commands")
-
-        if pc_claude["enabled"] and pc_claude["skills"]:
-            # ~/.claude/skills/req-<prompt>/SKILL.md
-            claude_skill_dir = skills_roots["claude"] / f"req-{PROMPT}"
-            claude_skill_dir.mkdir(parents=True, exist_ok=True)
-            claude_skill_text = (
-                "---\n"
-                f"name: req-{PROMPT}\n"
-                f'description: "{skill_desc_yaml}"\n'
-                "---\n\n" + prompt_body_replaced
-            )
-            if not claude_skill_text.endswith("\n"):
-                claude_skill_text += "\n"
-            write_text_file(claude_skill_dir / "SKILL.md", claude_skill_text)
-            prompts_installed["claude"].add(PROMPT)
-            modules_installed["claude"].add("skills")
-
-        if pc_antigravity["enabled"] and pc_antigravity["skills"]:
-            # ~/.gemini/config/skills/req-<prompt>/SKILL.md (SRS-384)
-            antigravity_skill_dir = skills_roots["antigravity"] / f"req-{PROMPT}"
-            antigravity_skill_dir.mkdir(parents=True, exist_ok=True)
-            antigravity_skill_text = (
-                "---\n"
-                f"name: req-{PROMPT}\n"
-                f'description: "{skill_desc_yaml}"\n'
-                "---\n\n" + prompt_body_replaced
-            )
-            if not antigravity_skill_text.endswith("\n"):
-                antigravity_skill_text += "\n"
-            write_text_file(
-                antigravity_skill_dir / "SKILL.md", antigravity_skill_text
-            )
-            prompts_installed["antigravity"].add(PROMPT)
-            modules_installed["antigravity"].add("skills")
-
-        if pc_pi["enabled"] and pc_pi["skills"]:
-            # ~/.pi/agent/skills/req-<prompt>/SKILL.md
-            pi_skill_dir = skills_roots["pi"] / f"req-{PROMPT}"
-            pi_skill_dir.mkdir(parents=True, exist_ok=True)
-            pi_skill_text = (
-                "---\n"
-                f"name: req-{PROMPT}\n"
-                f'description: "{skill_desc_yaml}"\n'
-                "---\n\n" + prompt_body_replaced
-            )
-            if not pi_skill_text.endswith("\n"):
-                pi_skill_text += "\n"
-            write_text_file(pi_skill_dir / "SKILL.md", pi_skill_text)
-            prompts_installed["pi"].add(PROMPT)
-            modules_installed["pi"].add("skills")
-
-        if pc_opencode["enabled"] and pc_opencode["skills"]:
-            # ~/.config/opencode/skills/req-<prompt>/SKILL.md (SRS-385)
-            opencode_skill_dir = skills_roots["opencode"] / f"req-{PROMPT}"
-            opencode_skill_dir.mkdir(parents=True, exist_ok=True)
-            opencode_skill_text = (
-                "---\n"
-                f"name: req-{PROMPT}\n"
-                f'description: "{skill_desc_yaml}"\n'
-                "---\n\n" + prompt_body_replaced
-            )
-            if not opencode_skill_text.endswith("\n"):
-                opencode_skill_text += "\n"
-            write_text_file(opencode_skill_dir / "SKILL.md", opencode_skill_text)
-            prompts_installed["opencode"].add(PROMPT)
-            modules_installed["opencode"].add("skills")
+                log(f"COPIED: {skill_file}")
+            skills_installed[provider_name].add(prompt_name)
 
     # Final success notification: printed only when the command completed all
     # intended filesystem modifications without raising an exception.
@@ -3743,45 +3109,39 @@ def run(args: Namespace) -> None:
         print("The folder %%GUIDELINES_FILES%% does not contain any files")
 
 
-    # Build and print installation report table with provider artifact/options details.
+    # Build and print installation report table with per-provider skills details.
     def _format_install_table(
-        modules_map: dict[str, list[str]],
-        prompts_map: dict[str, set[str]],
+        skills_map: dict[str, set[str]],
     ) -> list[str]:
         """!
         @brief Format the Unicode installation summary table.
-        @details Builds a deterministic box-drawing table with columns: Provider, Prompts Installed, Modules Installed.
-        Prompts Installed is wrapped to a maximum width of 50 characters. Modules Installed renders one non-wrapped
-        line per active artifact item as `artifact` when no artifact-local or applicable provider-scoped options are active, or `artifact:options` when one or more such options are active.
-        Borders are emitted with Unicode line-drawing characters and bright-red ANSI styling.
-        @note Complexity: O(C * (P log P + M)) where C is provider count, P is prompts per provider, M is module-entry lines per provider.
+        @details Builds a deterministic box-drawing table with exactly the `Provider`
+        and `Skills Installed` columns (SRS-291). Rows are rendered only for providers
+        whose skills were installed during the current invocation (SRS-036), in
+        alphabetical order. `Skills Installed` wraps overflowing content onto
+        subsequent lines at a maximum width of 50 characters (SRS-290). Borders are
+        emitted with Unicode line-drawing characters and bright-red ANSI styling
+        (SRS-049).
+        @note Complexity: O(C * (S log S)) where C is provider count and S is installed skills per provider.
         @note Side effects: None (pure formatting).
-        @param modules_map {dict[str, list[str]]} Mapping: provider name -> module-entry lines in `artifact` or `artifact:options` format.
-        @param prompts_map {dict[str, set[str]]} Mapping: provider name -> installed prompt identifiers (union across artifact types).
+        @param skills_map {dict[str, set[str]]} Mapping: provider name -> installed skill identifiers.
         @return {list[str]} Fully formatted table lines (including separators) ready for printing.
+        @satisfies SRS-036, SRS-049, SRS-290, SRS-291
         """
-        columns = ("Provider", "Prompts Installed", "Modules Installed")
-        rows: list[tuple[str, str, str]] = []
-        for provider_name in sorted(prompts_map.keys()):
-            prompts = sorted(prompts_map.get(provider_name, ()))
-            if not prompts:
+        columns = ("Provider", "Skills Installed")
+        rows: list[tuple[str, str]] = []
+        for provider_name in sorted(skills_map.keys()):
+            skills = sorted(skills_map.get(provider_name, ()))
+            if not skills:
                 continue
-            prompts_text = ", ".join(prompts) if prompts else "-"
-            module_lines = modules_map.get(provider_name, [])
-            modules_text = "\n".join(module_lines) if module_lines else "-"
-            rows.append((provider_name, prompts_text, modules_text))
+            rows.append((provider_name, ", ".join(skills)))
 
         if not rows:
-            rows = [("-", "-", "-")]
+            rows = [("-", "-")]
 
         provider_width = max(len(columns[0]), max(len(row[0]) for row in rows))
-        prompt_cells = [columns[1], *[row[1] for row in rows]]
-        prompt_width = min(50, max(len(cell) for cell in prompt_cells))
-        modules_width = len(columns[2])
-        for row in rows:
-            modules_width = max(
-                modules_width, max(len(line) for line in row[2].splitlines() or [""])
-            )
+        skill_cells = [columns[1], *[row[1] for row in rows]]
+        skills_width = min(50, max(len(cell) for cell in skill_cells))
 
         def _wrap_cell(value: str, width: int, allow_wrap: bool) -> list[str]:
             """! @brief Normalize one table cell to printable lines.
@@ -3806,36 +3166,33 @@ def run(args: Namespace) -> None:
                     lines.append(raw_line)
             return lines if lines else [""]
 
-        def _render_row(provider: str, prompts: str, modules: str) -> list[str]:
+        def _render_row(provider: str, skills: str) -> list[str]:
             """!
             @brief Render one logical table row into one or more physical lines.
             @details Applies per-cell wrapping and left alignment, then expands the row height to the maximum wrapped cell line count.
             @param provider {str} Provider cell text.
-            @param prompts {str} Prompts Installed cell text.
-            @param modules {str} Modules Installed cell text.
+            @param skills {str} Skills Installed cell text.
             @return {list[str]} Physical row lines encoded with box-drawing separators.
             """
             provider_lines = _wrap_cell(provider, provider_width, allow_wrap=False)
-            prompt_lines = _wrap_cell(prompts, prompt_width, allow_wrap=True)
-            module_lines = _wrap_cell(modules, modules_width, allow_wrap=False)
-            row_height = max(len(provider_lines), len(prompt_lines), len(module_lines))
+            skill_lines = _wrap_cell(skills, skills_width, allow_wrap=True)
+            row_height = max(len(provider_lines), len(skill_lines))
             lines: list[str] = []
             for idx in range(row_height):
                 provider_part = (
                     provider_lines[idx] if idx < len(provider_lines) else ""
                 ).ljust(provider_width)
-                prompt_part = (
-                    prompt_lines[idx] if idx < len(prompt_lines) else ""
-                ).ljust(prompt_width)
-                module_part = (
-                    module_lines[idx] if idx < len(module_lines) else ""
-                ).ljust(modules_width)
-                lines.append(f"│ {provider_part} │ {prompt_part} │ {module_part} │")
+                skill_part = (
+                    skill_lines[idx] if idx < len(skill_lines) else ""
+                ).ljust(skills_width)
+                lines.append(f"\u2502 {provider_part} \u2502 {skill_part} \u2502")
             return lines
 
-        top = f"┌{'─' * (provider_width + 2)}┬{'─' * (prompt_width + 2)}┬{'─' * (modules_width + 2)}┐"
-        middle = f"├{'─' * (provider_width + 2)}┼{'─' * (prompt_width + 2)}┼{'─' * (modules_width + 2)}┤"
-        bottom = f"└{'─' * (provider_width + 2)}┴{'─' * (prompt_width + 2)}┴{'─' * (modules_width + 2)}┘"
+        horizontal_provider = "\u2500" * (provider_width + 2)
+        horizontal_skills = "\u2500" * (skills_width + 2)
+        top = f"\u250c{horizontal_provider}\u252c{horizontal_skills}\u2510"
+        middle = f"\u251c{horizontal_provider}\u253c{horizontal_skills}\u2524"
+        bottom = f"\u2514{horizontal_provider}\u2534{horizontal_skills}\u2518"
 
         lines: list[str] = [top]
         lines.extend(_render_row(*columns))
@@ -3847,65 +3204,6 @@ def run(args: Namespace) -> None:
         lines.append(bottom)
         return lines
 
-    def _build_provider_modules_map(provider_specs: list[str]) -> dict[str, list[str]]:
-        """!
-        @brief Build provider-to-module-entry mapping for installation table rendering.
-        @details Parses validated raw `--provider` specifications, preserves first-seen artifact-item order and artifact-local option order, appends applicable provider-scoped options in first-seen order, and emits one module-entry line per active artifact item as `artifact` or `artifact:options`. Complexity: O(P * (A + O)) where P is spec count. No side effects.
-        @param provider_specs {list[str]} Raw `--provider` SPEC values after update-merging logic.
-        @return {dict[str, list[str]]} Mapping from provider to ordered module-entry lines.
-        @satisfies SRS-291, SRS-294, SRS-297
-        """
-        artifacts_ordered: dict[str, list[str]] = {
-            provider_name: [] for provider_name in sorted(VALID_PROVIDERS)
-        }
-        artifact_options_ordered: dict[str, dict[str, list[str]]] = {
-            provider_name: {
-                artifact_name: [] for artifact_name in sorted(VALID_ARTIFACTS)
-            }
-            for provider_name in sorted(VALID_PROVIDERS)
-        }
-        provider_options_ordered: dict[str, list[str]] = {
-            provider_name: [] for provider_name in sorted(VALID_PROVIDERS)
-        }
-        for raw_spec in provider_specs:
-            provider_name, artifact_items, provider_options = parse_provider_spec(raw_spec)
-            for artifact_name, artifact_options in artifact_items:
-                if artifact_name not in artifacts_ordered[provider_name]:
-                    artifacts_ordered[provider_name].append(artifact_name)
-                ordered_artifact_options = artifact_options_ordered[provider_name][
-                    artifact_name
-                ]
-                for option_name in artifact_options:
-                    if option_name not in ordered_artifact_options:
-                        ordered_artifact_options.append(option_name)
-            for option_name in provider_options:
-                if option_name not in provider_options_ordered[provider_name]:
-                    provider_options_ordered[provider_name].append(option_name)
-        modules_map: dict[str, list[str]] = {}
-        for provider_name in sorted(VALID_PROVIDERS):
-            provider_lines: list[str] = []
-            for artifact_name in artifacts_ordered[provider_name]:
-                ordered_options = list(
-                    artifact_options_ordered[provider_name][artifact_name]
-                )
-                for option_name in provider_options_ordered[provider_name]:
-                    applicable_artifacts = PROVIDER_OPTION_APPLICABILITY.get(
-                        option_name, frozenset()
-                    )
-                    if (
-                        artifact_name in applicable_artifacts
-                        and option_name not in ordered_options
-                    ):
-                        ordered_options.append(option_name)
-                if ordered_options:
-                    provider_lines.append(
-                        f"{artifact_name}:{','.join(ordered_options)}"
-                    )
-                else:
-                    provider_lines.append(artifact_name)
-            modules_map[provider_name] = provider_lines
-        return modules_map
-
     def _colorize_table_border(line: str) -> str:
         """!
         @brief Colorize box-drawing border glyphs with bright-red ANSI style.
@@ -3913,15 +3211,13 @@ def run(args: Namespace) -> None:
         @param line {str} One already-rendered table line.
         @return {str} Line with border glyphs wrapped in ANSI bright-red and reset sequences.
         """
-        border_chars = frozenset("┌┬┐├┼┤└┴┘─│")
+        border_chars = frozenset("\u250c\u252c\u2510\u251c\u253c\u2524\u2514\u2534\u2518\u2500\u2502")
         return "".join(
             f"{ANSI_BRIGHT_RED}{char}{ANSI_RESET}" if char in border_chars else char
             for char in line
         )
 
-    table_lines = _format_install_table(
-        _build_provider_modules_map(effective_provider_specs), prompts_installed
-    )
+    table_lines = _format_install_table(skills_installed)
     for table_line in table_lines:
         print(_colorize_table_border(table_line))
 

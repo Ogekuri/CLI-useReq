@@ -2,7 +2,7 @@
 - `PROC:main`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `CLI orchestration for user-level provider resource installation, global configuration persistence, command-line project/git base resolution, source analysis, compression, token counting, static-check dispatch, git integration, and worktree management`
+  - `role`: `CLI orchestration for user-level provider skills installation, global configuration persistence, command-line project/git base resolution, source analysis, compression, token counting, static-check dispatch, git integration, and worktree management`
   - `entrypoints`: `main(argv: Optional[list[str]] = None) -> int`
   - `defining_files`: `src/usereq/cli.py`
   - `threads`: `no explicit threads detected`
@@ -16,7 +16,7 @@
 - `PROC:test-install-sh`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `Smoke-install helper that isolates HOME, resets generated user-level provider directories under the disposable HOME, and invokes repository installation with the canonical multi-provider configuration`
+  - `role`: `Smoke-install helper that isolates HOME, resets generated user-level provider skills directories under the disposable HOME, and invokes repository installation with the canonical multi-provider configuration`
   - `entrypoints`: `scripts/test-install.sh`
   - `defining_files`: `scripts/test-install.sh`
   - `threads`: `no explicit threads detected`
@@ -72,7 +72,7 @@
       - `_maybe_auto_install_after_upgrade(...)`: after a successful `--upgrade`, run the provider installation flow with persisted providers when `auto-install` is enabled, warning and skipping only when no provider is enabled (SRS-421, SRS-450) [`src/usereq/cli.py`]
         - `load_auto_install_enabled()`: resolve the persisted `"auto-install"` flag with enabled default (SRS-420) [`src/usereq/cli.py`]
           - `_read_config_payload()`: read the raw user-global configuration payload [`src/usereq/cli.py`]
-        - `load_persisted_provider_specs(...)`: load persisted provider SPEC strings [`src/usereq/cli.py`]
+        - `load_persisted_providers(...)`: load persisted provider names [`src/usereq/cli.py`]
         - `parse_args(...)`: parse the upgrade invocation arguments for the install flow [`src/usereq/cli.py`]
         - `run_install(...)`: execute the config-driven installation flow (SRS-418) [`src/usereq/cli.py`]
     - `maybe_print_version(...)`: for `--ver`/`--version`, print the installed version followed by `PyPI latest: <version>` and `GitHub latest: <version>` lines, reusing the PyPI version fetched by the startup release-check and degrading unfetchable versions to `unknown` (SRS-441, SRS-442) [`src/usereq/cli.py`]
@@ -90,11 +90,11 @@
           - `get_global_config_path(...)`: resolve `~/.config/usereq/config.json` path [`src/usereq/cli.py`]
     - `_is_provider_config_command(...)`: detect `--enable`/`--disable`/`--enable-static-check`/`--disable-static-check`/`--enable-auto-install`/`--disable-auto-install` command path [`src/usereq/cli.py`]
       - `run_config_commands(...)`: apply every provider/static-check/auto-install configuration command in flag order without installing artifacts (SRS-276, SRS-413, SRS-414, SRS-415, SRS-420) [`src/usereq/cli.py`]
-        - `apply_enable_provider_specs(...)`: validate and persist `--enable` specs replacing the named providers' entries (SRS-279) [`src/usereq/cli.py`]
-          - `parse_provider_spec(...)`: validate one SPEC string [`src/usereq/cli.py`]
+        - `apply_enabled_providers(...)`: validate and persist `--enable PROVIDER` names replacing the named providers' entries (SRS-279) [`src/usereq/cli.py`]
+          - `validate_provider_name(...)`: validate one provider name token (SRS-278, SRS-364) [`src/usereq/cli.py`]
           - `_read_config_payload(...)`: read the raw user-global configuration payload [`src/usereq/cli.py`]
           - `_write_config_payload(...)`: write the payload filtered to canonical keys [`src/usereq/cli.py`]
-        - `apply_disable_provider_specs(...)`: remove all persisted specs of the named providers (SRS-413) [`src/usereq/cli.py`]
+        - `apply_disabled_providers(...)`: remove the named providers from the persisted array (SRS-413) [`src/usereq/cli.py`]
         - `apply_enable_static_check_specs(...)`: parse, deduplicate, validate, and merge static-check entries into the persisted configuration (SRS-251, SRS-301, SRS-415) [`src/usereq/cli.py`]
           - `parse_enable_static_check(...)`: parse `--enable-static-check` entries [`src/usereq/static_check.py`]
           - `_static_check_entry_identity(...)`: build normalized static-check identity tuple [`src/usereq/cli.py`]
@@ -104,19 +104,20 @@
     - lifecycle subcommand dispatch on `args.command` for the bare `install`, `uninstall`, and `show` subcommands (SRS-280) [`src/usereq/cli.py`]
       - `run_install(...)`: install or update the providers persisted under `"providers"` into user-level directories with the installation summary report; performs no project-side operations and does not consume `--prj-base` (SRS-418, SRS-447, SRS-448) [`src/usereq/cli.py`]
         - `run(...)`: config-driven installation/update flow [`src/usereq/cli.py`]
-      - `run_uninstall_providers(...)`: remove `req-*` artifacts of the configured providers (SRS-419) [`src/usereq/cli.py`]
-        - `remove_generated_resources(...)`: resolve provider/artifact user-level roots and delete `req-*` artifacts [`src/usereq/cli.py`]
-      - `run_show(...)`: print the active configuration, the Providers table with `Prompts`, `Agents`, and `Skills` columns rendering the home-relative installation path of each artifact type, per-enabled-provider component installation status, and static-check tables (SRS-416, SRS-417, SRS-462..SRS-466) [`src/usereq/cli.py`]
+      - `run_uninstall_providers(...)`: remove `req-*` skill artifacts of the configured providers (SRS-419) [`src/usereq/cli.py`]
+        - `remove_generated_resources(...)`: resolve provider skills roots and delete `req-*` skill artifacts [`src/usereq/cli.py`]
+      - `run_show(...)`: print the active configuration, the Providers table with `Provider` and `Skills Path` columns rendering the home-relative hardcoded skills root of every enabled provider in alphabetical order (SRS-462, SRS-463, SRS-485), one dedicated skills installation-status table per enabled provider in alphabetical order (SRS-417, SRS-485), and static-check tables (SRS-416) [`src/usereq/cli.py`]
         - `load_config(...)`: load directory values with defaults [`src/usereq/cli.py`]
         - `load_auto_install_enabled(...)`: resolve the persisted `"auto-install"` flag (SRS-420) [`src/usereq/cli.py`]
-        - `load_persisted_provider_specs(...)`: load persisted provider SPEC strings [`src/usereq/cli.py`]
-        - `resolve_provider_configs(...)`: resolve specs into per-provider enablement maps [`src/usereq/cli.py`]
-        - `provider_artifact_install_path(...)`: render the home-relative installation path pattern of one provider artifact for the Providers table, joining the SRS-382..SRS-386 hardcoded root with the installed filename pattern, or `-` for unsupported pairs (SRS-462..SRS-466) [`src/usereq/cli.py`]
-          - `provider_artifact_root(...)`: resolve user-level artifact root under HOME [`src/usereq/cli.py`]
+        - `load_persisted_providers(...)`: load persisted provider names [`src/usereq/cli.py`]
+        - `resolve_provider_configs(...)`: resolve provider names into per-provider enablement maps via `validate_provider_name(...)` (SRS-275, SRS-364) [`src/usereq/cli.py`]
+          - `validate_provider_name(...)`: validate one provider name token (SRS-278) [`src/usereq/cli.py`]
+        - `provider_skills_path(...)`: render the home-relative hardcoded skills root of one provider for the `Skills Path` column (SRS-462, SRS-463) [`src/usereq/cli.py`]
+          - `provider_skills_root(...)`: resolve user-level skills root under HOME (SRS-382..SRS-386, SRS-486) [`src/usereq/cli.py`]
             - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
-          - `format_home_relative_path(...)`: render the joined path in `~/` home-relative form [`src/usereq/cli.py`]
-        - `_provider_artifact_installed(...)`: detect `req-*` artifacts for one provider component (SRS-417) [`src/usereq/cli.py`]
-          - `provider_artifact_root(...)`: resolve user-level artifact root under HOME [`src/usereq/cli.py`]
+          - `format_home_relative_path(...)`: render the skills root in `~/` home-relative form [`src/usereq/cli.py`]
+        - `_provider_skills_installed(...)`: detect `req-*` skills for one provider (SRS-417) [`src/usereq/cli.py`]
+          - `provider_skills_root(...)`: resolve user-level skills root under HOME [`src/usereq/cli.py`]
         - `load_static_check_from_config(...)`: load static-check entries from `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when the `"static-check"` entry is absent [`src/usereq/cli.py`]
         - `_render_simple_table(...)`: render one Unicode box-drawing table (SRS-416, SRS-417) [`src/usereq/cli.py`]
     - analysis subcommand dispatch on `args.command` for the ten bare subcommands (SRS-408); every subcommand parser accepts optional `--prj-base` and `--git-base` before or after the subcommand token through the shared SUPPRESS-default `base_options` parent parser, `--prj-base` is enforced by the handlers that consume it (SRS-396, SRS-410), and no subcommand requires `--git-base` [`src/usereq/cli.py`]
@@ -203,27 +204,22 @@
           - `resolve_git_root(...)`: execute `git rev-parse --show-toplevel` in `--git-base` [`src/usereq/cli.py`]
         - `_worktree_path_exists_exact(...)`: verify exact worktree path via `git worktree list --porcelain` [`src/usereq/cli.py`]
         - external boundaries: `subprocess.run(["git", "worktree", "remove", ...])` and `subprocess.run(["git", "branch", "-D", ...])` worktree/branch removal
-    - `run(...)`: initialization command path installing persisted providers into user-level CLI directories only; loads the persisted `"providers"` specs (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), installs artifacts under the user HOME (SRS-381..SRS-386), substitutes home-relative GUIDELINES_DIR paths, prints the installation summary report, and never rewrites the user-global configuration file; `--prj-base` is neither defined nor consumed (SRS-447, SRS-448) and project scaffolding, containment validation, and directory persistence are removed legacy behaviors (SRS-363, SRS-407, SRS-449) [`src/usereq/cli.py`]
-      - `load_persisted_provider_specs(...)`: load persisted `--enable` SPEC strings from `~/.config/usereq/config.json` `"providers"` key (SRS-279) [`src/usereq/cli.py`]
-      - `resolve_provider_configs(...)`: resolve `--provider` specs into per-provider config dicts keyed by provider name, with artifact enablement booleans and provider-scoped `prompts-use-agents` [`src/usereq/cli.py`]
-        - `parse_provider_spec(...)`: parse and validate a single `--provider` SPEC string into provider name, ordered artifact items, and ordered provider options [`src/usereq/cli.py`]
-          - `_parse_provider_artifact_item(...)`: parse one bare `ARTIFACT_ITEM` token against `VALID_ARTIFACTS` [`src/usereq/cli.py`]
-          - `_parse_provider_options(...)`: parse optional provider-scoped `prompts-use-agents` options [`src/usereq/cli.py`]
-      - `provider_artifact_root(...)`: resolve user-level installation roots under HOME for each enabled provider/artifact (SRS-381..SRS-386) [`src/usereq/cli.py`]
+    - `run(...)`: initialization command path installing the skills of persisted providers into user-level CLI directories only; loads the persisted `"providers"` names (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), installs `req-<prompt_name>/SKILL.md` artifacts under the user HOME hardcoded skills roots (SRS-381..SRS-386, SRS-464, SRS-486), substitutes home-relative GUIDELINES_DIR paths, prints the installation summary report, and never rewrites the user-global configuration file; `--prj-base` is neither defined nor consumed (SRS-447, SRS-448) and project scaffolding, containment validation, and directory persistence are removed legacy behaviors (SRS-363, SRS-407, SRS-449) [`src/usereq/cli.py`]
+      - `load_persisted_providers(...)`: load persisted provider names from `~/.config/usereq/config.json` `"providers"` key (SRS-064, SRS-279) [`src/usereq/cli.py`]
+      - `resolve_provider_configs(...)`: resolve provider names into per-provider enablement maps keyed by provider name; enabling a provider implicitly enables its skills, the only supported artifact (SRS-275, SRS-364) [`src/usereq/cli.py`]
+        - `validate_provider_name(...)`: validate one provider name token, rejecting unknown and legacy SPEC-shaped tokens with exit code 1 (SRS-278) [`src/usereq/cli.py`]
+      - `provider_skills_root(...)`: resolve user-level skills roots under HOME for each enabled provider (SRS-381..SRS-386, SRS-486) [`src/usereq/cli.py`]
         - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
       - `generate_guidelines_file_list(...)`: build the `%%GUIDELINES_FILES%%` substitution payload from the installation-owned guidelines directory [`src/usereq/cli.py`]
         - `guidelines_dir(...)`: resolve the fixed home-relative GUIDELINES_DIR path [`src/usereq/cli.py`]
           - `home_dir(...)`: resolve effective user HOME directory [`src/usereq/cli.py`]
         - `format_home_relative_path(...)`: render guideline paths in `~/` home-relative form for `%%GUIDELINES_PATH%%` and `%%GUIDELINES_FILES%%` [`src/usereq/cli.py`]
       - `generate_guidelines_file_items(...)`: list home-relative guideline entries printed after installation [`src/usereq/cli.py`]
-      - `md_to_toml(...)`: convert Markdown prompt templates to codex agent TOML definitions under `~/.codex/agents` [`src/usereq/cli.py`]
-      - `replace_tokens(...)`: apply token substitutions inside generated TOML command files [`src/usereq/cli.py`]
-      - `_build_provider_modules_map(...)`: derive ordered per-provider module-entry lines by merging applicable provider-scoped options per artifact item from the effective persisted `--enable` specs [`src/usereq/cli.py`]
-      - `_format_install_table(...)`: render Unicode box-drawing installation summary table with prompt-column wrapping and non-wrapped per-artifact module-entry lines [`src/usereq/cli.py`]
+      - `_format_install_table(...)`: render Unicode box-drawing installation summary table with exactly `Provider` and `Skills Installed` columns, alphabetical provider rows, and 50-character wrapping of the skills column (SRS-036, SRS-049, SRS-290, SRS-291) [`src/usereq/cli.py`]
       - `_colorize_table_border(...)`: apply bright-red ANSI styling to Unicode border glyphs before stdout emission [`src/usereq/cli.py`]
 - **External Boundaries**
   - `subprocess.run(...)` / `subprocess.check_output(...)`: invokes OS-level commands and static-check tools (e.g., git queries, checker executables) [`src/usereq/cli.py`, `src/usereq/static_check.py`]
-  - Filesystem read/write boundaries: `~/.config/usereq/config.json`, user-level provider directories under the user HOME (`~/.gemini/config`, `~/.claude`, `~/.codex`, `~/.agents`, `~/.config/opencode`, `~/.pi/agent`), read-only installation-owned guidelines directory under `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines`, project docs directories, selected source files [`src/usereq/cli.py`, `src/usereq/token_counter.py`, `src/usereq/compress_files.py`]
+  - Filesystem read/write boundaries: `~/.config/usereq/config.json`, user-level provider skills directories under the user HOME (`~/.gemini/config/skills`, `~/.claude/skills`, `~/.agents/skills`, `~/.openclaw/workspace/skills`, `~/.config/opencode/skills`, `~/.pi/agent/skills`), read-only installation-owned guidelines directory under `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines`, project docs directories, selected source files [`src/usereq/cli.py`, `src/usereq/token_counter.py`, `src/usereq/compress_files.py`]
   - Standard stream I/O boundaries: stdout/stderr reporting for command outputs and status [`src/usereq/cli.py`, `src/usereq/static_check.py`, `src/usereq/token_counter.py`]
 
 ### `PROC:req-sh`
@@ -239,7 +235,7 @@
 - **Type**: Process
 - **Parent Process**: `-`
 - **Entrypoint(s)**: `scripts/test-install.sh` [`scripts/test-install.sh`]
-- **Lifecycle/Trigger**: starts on shell invocation, resolves the target installation path, isolates HOME to a disposable directory, removes generated user-level provider directories including `~/.pi/agent/prompts` and `~/.pi/agent/skills` under the disposable HOME, recreates the expected folder scaffold, persists the project-relative docs/src/tests directories through `--set-docs-dir`/`--set-src-dir`/`--set-tests-dir`, prints the installation command, and then invokes `scripts/req.sh` with the canonical smoke-install provider/static-check configuration.
+- **Lifecycle/Trigger**: starts on shell invocation, resolves the target installation path, isolates HOME to a disposable directory, removes generated user-level provider skills directories including `~/.pi/agent/skills` under the disposable HOME, recreates the expected folder scaffold, persists the project-relative docs/src/tests directories through `--set-docs-dir`/`--set-src-dir`/`--set-tests-dir`, prints the installation command, and then invokes `scripts/req.sh` with the canonical smoke-install provider/static-check configuration.
 - **Internal Call-Trace Tree**
   - `test-install.sh(...)`: disposable installation smoke-test orchestrator [`scripts/test-install.sh`]
     - external boundaries: `rm -rf`, `mkdir -p`, shell directory tests, and child-process invocation of `scripts/req.sh`
@@ -294,7 +290,7 @@
 - `PROC:test-install-sh -> PROC:req-sh`
   - `mechanism`: `child-process spawn`
   - `endpoint/channel`: `scripts/req.sh`
-  - `payload`: `CLI argument vector for disposable installation under an isolated HOME, including `--enable` specs for antigravity/claude/codex/opencode/pi, static-check enablement entries, and the `install` subcommand invocation`
+  - `payload`: `CLI argument vector for disposable installation under an isolated HOME, including `--enable` provider names (antigravity/claude/codex/openclaw/opencode/pi), static-check enablement entries, and the `install` subcommand invocation`
 - `PROC:pre-release-check-sh -> PROC:main`
   - `mechanism`: `child-process spawn`
   - `endpoint/channel`: `uv run --project <repo-root> python -m usereq.cli --prj-base <repo-root> static-check`

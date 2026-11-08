@@ -1,8 +1,8 @@
 ---
 title: "useReq Requirements"
 description: "Software Requirements Specification"
-date: "2026-11-07"
-version: 1.19
+date: "2026-11-08"
+version: 1.20
 author: "Ogekuri"
 scope:
   paths:
@@ -84,25 +84,25 @@ No explicit performance optimizations identified.
 ### 3.1 Design and Implementation Constraints
 
 ### 3.2 CLI Interface and Lifecycle
-- **SRS-034**: MUST accept `--upgrade` and `--uninstall`; provider configuration MUST remain exclusive to repeatable `--enable SPEC`; removed legacy flags, including `--provider`, `--enable-provider`, `--disable-provider`, `--base`, `--here`, `--get-base-path`, `--docs-dir`, `--src-dir`, `--tests-dir`, `--guidelines-dir`, `--add-guidelines`, `--upgrade-guidelines`, `--update`, and `--remove`, MUST NOT be parsed.
-- **SRS-035**: MUST implement the following behavior: The `install` command MUST require at least one enabled provider persisted under `"providers"`; otherwise it MUST print an English error and exit code 4. Each spec implicitly enables the named provider and the listed artifact types.
-- **SRS-036**: MUST implement the following behavior: The installation summary table MUST include rows only for providers whose prompts were installed during the current invocation.
+- **SRS-034**: MUST accept `--upgrade` and `--uninstall`; provider configuration MUST remain exclusive to repeatable `--enable PROVIDER`; removed legacy flags, including `--provider`, `--enable-provider`, `--disable-provider`, `--base`, `--here`, `--get-base-path`, `--docs-dir`, `--src-dir`, `--tests-dir`, `--guidelines-dir`, `--add-guidelines`, `--upgrade-guidelines`, `--update`, and `--remove`, MUST NOT be parsed.
+- **SRS-035**: MUST implement the following behavior: The `install` command MUST require at least one enabled provider persisted under `"providers"`; otherwise it MUST print an English error and exit code 4. Each enabled provider installs skills only.
+- **SRS-036**: MUST implement the following behavior: The installation summary table MUST include rows only for providers whose skills were installed during the current invocation.
 - **SRS-049**: MUST implement the following behavior: Immediately after the file list, CLI MUST print a Unicode box-drawing installation summary table with bright-red border lines.
-- **SRS-290**: MUST implement the following behavior: The `Prompts Installed` column MUST use a maximum display width of 50 characters and MUST wrap overflowing content onto subsequent lines.
-- **SRS-291**: MUST implement the following behavior: The `Modules Installed` column MUST render one line per active `--enable` artifact item as `artifact` when no artifact-local or applicable provider-scoped options are active, or `artifact:options` when one or more such options are active.
-- **SRS-296**: MUST implement the following behavior: The `Modules Installed` column width MUST fit the longest rendered module-entry line in active rows and MUST NOT wrap module-entry lines.
+- **SRS-290**: MUST implement the following behavior: The `Skills Installed` column MUST use a maximum display width of 50 characters and MUST wrap overflowing content onto subsequent lines.
+- **SRS-291**: MUST implement the following behavior: The installation summary table MUST contain exactly the `Provider` and `Skills Installed` columns.
+- **SRS-296**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-055**: MUST implement the following behavior: The repository MUST keep `uv.lock` as the canonical committed dependency lockfile for execution, build, development, testing, and static analysis environments, and MUST NOT keep a root `requirements.txt` manifest.
 - **SRS-056**: MUST implement the following behavior: `scripts/req.sh` MUST execute the CLI via `uv run python -m usereq.cli` from repository root, MUST forward all user-provided CLI arguments unchanged, and MUST rely on uv-managed runtime environments.
 - **SRS-342**: MUST implement the following behavior: `README.md` MUST include a `Requirements` section stating that Astral `uv` tool is required for `scripts/req.sh` and recommended project CLI execution workflows.
-- **SRS-352**: MUST implement the following behavior: `README.md` MUST describe only currently supported CLI flags and provider-option syntax, and MUST NOT describe removed standalone flags superseded by `--enable SPEC` options.
+- **SRS-352**: MUST implement the following behavior: `README.md` MUST describe only currently supported CLI flags and provider syntax, and MUST NOT describe removed standalone flags or `--enable SPEC` syntax superseded by `--enable PROVIDER`.
 - **SRS-264**: MUST implement the following behavior: Runtime dependency declarations in `pyproject.toml` `[project].dependencies` MUST be present in the locked package set defined by `uv.lock`; `[project].dependencies` MUST include `ruff` and `pyright`; `[build-system].requires` MAY be outside `uv.lock`.
-- **SRS-064**: MUST load persisted `providers` from `~/.config/usereq/config.json` for the `install` command and the implicit installation flow; if no provider spec remains active, it MUST raise a config-invalid error.
-- **SRS-275**: MUST implement the following behavior: The CLI MUST accept a repeatable `--enable SPEC` argument as the sole mechanism for provider enablement, artifact selection, and option configuration, where `SPEC` syntax is `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`.
-- **SRS-364**: MUST implement the following behavior: `PROVIDER` MUST be one of `antigravity`, `claude`, `codex`, `opencode`, `pi`; each `ARTIFACT_ITEM` MUST be exactly one `ARTIFACT` from `{prompts, agents, skills}`.
-- **SRS-365**: MUST implement the following behavior: `PROVIDER_OPTIONS`, when present, MUST be a comma-separated list containing only `prompts-use-agents`; any other token MUST be rejected as an invalid option.
-- **SRS-276**: MUST implement the following behavior: `--enable` MUST only update `~/.config/usereq/config.json` and MUST NOT install provider artifacts; `prompts-use-agents` MUST remain provider-scoped and apply only to `prompts` artifacts.
+- **SRS-064**: MUST load persisted `providers` from `~/.config/usereq/config.json` for the `install` command and the implicit installation flow; if no provider remains enabled, it MUST raise a config-invalid error.
+- **SRS-275**: MUST implement the following behavior: The CLI MUST accept a repeatable `--enable PROVIDER` argument as the sole mechanism for provider enablement, accepting only the provider CLI name exactly like `--disable PROVIDER`.
+- **SRS-364**: MUST implement the following behavior: `PROVIDER` MUST be one of `antigravity`, `claude`, `codex`, `openclaw`, `opencode`, `pi`.
+- **SRS-365**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-276**: MUST implement the following behavior: `--enable` MUST only update `~/.config/usereq/config.json` and MUST NOT install provider artifacts.
 - **SRS-278**: MUST implement the following behavior: If an `--enable` or `--disable` token is unknown, invalid, or misplaced, the CLI MUST print an English error message identifying the invalid token and exit with code 1.
-- **SRS-279**: MUST implement the following behavior: The CLI MUST persist `--enable` specs as raw SPEC strings in the `"providers"` JSON array, replacing all previously persisted specs of the named providers while preserving other providers.
+- **SRS-279**: MUST implement the following behavior: The CLI MUST persist `--enable PROVIDER` provider names in the `"providers"` JSON array, replacing all previously persisted entries of the named providers while preserving other providers.
 - **SRS-280**: MUST implement the following behavior: The bare `install`, `uninstall`, and `show` subcommands MUST be accepted without the `--` prefix and MUST NOT require `--git-base`.
 - **SRS-281**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-282**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
@@ -131,21 +131,21 @@ No explicit performance optimizations identified.
 - **SRS-409**: MUST NOT parse the legacy `--`-prefixed forms of the SRS-408 subcommands (`--files-tokens`, `--files-references`, `--files-compress`, `--files-find`, `--tokens`, `--references`, `--compress`, `--find`, `--files-static-check`, `--static-check`).
 - **SRS-410**: MUST NOT require `--git-base` for any SRS-408 subcommand; `--prj-base` MUST be mandatory exactly for the SRS-408 subcommands listed in SRS-396, and its absence MUST trigger the SRS-395 error behavior.
 - **SRS-411**: MUST implement the following behavior: The CLI help output MUST document every SRS-408 subcommand together with exactly the mandatory base arguments required by SRS-396 and SRS-397.
-- **SRS-413**: MUST implement the following behavior: `--disable PROVIDER` MUST remove all persisted specs of `PROVIDER` from the `"providers"` array; absent specs MUST leave the configuration unchanged.
+- **SRS-413**: MUST implement the following behavior: `--disable PROVIDER` MUST remove all persisted entries of `PROVIDER` from the `"providers"` array; absent entries MUST leave the configuration unchanged.
 - **SRS-414**: MUST implement the following behavior: `--disable-static-check LANG=MODULE[,CMD[,PARAM...]]` MUST remove entries matching the SRS-301 identity tuple; `--disable-static-check LANG` MUST remove the whole canonical language key.
 - **SRS-415**: MUST implement the following behavior: `--enable-static-check` and `--disable-static-check` MUST only update the `"static-check"` key in `~/.config/usereq/config.json` and MUST NOT require `--prj-base`.
 - **SRS-416**: MUST implement the following behavior: The `show` subcommand MUST print the active configuration in tabular form, including `docs-dir`, `tests-dir`, `src-dir`, `auto-install`, enabled providers, and enabled static-check entries.
-- **SRS-417**: MUST implement the following behavior: For every enabled provider, `show` MUST print a dedicated table reporting the installation status of the `prompts`, `agents`, and `skills` components detected from user-level directories.
-- **SRS-462**: MUST implement the following behavior: The `show` Providers table MUST print the `Prompts`, `Agents`, and `Skills` columns rendering, for every provider row, the user-level installation location of each artifact type.
-- **SRS-463**: MUST implement the following behavior: Each `Prompts`, `Agents`, and `Skills` cell MUST render a home-relative `~/`-prefixed path joining the provider hardcoded SRS-382..SRS-386 artifact root with the installed filename pattern.
-- **SRS-464**: MUST implement the following behavior: The `Skills` cell MUST render `{skills_root}/req-{prompt_name}/SKILL.md`, and the `Agents` cell MUST render `{agents_root}/req-{prompt_name}.md` for `claude` and `opencode`.
-- **SRS-465**: MUST implement the following behavior: The `Prompts` cell MUST render `{prompts_root}/req-{prompt_name}.md` for `antigravity` and `codex`, and `{prompts_root}/{prompt_name}.md` for `claude` and `opencode`.
-- **SRS-466**: MUST implement the following behavior: The `pi` Prompts cell MUST render `{prompts_root}/req-{prompt_name}.md`, and cells without a hardcoded artifact target MUST render `-`.
+- **SRS-417**: MUST implement the following behavior: For every enabled provider, `show` MUST print a dedicated table reporting the installation status of the `skills` component detected from user-level directories.
+- **SRS-462**: MUST implement the following behavior: The `show` Providers table MUST print the `Provider` and `Skills Path` columns rendering, for every enabled provider row, the hardcoded skills installation root.
+- **SRS-463**: MUST implement the following behavior: Each `Skills Path` cell MUST render the home-relative `~/`-prefixed hardcoded provider skills root from SRS-382..SRS-386 and SRS-486.
+- **SRS-464**: MUST implement the following behavior: Provider skill installation MUST write `{skills_root}/req-{prompt_name}/SKILL.md` files for every enabled provider.
+- **SRS-465**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-466**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-418**: MUST implement the following behavior: The `install` subcommand MUST install or update the providers persisted under `"providers"` and MUST print the installation summary report.
-- **SRS-419**: MUST implement the following behavior: The `uninstall` subcommand MUST remove `req-*` artifacts of the providers persisted under `"providers"` per SRS-390 semantics.
+- **SRS-419**: MUST implement the following behavior: The `uninstall` subcommand MUST remove `req-*` skill artifacts of the providers persisted under `"providers"`.
 - **SRS-420**: MUST implement the following behavior: `auto-install` MUST default to enabled; `--disable-auto-install` MUST persist `"auto-install": false` and `--enable-auto-install` MUST persist `"auto-install": true` in `~/.config/usereq/config.json`.
 - **SRS-421**: MUST implement the following behavior: When `--upgrade` succeeds and `auto-install` is enabled, the CLI MUST execute the provider installation flow with the persisted providers.
-- **SRS-450**: MUST implement the following behavior: When post-upgrade auto-install runs and no provider spec is persisted, the CLI SHOULD print an English stderr warning and skip installation.
+- **SRS-450**: MUST implement the following behavior: When post-upgrade auto-install runs and no provider is persisted, the CLI SHOULD print an English stderr warning and skip installation.
 - **SRS-422**: MUST implement the following behavior: `--disable-static-check` and `--disable` with unknown language or provider tokens MUST print an English error and exit with code 1.
 - **SRS-440**: MUST implement the following behavior: `--upgrade --develop` MUST install the latest tagged GitHub release resolved per SRS-451; without `--develop`/`--dev`, `--upgrade` MUST install from the PyPI index.
 - **SRS-445**: MUST implement the following behavior: `--dev` MUST be accepted as an equivalent command-line alias of `--develop` when selecting the GitHub upgrade source for `--upgrade`.
@@ -159,35 +159,37 @@ No explicit performance optimizations identified.
 - **SRS-451**: MUST implement the following behavior: `--upgrade --develop` MUST resolve the installation tag by querying `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` and reading `tag_name`, regardless of the branch holding that tag.
 - **SRS-452**: MUST implement the following behavior: On Linux, `--upgrade --develop` MUST execute `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`; non-Linux MUST print this manual command and MUST NOT execute `uv`.
 - **SRS-453**: MUST implement the following behavior: When the SRS-451 GitHub query fails, `--upgrade --develop` MUST print an English stderr error, MUST NOT execute `uv`, and MUST exit with code 1.
+- **SRS-485**: MUST implement the following behavior: The `show` subcommand MUST print enabled providers in alphabetical order by provider name in every provider table.
 
 ### 3.3 Provider Resource Generation
-- **SRS-381**: MUST install provider prompts, agents, and skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
-- **SRS-382**: MUST install provider `claude` prompts to `~/.claude/commands/req`, agents to `~/.claude/agents`, and skills to `~/.claude/skills`.
-- **SRS-383**: MUST install provider `codex` prompts to `~/.codex/prompts`, agents to `~/.codex/agents`, and skills to `~/.agents/skills`.
-- **SRS-384**: MUST install provider `antigravity` prompts to `~/.gemini/config/workflows`, agents to `~/.gemini/config/agents`, and skills to `~/.gemini/config/skills`.
-- **SRS-385**: MUST install provider `opencode` prompts to `~/.config/opencode/commands/req`, agents to `~/.config/opencode/agents`, and skills to `~/.config/opencode/skills`.
-- **SRS-386**: MUST install provider `pi` prompts to `~/.pi/agent/prompts` and skills to `~/.pi/agent/skills`.
+- **SRS-381**: MUST install provider skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
+- **SRS-382**: MUST install provider `claude` skills to `~/.claude/skills`.
+- **SRS-383**: MUST install provider `codex` skills to `~/.agents/skills`.
+- **SRS-384**: MUST install provider `antigravity` skills to `~/.gemini/config/skills`.
+- **SRS-385**: MUST install provider `opencode` skills to `~/.config/opencode/skills`.
+- **SRS-386**: MUST install provider `pi` skills to `~/.pi/agent/skills`.
 - **SRS-095**: MUST generate `SKILL.md` for each skill subdirectory of every enabled provider using prompt body substituted with only `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, and `%%ARGS%%` tokens, and provider-resolved YAML front matter.
 - **SRS-368**: MUST set `SKILL.md` YAML `name` to `req-<prompt_name>` and `description` to the YAML-escaped output of `extract_skill_description(prompt_frontmatter)`.
-- **SRS-389**: MUST NOT emit `model`, `tools`, or `allowed-tools` fields in generated prompt, agent, command, or skill artifacts.
+- **SRS-389**: MUST NOT emit `model`, `tools`, or `allowed-tools` fields in generated skill artifacts.
 - **SRS-402**: MUST render the `%%GUIDELINES_PATH%%` substitution as the home-relative `~/`-prefixed GUIDELINES_DIR path ending with `/`.
 - **SRS-403**: MUST render the `%%GUIDELINES_FILES%%` substitution as a comma-separated list of home-relative `~/`-prefixed guideline file paths.
 - **SRS-404**: MUST NOT copy, create, update, or delete guideline files in project or user directories.
-- **SRS-371**: MUST implement the following behavior: When `src/usereq/resources/prompts/flowchart.md` exists, provider resource generation MUST emit `req-flowchart` artifacts for every enabled provider/artifact combination supported by packaged prompt templates.
+- **SRS-371**: MUST implement the following behavior: When `src/usereq/resources/prompts/flowchart.md` exists, provider resource generation MUST emit `req-flowchart` skill artifacts for every enabled provider.
 
-- **SRS-353**: MUST implement the following behavior: Provider `pi` prompt installation MUST write `req-<prompt_name>.md` files with `description` and optional `argument-hint` front matter under `~/.pi/agent/prompts`.
+- **SRS-353**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 
 - **SRS-354**: MUST implement the following behavior: Provider `pi` skill installation MUST write `req-<prompt_name>/SKILL.md` files under `~/.pi/agent/skills`.
 
-- **SRS-366**: MUST implement the following behavior: `scripts/test-install.sh` MUST pass `--enable pi:prompts,skills` to `scripts/req.sh` during its configuration run and MUST invoke the `install` subcommand for the installation run.
+- **SRS-366**: MUST implement the following behavior: `scripts/test-install.sh` MUST pass `--enable pi` to `scripts/req.sh` during its configuration run and MUST invoke the `install` subcommand for the installation run.
 
-- **SRS-367**: MUST implement the following behavior: `scripts/test-install.sh` MUST isolate `HOME` to a disposable directory and delete `~/.pi/agent/prompts` and `~/.pi/agent/skills` inside it before its clean-install execution path.
+- **SRS-367**: MUST implement the following behavior: `scripts/test-install.sh` MUST isolate `HOME` to a disposable directory and delete `~/.pi/agent/skills` inside it before its clean-install execution path.
 
 - **SRS-263**: MUST implement the following behavior: The CLI MUST treat files under `src/usereq/resources/prompts` as read-only package inputs and MUST NOT create, modify, overwrite, rename, or delete files in that directory.
-- **SRS-467**: MUST implement the following behavior: Provider `antigravity` prompt installation MUST write `req-<prompt_name>.md` Markdown workflow files with `description` and optional `argument-hint` front matter under `~/.gemini/config/workflows`.
-- **SRS-468**: MUST implement the following behavior: Provider `antigravity` agent installation MUST write `req-<prompt_name>/agent.md` files with `name` and `description` front matter under `~/.gemini/config/agents`.
-- **SRS-469**: MUST implement the following behavior: Provider `codex` agent installation MUST write `req-<prompt_name>.toml` files with `description` and `prompt` TOML keys under `~/.codex/agents`.
-- **SRS-470**: MUST implement the following behavior: Provider `codex` prompt artifacts MUST remain installed at `~/.codex/prompts/req-{prompt_name}.md` and MUST be treated as deprecated.
+- **SRS-467**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-468**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-469**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-470**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-486**: MUST install provider `openclaw` skills to `~/.openclaw/workspace/skills`.
 
 ### 3.4 Removal and Cleanup
 - **SRS-390**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
@@ -270,16 +272,16 @@ No explicit performance optimizations identified.
 - **SRS-237**: MUST verify command-level `find` outputs Doxygen field bullets using original tags from SRS-213 (`@brief` ... `@post`) with SRS-220 placement, SRS-221 order, and no converted labels.
 - **SRS-405**: MUST include unit tests in `tests/test_cli.py` verifying that commands requiring `--prj-base` or `--git-base` exit with code 1 when the required argument is absent.
 - **SRS-406**: MUST include unit tests in `tests/test_cli.py` verifying that `--set-docs-dir`, `--set-src-dir`, and `--set-tests-dir` persist their keys and preserve unrelated configuration keys.
-- **SRS-284**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--enable PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]` parsing accepts valid specs and rejects unknown providers, artifacts, or options with exit code 1.
-- **SRS-285**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that multiple `--enable` specs correctly enable distinct per-provider artifact types and per-provider options independently.
-- **SRS-286**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--enable` specs are persisted to `~/.config/usereq/config.json` under the `"providers"` key and restored by the `install` command.
-- **SRS-287**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that provider-scoped `prompts-use-agents` from `--enable` specs is applied independently to each targeted provider.
+- **SRS-284**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--enable PROVIDER` parsing accepts valid provider names and rejects unknown providers with exit code 1.
+- **SRS-285**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that multiple `--enable PROVIDER` occurrences enable distinct providers independently.
+- **SRS-286**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `--enable` provider names are persisted to `~/.config/usereq/config.json` under the `"providers"` key and restored by the `install` command.
+- **SRS-287**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-288**: MUST persist only the configuration keys `docs-dir`, `tests-dir`, `src-dir`, `providers`, `static-check`, and `auto-install` in `~/.config/usereq/config.json`.
-- **SRS-293**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `Prompts Installed` content wraps with a maximum display width of 50 characters.
-- **SRS-294**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `Modules Installed` renders one module-entry line per active `--enable` artifact item using `artifact` without options or `artifact:options` when applicable options exist.
-- **SRS-297**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that each `Modules Installed` line preserves parsed artifact-local option order and appended applicable provider-option order, and emits only `artifact` when no options apply.
-- **SRS-298**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `Modules Installed` does not wrap module-entry lines and widths include the longest rendered module-entry line.
-- **SRS-374**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that a CLI installation generates representative `req-flowchart` prompt, agent, command, and skill artifacts from the packaged `flowchart.md` template.
+- **SRS-293**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that `Skills Installed` content wraps with a maximum display width of 50 characters.
+- **SRS-294**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that the installation summary table renders exactly the `Provider` and `Skills Installed` columns.
+- **SRS-297**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-298**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
+- **SRS-374**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_cli.py` verifying that a CLI installation generates representative `req-flowchart` skill artifacts from the packaged `flowchart.md` template.
 - **SRS-412**: MUST include unit tests in `tests/test_cli.py` and `tests/test_files_commands.py` verifying that SRS-408 subcommands dispatch correctly with their mandatory base arguments, and that legacy `--`-prefixed forms are rejected by the parser.
 - **SRS-423**: MUST include unit tests in `tests/test_cli.py` verifying `--enable`/`--disable` persistence, `--enable-auto-install`/`--disable-auto-install` persistence, `--disable-static-check` removal, `show` output, `install` dispatch, `uninstall` dispatch, and auto-install after successful `--upgrade`.
 - **SRS-438**: MUST include unit tests in `tests/test_release_workflow.py` verifying the `.github/workflows/release-pypi.yml` location, the SRS-433 OIDC publication steps, the SRS-434 master-only publication gating, and the SRS-432 build/release independence from master reachability.
@@ -287,6 +289,7 @@ No explicit performance optimizations identified.
 - **SRS-444**: MUST include unit tests in `tests/test_update_check.py` verifying the SRS-430 PyPI endpoint, the SRS-343/SRS-440 upgrade commands, and the SRS-441/SRS-442 `--ver` output.
 - **SRS-459**: MUST include unit tests in `tests/test_release_workflow.py` verifying the SRS-455 Node24 runtime, the SRS-456/SRS-457 action-major floors, and the SRS-458 opt-out override prohibition.
 - **SRS-461**: MUST include unit tests in `tests/test_cli.py` verifying that `install` neither accepts `--prj-base` nor performs project-side operations, and that `--git-wt-create` exits with code 1 without `--prj-base` and copies only `--prj-base/.venv`.
+- **SRS-487**: MUST include unit tests in `tests/test_cli.py` verifying that the `show` Providers table renders the `Skills Path` column and alphabetical provider ordering.
 
 ## 5. Static Code Analysis Requirements
 

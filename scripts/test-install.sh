@@ -6,12 +6,12 @@
 # @brief Rebuilds a disposable user-level installation with the repository
 # smoke-test configuration.
 # @details Resolves repository-relative paths, isolates HOME to a disposable
-# directory, removes previously generated user-level provider directories
+# directory, removes previously generated user-level provider skills directories
 # from the disposable HOME, recreates the required project directory scaffold,
 # persists the project-relative docs/src/tests directories, and invokes
 # `scripts/req.sh` with the canonical installation argument set.
-# The provider list includes Pi prompts and Pi skills so `~/.pi/agent`
-# resources are exercised during smoke installation.
+# The provider list includes Pi skills so `~/.pi/agent` resources are exercised
+# during smoke installation.
 # @satisfies SRS-366, SRS-367
 
 # @brief Stores a timestamp string for ad hoc diagnostics.
@@ -70,26 +70,18 @@ fi
 SMOKE_HOME="$BASE_DIR/temp/test-install-home"
 export HOME="$SMOKE_HOME"
 
-# @brief Declares generated user-level provider directories deleted before reinstall.
-# @details Enumerates provider output roots under the disposable HOME that are
-# removed before the smoke-test installation runs. Pi prompt and skill roots
-# are included to keep repeated executions deterministic.
+# @brief Declares generated user-level provider skills directories deleted before reinstall.
+# @details Enumerates provider skills roots under the disposable HOME that are
+# removed before the smoke-test installation runs. The Pi skills root is
+# included to keep repeated executions deterministic (SRS-367).
 # @satisfies SRS-367
 delete_dirs=(
-    ".gemini/config/workflows"
-    ".gemini/config/agents"
     ".gemini/config/skills"
-    ".claude/commands"
-    ".claude/agents"
     ".claude/skills"
     ".agents/skills"
-    ".codex/prompts"
-    ".codex/agents"
-    ".config/opencode/commands"
-    ".config/opencode/agents"
+    ".openclaw/workspace/skills"
     ".config/opencode/skills"
     ".config/usereq"
-    ".pi/agent/prompts"
     ".pi/agent/skills"
 )
 
@@ -128,11 +120,12 @@ else
     # @details Persists providers and static-check tools in the disposable HOME
     # configuration file; no artifact is installed at this stage.
     echo "${SCRIPT_PATH}/req.sh" \
-        --enable antigravity:prompts,agents,skills \
-        --enable claude:prompts,agents,skills \
-        --enable codex:prompts,agents,skills \
-        --enable opencode:prompts,agents,skills \
-        --enable "pi:prompts,skills" \
+        --enable antigravity \
+        --enable claude \
+        --enable codex \
+        --enable openclaw \
+        --enable opencode \
+        --enable pi \
         --enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \
         --enable-static-check C=Command,clang-format,--dry-run,--Werror \
         --enable-static-check C++=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c++20 \
@@ -144,11 +137,12 @@ else
     # @details Writes the canonical provider and static-check configuration to the
     # disposable `~/.config/usereq/config.json` without installing artifacts.
     "${SCRIPT_PATH}/req.sh" \
-        --enable antigravity:prompts,agents,skills \
-        --enable claude:prompts,agents,skills \
-        --enable codex:prompts,agents,skills \
-        --enable opencode:prompts,agents,skills \
-        --enable "pi:prompts,skills" \
+        --enable antigravity \
+        --enable claude \
+        --enable codex \
+        --enable openclaw \
+        --enable opencode \
+        --enable pi \
         --enable-static-check C=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c11 \
         --enable-static-check C=Command,clang-format,--dry-run,--Werror \
         --enable-static-check C++=Command,cppcheck,--error-exitcode=1,\"--enable=warning,style,performance,portability\",--std=c++20 \
@@ -162,8 +156,8 @@ else
     echo "${SCRIPT_PATH}/req.sh" install --prj-base "${FOLDER_PATH}"
 
     # @brief Executes the smoke-test installation command.
-    # @details Installs the configured provider/resource set, including Pi
-    # prompts and Pi skills, into user-level directories under the disposable
-    # HOME, from the persisted configuration.
+    # @details Installs the configured providers' skills, including Pi skills,
+    # into user-level directories under the disposable HOME, from the persisted
+    # configuration.
     "${SCRIPT_PATH}/req.sh" install --prj-base "${FOLDER_PATH}"
 fi

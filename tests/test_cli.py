@@ -2,20 +2,22 @@
 Test suite for the useReq CLI command.
 
 This module implements unit tests to verify the correct operation
-of the CLI under the user-level installation architecture: prompts,
-agents, and skills are installed into user-level CLI configuration
-directories under the user HOME, and configuration is persisted in
-the single user-global file `~/.config/usereq/config.json`.
+of the CLI under the user-level installation architecture: skills are
+installed into user-level CLI configuration directories under the user
+HOME, and configuration is persisted in the single user-global file
+`~/.config/usereq/config.json`.
 
 Covers: SRS-026/027 (read-only prompts), SRS-034/035 (provider gating),
 SRS-055/056 (uv runner), SRS-064 (update), SRS-249..252 (static-check
 config), SRS-263 (read-only packaged prompts), SRS-275..280 (provider
-specs), SRS-284..288 (test requirements), SRS-290/291/296 (install
+names), SRS-284..286/288 (test requirements), SRS-290/291 (install
 table), SRS-342/352 (README), SRS-343/344 (upgrade/uninstall),
 SRS-345..351 (release check helpers), SRS-359..363 (install defaults),
-SRS-364..366 (spec grammar), SRS-368 (SKILL.md front matter),
+SRS-364..366 (provider grammar), SRS-368 (SKILL.md front matter),
 SRS-371/374 (flowchart artifacts), SRS-381..390 (user-level install,
-global config, model removal), SRS-391 (runtime git resolution).
+global config, model removal), SRS-391 (runtime git resolution),
+SRS-462..SRS-487 (show providers table, alphabetical order, skills
+path).
 """
 
 import json
@@ -31,19 +33,31 @@ from unittest.mock import patch
 # Imports the CLI module to test.
 from usereq import cli
 
-ALL_PROVIDERS_ALL_ARTIFACTS = [
+ALL_PROVIDERS = [
     "--enable",
-    "antigravity:prompts,agents,skills",
+    "antigravity",
     "--enable",
-    "claude:prompts,agents,skills",
+    "claude",
     "--enable",
-    "codex:prompts,agents,skills",
+    "codex",
     "--enable",
-    "opencode:prompts,agents,skills",
+    "openclaw",
     "--enable",
-    "pi:prompts,skills",
+    "opencode",
+    "--enable",
+    "pi",
 ]
-"""Repeatable --enable specs that enable every provider with all artifact types."""
+"""Repeatable --enable PROVIDER names that enable every supported provider."""
+
+EXPECTED_SKILL_ROOTS = {
+    "antigravity": (".gemini", "config", "skills"),
+    "claude": (".claude", "skills"),
+    "codex": (".agents", "skills"),
+    "openclaw": (".openclaw", "workspace", "skills"),
+    "opencode": (".config", "opencode", "skills"),
+    "pi": (".pi", "agent", "skills"),
+}
+"""Hardcoded user-level skills roots per provider (SRS-382..SRS-386, SRS-486)."""
 
 EXPECTED_PROMPTS = sorted(
     path.stem for path in (cli.RESOURCE_ROOT / "prompts").glob("*.md")
@@ -96,7 +110,7 @@ class HomeIsolatedTestCase(unittest.TestCase):
 
 
 class TestUserLevelInstall(HomeIsolatedTestCase):
-    """SRS-381..389: single install run with every provider and artifact."""
+    """SRS-381..SRS-389: single install run with every provider (skills only)."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -120,7 +134,7 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
                     "--prj-base",
                     str(cls.TEST_DIR),
                 ]
-                + ALL_PROVIDERS_ALL_ARTIFACTS
+                + ALL_PROVIDERS
                 + ["install"]
             )
         cls.prompts_snapshot_after = {
@@ -152,50 +166,31 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
     def test_no_project_local_files_are_created(self) -> None:
         """SRS-388: no `.req` directory or provider dirs are created in the project."""
         self.assertFalse((self.TEST_DIR / ".req").exists())
-        for hidden in (".claude", ".codex", ".gemini", ".agents", ".pi", ".opencode"):
+        for hidden in (".claude", ".codex", ".gemini", ".agents", ".openclaw", ".pi", ".opencode"):
             self.assertFalse(
                 (self.TEST_DIR / hidden).exists(),
                 f"The project must not contain {hidden}",
             )
 
-    def test_claude_user_level_directories_created(self) -> None:
-        """SRS-382: claude artifacts are installed under ~/.claude."""
-        self.assertTrue((self.HOME / ".claude" / "commands" / "req").is_dir())
-        self.assertTrue((self.HOME / ".claude" / "agents").is_dir())
-        self.assertTrue((self.HOME / ".claude" / "skills").is_dir())
+    def test_skills_roots_created_for_every_provider(self) -> None:
+        """SRS-382..SRS-386/SRS-486: skills roots are created under HOME."""
+        for provider, parts in EXPECTED_SKILL_ROOTS.items():
+            root = self.HOME.joinpath(*parts)
+            self.assertTrue(root.is_dir(), f"Missing {provider} skills root {root}")
 
-    def test_codex_user_level_directories_created(self) -> None:
-        """SRS-383: codex artifacts are installed under ~/.codex and ~/.agents."""
-        self.assertTrue((self.HOME / ".codex" / "prompts").is_dir())
-        self.assertTrue((self.HOME / ".codex" / "agents").is_dir())
-        self.assertTrue((self.HOME / ".agents" / "skills").is_dir())
+    def test_prompt_artifacts_are_not_created(self) -> None:
+        """SRS-353/SRS-467..SRS-470: prompts and agents are no longer installed."""
+        self.assertFalse((self.HOME / ".claude" / "commands").exists())
+        self.assertFalse((self.HOME / ".claude" / "agents").exists())
+        self.assertFalse((self.HOME / ".codex").exists())
+        self.assertFalse((self.HOME / ".gemini" / "config" / "workflows").exists())
+        self.assertFalse((self.HOME / ".gemini" / "config" / "agents").exists())
+        self.assertFalse((self.HOME / ".pi" / "agent" / "prompts").exists())
+        self.assertFalse((self.HOME / ".config" / "opencode" / "commands").exists())
+        self.assertFalse((self.HOME / ".config" / "opencode" / "agents").exists())
 
-    def test_antigravity_user_level_directories_created(self) -> None:
-        """SRS-384: antigravity artifacts are installed under ~/.gemini/config."""
-        self.assertTrue((self.HOME / ".gemini" / "config" / "workflows").is_dir())
-        self.assertTrue((self.HOME / ".gemini" / "config" / "agents").is_dir())
-        self.assertTrue((self.HOME / ".gemini" / "config" / "skills").is_dir())
-
-    def test_opencode_user_level_directories_created(self) -> None:
-        """SRS-385: opencode artifacts are installed under ~/.config/opencode."""
-        self.assertTrue((self.HOME / ".config" / "opencode" / "commands" / "req").is_dir())
-        self.assertTrue((self.HOME / ".config" / "opencode" / "agents").is_dir())
-        self.assertTrue((self.HOME / ".config" / "opencode" / "skills").is_dir())
-
-    def test_pi_user_level_directories_created(self) -> None:
-        """SRS-386: pi artifacts are installed under ~/.pi/agent."""
-        self.assertTrue((self.HOME / ".pi" / "agent" / "prompts").is_dir())
-        self.assertTrue((self.HOME / ".pi" / "agent" / "skills").is_dir())
-
-    def test_codex_prompt_files_created(self) -> None:
-        """Codex prompts are created as req-<name>.md under ~/.codex/prompts."""
-        prompts_dir = self.HOME / ".codex" / "prompts"
-        for prompt in EXPECTED_PROMPTS:
-            target = prompts_dir / f"req-{prompt}.md"
-            self.assertTrue(target.exists(), f"Missing codex prompt {target}")
-
-    def test_prompt_arguments_substituted(self) -> None:
-        """%%ARGS%% is substituted with $ARGUMENTS in generated prompts."""
+    def test_skill_arguments_substituted(self) -> None:
+        """%%ARGS%% is substituted with $ARGUMENTS in generated skills."""
         with_args = [
             p
             for p in EXPECTED_PROMPTS
@@ -206,58 +201,10 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         ]
         self.assertTrue(with_args, "bundled prompts must include argument-based prompts")
         prompt = with_args[0]
-        command = self.HOME / ".claude" / "commands" / "req" / f"{prompt}.md"
-        content = command.read_text(encoding="utf-8")
+        skill = self.HOME / ".claude" / "skills" / f"req-{prompt}" / "SKILL.md"
+        content = skill.read_text(encoding="utf-8")
         self.assertIn("$ARGUMENTS", content)
         self.assertNotIn("%%ARGS%%", content)
-
-    def test_claude_command_files_created(self) -> None:
-        """Claude commands are created as <name>.md under ~/.claude/commands/req."""
-        commands_dir = self.HOME / ".claude" / "commands" / "req"
-        for prompt in EXPECTED_PROMPTS:
-            target = commands_dir / f"{prompt}.md"
-            self.assertTrue(target.exists(), f"Missing claude command {target}")
-
-    def test_antigravity_workflow_files_created(self) -> None:
-        """SRS-467: antigravity workflows are req-<name>.md under ~/.gemini/config/workflows."""
-        workflows_dir = self.HOME / ".gemini" / "config" / "workflows"
-        for prompt in EXPECTED_PROMPTS:
-            target = workflows_dir / f"req-{prompt}.md"
-            self.assertTrue(target.exists(), f"Missing antigravity workflow {target}")
-            content = target.read_text(encoding="utf-8")
-            self.assertTrue(content.startswith("---"), "workflow must have front matter")
-            self.assertIn("description:", content)
-            self.assertNotIn("%%ARGS%%", content)
-
-    def test_antigravity_agent_files_created(self) -> None:
-        """SRS-468: antigravity agents are req-<name>/agent.md under ~/.gemini/config/agents."""
-        agents_dir = self.HOME / ".gemini" / "config" / "agents"
-        for prompt in EXPECTED_PROMPTS:
-            target = agents_dir / f"req-{prompt}" / "agent.md"
-            self.assertTrue(target.exists(), f"Missing antigravity agent {target}")
-            content = target.read_text(encoding="utf-8")
-            self.assertIn("name: req-", content)
-            self.assertIn("description:", content)
-
-    def test_codex_agent_toml_files_created(self) -> None:
-        """SRS-469: codex agents are req-<name>.toml under ~/.codex/agents."""
-        agents_dir = self.HOME / ".codex" / "agents"
-        for prompt in EXPECTED_PROMPTS:
-            target = agents_dir / f"req-{prompt}.toml"
-            self.assertTrue(target.exists(), f"Missing codex agent {target}")
-            content = target.read_text(encoding="utf-8")
-            self.assertIn('description = "', content)
-            self.assertIn('prompt = """', content)
-
-    def test_pi_prompt_files_created(self) -> None:
-        """SRS-353: pi prompts use req-<name>.md under ~/.pi/agent/prompts."""
-        prompts_dir = self.HOME / ".pi" / "agent" / "prompts"
-        for prompt in EXPECTED_PROMPTS:
-            target = prompts_dir / f"req-{prompt}.md"
-            self.assertTrue(target.exists(), f"Missing pi prompt {target}")
-            content = target.read_text(encoding="utf-8")
-            self.assertTrue(content.startswith("---"), "pi prompt must have front matter")
-            self.assertIn("description:", content)
 
     def test_skill_files_created_for_every_provider(self) -> None:
         """Skills are created as req-<name>/SKILL.md for every enabled provider."""
@@ -292,15 +239,19 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         self.assertNotIn("tools:", content)
         self.assertNotIn("allowed-tools:", content)
 
-    def test_prompts_have_no_model_or_tools_fields(self) -> None:
-        """SRS-389: generated agents and commands contain no model/tools fields."""
-        agent = self.HOME / ".claude" / "agents" / f"req-{EXPECTED_PROMPTS[0]}.md"
-        command = self.HOME / ".claude" / "commands" / "req" / f"{EXPECTED_PROMPTS[0]}.md"
-        for artifact in (agent, command):
-            content = artifact.read_text(encoding="utf-8")
-            self.assertNotIn("model:", content)
-            self.assertNotIn("tools:", content)
-            self.assertNotIn("allowed-tools:", content)
+    def test_skills_have_no_model_or_tools_fields(self) -> None:
+        """SRS-389: generated skills contain no model/tools fields."""
+        skill = (
+            self.HOME
+            / ".claude"
+            / "skills"
+            / f"req-{EXPECTED_PROMPTS[0]}"
+            / "SKILL.md"
+        )
+        content = skill.read_text(encoding="utf-8")
+        self.assertNotIn("model:", content)
+        self.assertNotIn("tools:", content)
+        self.assertNotIn("allowed-tools:", content)
 
     def test_global_config_saved_with_canonical_keys(self) -> None:
         """SRS-288: single global config file with canonical directory/provider keys only."""
@@ -324,14 +275,16 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         self.assertNotIn("git-base", data)
 
     def test_flowchart_resources_created(self) -> None:
-        """SRS-371/SRS-374: req-flowchart artifacts are emitted when bundled."""
+        """SRS-371/SRS-374: req-flowchart skill artifacts are emitted when bundled."""
         if "flowchart" not in EXPECTED_PROMPTS:
             self.skipTest("flowchart.md template not bundled")
         self.assertTrue(
-            (self.HOME / ".claude" / "commands" / "req" / "flowchart.md").exists()
+            (
+                self.HOME / ".claude" / "skills" / "req-flowchart" / "SKILL.md"
+            ).exists()
         )
         self.assertTrue(
-            (self.HOME / ".pi" / "agent" / "prompts" / "req-flowchart.md").exists()
+            (self.HOME / ".pi" / "agent" / "skills" / "req-flowchart").is_dir()
         )
         self.assertTrue(
             (
@@ -341,17 +294,18 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         self.assertTrue(
             (
                 self.HOME
-                / ".gemini"
-                / "config"
-                / "workflows"
-                / "req-flowchart.md"
+                / ".openclaw"
+                / "workspace"
+                / "skills"
+                / "req-flowchart"
+                / "SKILL.md"
             ).exists()
         )
 
     def test_guidelines_tokens_replaced(self) -> None:
         """SRS-402/SRS-403: guidelines tokens are substituted with home-relative paths."""
-        command = self.HOME / ".claude" / "commands" / "req" / "analyze.md"
-        content = command.read_text(encoding="utf-8")
+        skill = self.HOME / ".claude" / "skills" / "req-analyze" / "SKILL.md"
+        content = skill.read_text(encoding="utf-8")
         self.assertNotIn("%%GUIDELINES_PATH%%", content)
         self.assertNotIn("%%GUIDELINES_FILES%%", content)
         self.assertIn(
@@ -360,62 +314,42 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         )
 
 
-class TestProviderSpecParsing(unittest.TestCase):
-    """SRS-275/278/364/365: --provider SPEC grammar and validation."""
+class TestProviderNameParsing(unittest.TestCase):
+    """SRS-275/278/364: --enable/--disable PROVIDER name validation."""
 
-    def test_valid_provider_spec_accepted(self) -> None:
-        provider, artifacts, options = cli.parse_provider_spec("codex:prompts,skills")
-        self.assertEqual(provider, "codex")
-        self.assertEqual([a for a, _ in artifacts], ["prompts", "skills"])
-        self.assertEqual(options, [])
+    def test_valid_provider_name_accepted(self) -> None:
+        self.assertEqual(cli.validate_provider_name("codex"), "codex")
 
-    def test_valid_provider_spec_with_options_accepted(self) -> None:
-        provider, _artifacts, options = cli.parse_provider_spec(
-            "claude:prompts:prompts-use-agents"
-        )
-        self.assertEqual(provider, "claude")
-        self.assertEqual(options, ["prompts-use-agents"])
+    def test_provider_name_is_case_insensitive(self) -> None:
+        self.assertEqual(cli.validate_provider_name("Codex"), "codex")
+        self.assertEqual(cli.validate_provider_name(" PI "), "pi")
 
-    def test_pi_provider_spec_accepted(self) -> None:
-        provider, artifacts, _ = cli.parse_provider_spec("pi:prompts,skills")
-        self.assertEqual(provider, "pi")
-        self.assertEqual(len(artifacts), 2)
+    def test_openclaw_provider_accepted(self) -> None:
+        self.assertEqual(cli.validate_provider_name("openclaw"), "openclaw")
 
     def test_removed_providers_rejected(self) -> None:
-        """SRS-364: gemini, github, and kiro are no longer valid providers."""
+        """SRS-364: gemini, github, and kiro are not valid providers."""
         for provider in ("gemini", "github", "kiro"):
             with self.assertRaises(cli.ReqError):
-                cli.parse_provider_spec(f"{provider}:prompts")
+                cli.validate_provider_name(provider)
 
     def test_unknown_provider_rejected(self) -> None:
         with self.assertRaises(cli.ReqError):
-            cli.parse_provider_spec("unknown:prompts")
+            cli.validate_provider_name("unknown")
 
-    def test_unknown_artifact_rejected(self) -> None:
-        with self.assertRaises(cli.ReqError):
-            cli.parse_provider_spec("codex:widgets")
-
-    def test_artifact_option_suffix_rejected(self) -> None:
-        """SRS-364: artifact items must be bare artifacts; option suffixes are invalid."""
-        for spec in (
-            "codex:prompts+enable-models",
-            "claude:skills+enable-tools",
-            "opencode:prompts+enable-models+enable-tools",
+    def test_legacy_spec_tokens_rejected_as_providers(self) -> None:
+        """SRS-275: the legacy PROVIDER:ARTIFACT SPEC grammar is no longer accepted."""
+        for token in (
+            "codex:prompts,skills",
+            "pi:skills",
+            "claude:prompts:prompts-use-agents",
         ):
             with self.assertRaises(cli.ReqError):
-                cli.parse_provider_spec(spec)
-
-    def test_unknown_option_rejected(self) -> None:
-        with self.assertRaises(cli.ReqError):
-            cli.parse_provider_spec("codex:prompts:legacy")
-
-    def test_missing_artifacts_rejected(self) -> None:
-        with self.assertRaises(cli.ReqError):
-            cli.parse_provider_spec("codex:")
+                cli.validate_provider_name(token)
 
 
-class TestProviderSpecMultiple(HomeIsolatedTestCase):
-    """SRS-276: multiple --provider specs activate independently."""
+class TestProviderMultiple(HomeIsolatedTestCase):
+    """SRS-276/285: multiple --enable PROVIDER occurrences activate independently."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -425,43 +359,52 @@ class TestProviderSpecMultiple(HomeIsolatedTestCase):
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
         self.seed_directory_config()
 
-    def install(self, *specs: str) -> int:
+    def install(self, *providers: str) -> int:
         argv = [
             "--prj-base",
             str(self.TEST_DIR),
         ]
-        for spec in specs:
-            argv.extend(["--enable", spec])
+        for provider in providers:
+            argv.extend(["--enable", provider])
         argv.append("install")
         return self.run_cli(argv)
 
     def test_exit_code_zero(self) -> None:
-        self.assertEqual(
-            self.install("codex:skills", "claude:prompts,agents", "pi:prompts,skills"),
-            0,
-        )
+        self.assertEqual(self.install("codex", "claude", "pi"), 0)
 
-    def test_codex_skills_created_prompts_not_created(self) -> None:
-        self.install("codex:skills")
+    def test_codex_skills_created(self) -> None:
+        self.install("codex")
         self.assertTrue(
             (self.HOME / ".agents" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
         )
-        self.assertFalse((self.HOME / ".codex" / "prompts").exists())
+        self.assertFalse((self.HOME / ".codex").exists())
 
-    def test_claude_agents_created_prompts_not_created(self) -> None:
-        self.install("claude:agents")
+    def test_claude_skills_created(self) -> None:
+        self.install("claude")
         self.assertTrue(
-            (self.HOME / ".claude" / "agents" / f"req-{EXPECTED_PROMPTS[0]}.md").exists()
+            (self.HOME / ".claude" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
         )
         self.assertFalse((self.HOME / ".claude" / "commands").exists())
 
+    def test_openclaw_skills_created(self) -> None:
+        self.install("openclaw")
+        self.assertTrue(
+            (
+                self.HOME
+                / ".openclaw"
+                / "workspace"
+                / "skills"
+                / f"req-{EXPECTED_PROMPTS[0]}"
+            ).is_dir()
+        )
+
     def test_disabled_providers_absent(self) -> None:
-        self.install("codex:prompts")
-        for provider_dir in (".claude", ".gemini", ".agents", ".pi"):
+        self.install("codex")
+        for provider_dir in (".claude", ".gemini", ".openclaw", ".pi"):
             self.assertFalse((self.HOME / provider_dir).exists())
 
-    def test_at_least_one_provider_spec_required(self) -> None:
-        """SRS-035: installation without --provider specs fails with exit code 4."""
+    def test_at_least_one_provider_required(self) -> None:
+        """SRS-035: installation without enabled providers fails with exit code 4."""
         rc = self.run_cli(
             [
                 "--prj-base",
@@ -471,8 +414,8 @@ class TestProviderSpecMultiple(HomeIsolatedTestCase):
         self.assertEqual(rc, 4)
 
 
-class TestProviderSpecPersistence(HomeIsolatedTestCase):
-    """SRS-279/SRS-280/SRS-286: provider spec persistence round-trips."""
+class TestProviderPersistence(HomeIsolatedTestCase):
+    """SRS-279/SRS-280/SRS-286: provider name persistence round-trips."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -486,95 +429,32 @@ class TestProviderSpecPersistence(HomeIsolatedTestCase):
             str(self.TEST_DIR),
         ]
 
-    def test_provider_specs_persisted_to_global_config(self) -> None:
-        self.run_cli(self.base_argv + ["--enable", "pi:prompts,skills", "install"])
+    def test_providers_persisted_to_global_config(self) -> None:
+        self.run_cli(self.base_argv + ["--enable", "pi", "install"])
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["providers"], ["pi:prompts,skills"])
+        self.assertEqual(data["providers"], ["pi"])
 
-    def test_provider_specs_restored_on_install(self) -> None:
-        """SRS-280/SRS-064: install without --enable reuses persisted specs."""
-        self.run_cli(self.base_argv + ["--enable", "codex:prompts", "install"])
-        shutil.rmtree(self.HOME / ".codex")
+    def test_providers_restored_on_install(self) -> None:
+        """SRS-280/SRS-064: install without --enable reuses persisted providers."""
+        self.run_cli(self.base_argv + ["--enable", "codex", "install"])
+        shutil.rmtree(self.HOME / ".agents")
         rc = self.run_cli(["install"])
         self.assertEqual(rc, 0)
         self.assertTrue(
-            (self.HOME / ".codex" / "prompts" / f"req-{EXPECTED_PROMPTS[0]}.md").exists()
+            (self.HOME / ".agents" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
         )
 
     def test_cli_provider_replaces_persisted_on_update(self) -> None:
-        """SRS-279: --enable replaces the named provider's specs, preserving others."""
-        self.run_cli(self.base_argv + ["--enable", "codex:prompts", "install"])
+        """SRS-279: --enable replaces the named provider's entries, preserving others."""
+        self.run_cli(self.base_argv + ["--enable", "codex", "install"])
         rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--enable", "claude:prompts", "install"]
+            ["--prj-base", str(self.TEST_DIR), "--enable", "claude", "install"]
         )
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["providers"], ["codex:prompts", "claude:prompts"])
-
-
-class TestPromptsUseAgents(HomeIsolatedTestCase):
-    """SRS-276/SRS-287: provider-scoped prompts-use-agents option."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-agents-stub-"))
-        for sub in ("docs", "tests", "src"):
-            (self.TEST_DIR / sub).mkdir(exist_ok=True)
-        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
-        self.seed_directory_config()
-        self.base_argv = [
-            "--prj-base",
-            str(self.TEST_DIR),
-        ]
-
-    def test_claude_commands_are_agent_stubs(self) -> None:
-        self.run_cli(
-            self.base_argv + ["--enable", "claude:prompts:prompts-use-agents", "install"]
-        )
-        command = self.HOME / ".claude" / "commands" / "req" / "write.md"
-        content = command.read_text(encoding="utf-8")
-        self.assertIn("agent: req-write", content)
-        self.assertNotIn("model:", content)
-        self.assertNotIn("tools:", content)
-
-    def test_opencode_commands_are_agent_stubs(self) -> None:
-        self.run_cli(
-            self.base_argv + ["--enable", "opencode:prompts:prompts-use-agents", "install"]
-        )
-        command = self.HOME / ".config" / "opencode" / "commands" / "req" / "write.md"
-        content = command.read_text(encoding="utf-8")
-        self.assertIn("agent: req-write", content)
-
-    def test_pi_prompts_are_agent_stubs(self) -> None:
-        self.run_cli(self.base_argv + ["--enable", "pi:prompts:prompts-use-agents", "install"])
-        prompt = self.HOME / ".pi" / "agent" / "prompts" / "req-write.md"
-        content = prompt.read_text(encoding="utf-8")
-        self.assertIn("agent: req-write", content)
-
-    def test_option_applies_independently_per_provider(self) -> None:
-        """SRS-287: prompts-use-agents applies only to the targeted provider."""
-        self.run_cli(
-            self.base_argv
-            + [
-                "--enable",
-                "claude:prompts:prompts-use-agents",
-                "--enable",
-                "opencode:prompts",
-                "install",
-            ]
-        )
-        claude_command = self.HOME / ".claude" / "commands" / "req" / "write.md"
-        self.assertIn(
-            "agent: req-write", claude_command.read_text(encoding="utf-8")
-        )
-        opencode_command = (
-            self.HOME / ".config" / "opencode" / "commands" / "req" / "write.md"
-        )
-        self.assertNotIn(
-            "agent: req-write", opencode_command.read_text(encoding="utf-8")
-        )
+        self.assertEqual(data["providers"], ["codex", "claude"])
 
 
 class TestInstallDefaultDirectories(HomeIsolatedTestCase):
@@ -587,7 +467,7 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
 
     def test_install_does_not_persist_default_directories(self) -> None:
         """SRS-448: install persists no docs-dir/tests-dir/src-dir keys."""
-        rc = self.run_cli(["--enable", "codex:prompts", "install"])
+        rc = self.run_cli(["--enable", "codex", "install"])
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -597,7 +477,7 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
 
     def test_install_does_not_create_missing_directories(self) -> None:
         """SRS-448: installation creates no project directories."""
-        rc = self.run_cli(["--enable", "codex:prompts", "install"])
+        rc = self.run_cli(["--enable", "codex", "install"])
         self.assertEqual(rc, 0)
         self.assertFalse((self.TEST_DIR / "usereq").is_dir())
         self.assertFalse((self.TEST_DIR / "tests").is_dir())
@@ -606,14 +486,14 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
     def test_install_ignores_configured_directories(self) -> None:
         """SRS-448: seeded directory configuration stays untouched by install."""
         self.seed_directory_config(docs="req/docs")
-        rc = self.run_cli(["--enable", "codex:prompts", "install"])
+        rc = self.run_cli(["--enable", "codex", "install"])
         self.assertEqual(rc, 0)
         self.assertFalse((self.TEST_DIR / "req" / "docs").is_dir())
 
     def test_install_does_not_touch_persisted_configuration(self) -> None:
         """SRS-448: install persists no directory keys and rewrites nothing."""
         self.seed_directory_config()
-        self.run_cli(["--enable", "codex:prompts"])
+        self.run_cli(["--enable", "codex"])
         rc = self.run_cli(["install"])
         self.assertEqual(rc, 0)
         config_path = self.HOME / ".config" / "usereq" / "config.json"
@@ -644,7 +524,7 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         project = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
         rc = self.run_cli(
-            ["--prj-base", str(project), "--enable", "codex:prompts", "install"]
+            ["--prj-base", str(project), "--enable", "codex", "install"]
         )
         self.assertEqual(rc, 0)
         self.assertNotIn(
@@ -690,14 +570,14 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
         self.guidelines.mkdir(parents=True, exist_ok=True)
         (self.guidelines / "RFC2119.md").write_text("rfc\n", encoding="utf-8")
-        rc = self.run_cli(["--prj-base", str(project), "--enable", "codex:prompts", "install"])
+        rc = self.run_cli(["--prj-base", str(project), "--enable", "codex", "install"])
         self.assertEqual(rc, 0)
         self.assertFalse((project / "guidelines").exists())
         self.assertFalse((project / "usereq" / "guidelines").exists())
 
 
 class TestUninstallCommand(HomeIsolatedTestCase):
-    """SRS-419: uninstall removes req-* artifacts from user-level directories."""
+    """SRS-419: uninstall removes req-* skill artifacts from user-level directories."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -711,39 +591,27 @@ class TestUninstallCommand(HomeIsolatedTestCase):
                 "--prj-base",
                 str(self.TEST_DIR),
                 "--enable",
-                "claude:prompts,skills",
+                "claude",
                 "--enable",
-                "codex:prompts,skills",
+                "codex",
             ]
         )
         self.assertEqual(rc, 0)
+        rc = self.run_cli(["install"])
+        self.assertEqual(rc, 0)
 
-    def test_uninstall_deletes_req_artifacts(self) -> None:
+    def test_uninstall_deletes_req_skill_artifacts(self) -> None:
         rc = self.run_cli(["uninstall"])
         self.assertEqual(rc, 0)
-        self.assertFalse(
-            (self.HOME / ".claude" / "commands" / "req" / "write.md").exists()
-        )
-        self.assertFalse(
-            (self.HOME / ".claude" / "skills" / "req-write").exists()
-        )
-        self.assertFalse(
-            (self.HOME / ".codex" / "prompts" / "req-write.md").exists()
-        )
-        self.assertFalse(
-            (self.HOME / ".agents" / "skills" / "req-write").exists()
-        )
+        self.assertFalse((self.HOME / ".claude" / "skills" / "req-write").exists())
+        self.assertFalse((self.HOME / ".agents" / "skills" / "req-write").exists())
 
     def test_uninstall_preserves_unrelated_user_content(self) -> None:
-        unrelated = self.HOME / ".claude" / "commands" / "user-command.md"
-        unrelated.parent.mkdir(parents=True, exist_ok=True)
-        unrelated.write_text("user\n", encoding="utf-8")
         unrelated_skill = self.HOME / ".claude" / "skills" / "user-skill"
         unrelated_skill.mkdir(parents=True, exist_ok=True)
         (unrelated_skill / "SKILL.md").write_text("user\n", encoding="utf-8")
         rc = self.run_cli(["uninstall"])
         self.assertEqual(rc, 0)
-        self.assertTrue(unrelated.exists())
         self.assertTrue((unrelated_skill / "SKILL.md").exists())
 
     def test_uninstall_without_global_config_fails(self) -> None:
@@ -753,7 +621,7 @@ class TestUninstallCommand(HomeIsolatedTestCase):
 
 
 class TestInstallationSummaryTable(HomeIsolatedTestCase):
-    """SRS-290/291/296: installation summary table rendering."""
+    """SRS-036/SRS-049/SRS-290/SRS-291/SRS-294: installation summary table rendering."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -763,41 +631,72 @@ class TestInstallationSummaryTable(HomeIsolatedTestCase):
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
         self.seed_directory_config()
 
-    def capture_install(self, *specs: str) -> str:
+    def capture_install(self, *providers: str) -> str:
         argv = [
             "--prj-base",
             str(self.TEST_DIR),
         ]
-        for spec in specs:
-            argv.extend(["--enable", spec])
+        for provider in providers:
+            argv.extend(["--enable", provider])
         argv.append("install")
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(argv)
         self.assertEqual(rc, 0)
         return mock_stdout.getvalue()
 
-    def test_table_renders_provider_and_module_rows(self) -> None:
-        output = self.capture_install("codex:prompts,skills")
+    @staticmethod
+    def strip_ansi(text: str) -> str:
+        """Remove the ANSI sequences emitted around table border glyphs."""
+        return text.replace("\033[91m", "").replace("\033[0m", "")
+
+    def test_table_renders_provider_and_skills_rows(self) -> None:
+        output = self.capture_install("codex", "pi")
         self.assertIn("codex", output)
-        self.assertIn("prompts", output)
-        self.assertIn("skills", output)
+        self.assertIn("pi", output)
+        self.assertIn("Skills Installed", output)
 
-    def test_table_modules_reflect_provider_options(self) -> None:
-        output = self.capture_install("claude:prompts:prompts-use-agents")
-        self.assertIn("prompts:prompts-use-agents", output)
+    def test_table_contains_exactly_provider_and_skills_columns(self) -> None:
+        """SRS-291/SRS-294: exactly the Provider and Skills Installed columns render."""
+        output = self.capture_install("codex")
+        self.assertIn("Provider", output)
+        self.assertIn("Skills Installed", output)
+        self.assertNotIn("Modules Installed", output)
+        self.assertNotIn("Prompts Installed", output)
 
-    def test_table_wraps_prompts_column(self) -> None:
-        output = self.capture_install("codex:prompts,skills", "claude:prompts")
-        lines = [
-            line
-            for line in output.splitlines()
-            if "│" in line
+    def test_table_rows_are_alphabetical(self) -> None:
+        """SRS-485: provider rows print in alphabetical order."""
+        output = self.capture_install("pi", "codex", "openclaw")
+        clean = self.strip_ansi(output)
+        providers = []
+        for line in clean.splitlines():
+            if line.startswith("\u2502"):
+                cell = line.split("\u2502")[1].strip()
+                if cell and cell != "Provider":
+                    providers.append(cell)
+        self.assertEqual(providers, ["codex", "openclaw", "pi"])
+
+    def test_table_wraps_skills_column(self) -> None:
+        """SRS-290/SRS-293: Skills Installed wraps at a maximum width of 50 characters."""
+        output = self.capture_install("codex")
+        clean = self.strip_ansi(output)
+        table_lines = [
+            line for line in clean.splitlines() if line.startswith("\u2502")
         ]
-        self.assertTrue(lines, "Installation table must be rendered")
+        self.assertTrue(table_lines, "Installation table must be rendered")
+        for line in table_lines:
+            cells = line.split("\u2502")
+            self.assertLessEqual(len(cells[2].strip()), 50)
+        continuation_rows = [
+            line for line in table_lines if not line.split("\u2502")[1].strip()
+        ]
+        self.assertTrue(
+            continuation_rows,
+            "Skills Installed must wrap onto subsequent lines",
+        )
 
 
 class TestUserLevelPathHelpers(unittest.TestCase):
-    """SRS-381..SRS-387: user-level path resolution helpers."""
+    """SRS-381..SRS-386/SRS-462/SRS-463/SRS-486: user-level skills path helpers."""
 
     def test_get_global_config_path_under_home(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
@@ -806,65 +705,45 @@ class TestUserLevelPathHelpers(unittest.TestCase):
             path, Path("/tmp/testhome/.config/usereq/config.json")
         )
 
-    def test_provider_artifact_root_claude(self) -> None:
+    def test_provider_skills_roots(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             self.assertEqual(
-                cli.provider_artifact_root("claude", "prompts"),
-                Path("/tmp/testhome/.claude/commands/req"),
+                cli.provider_skills_root("antigravity"),
+                Path("/tmp/testhome/.gemini/config/skills"),
             )
             self.assertEqual(
-                cli.provider_artifact_root("claude", "agents"),
-                Path("/tmp/testhome/.claude/agents"),
-            )
-            self.assertEqual(
-                cli.provider_artifact_root("claude", "skills"),
+                cli.provider_skills_root("claude"),
                 Path("/tmp/testhome/.claude/skills"),
             )
-
-    def test_provider_artifact_root_codex(self) -> None:
-        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             self.assertEqual(
-                cli.provider_artifact_root("codex", "prompts"),
-                Path("/tmp/testhome/.codex/prompts"),
-            )
-
-    def test_provider_artifact_root_antigravity(self) -> None:
-        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
-            self.assertEqual(
-                cli.provider_artifact_root("antigravity", "prompts"),
-                Path("/tmp/testhome/.gemini/config/workflows"),
-            )
-            self.assertEqual(
-                cli.provider_artifact_root("codex", "agents"),
-                Path("/tmp/testhome/.codex/agents"),
-            )
-            self.assertEqual(
-                cli.provider_artifact_root("codex", "skills"),
+                cli.provider_skills_root("codex"),
                 Path("/tmp/testhome/.agents/skills"),
             )
-
-    def test_provider_artifact_root_opencode(self) -> None:
-        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             self.assertEqual(
-                cli.provider_artifact_root("opencode", "agents"),
-                Path("/tmp/testhome/.config/opencode/agents"),
+                cli.provider_skills_root("openclaw"),
+                Path("/tmp/testhome/.openclaw/workspace/skills"),
             )
             self.assertEqual(
-                cli.provider_artifact_root("opencode", "prompts"),
-                Path("/tmp/testhome/.config/opencode/commands/req"),
+                cli.provider_skills_root("opencode"),
+                Path("/tmp/testhome/.config/opencode/skills"),
             )
-
-    def test_provider_artifact_root_pi(self) -> None:
-        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             self.assertEqual(
-                cli.provider_artifact_root("pi", "skills"),
+                cli.provider_skills_root("pi"),
                 Path("/tmp/testhome/.pi/agent/skills"),
             )
 
-    def test_unsupported_artifact_raises(self) -> None:
+    def test_provider_skills_path_renders_home_relative(self) -> None:
+        with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
+            self.assertEqual(cli.provider_skills_path("pi"), "~/.pi/agent/skills")
+            self.assertEqual(
+                cli.provider_skills_path("openclaw"),
+                "~/.openclaw/workspace/skills",
+            )
+
+    def test_unknown_provider_raises(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             with self.assertRaises(cli.ReqError):
-                cli.provider_artifact_root("pi", "agents")
+                cli.provider_skills_root("bogus")
 
 
 class TestGitCheckCommand(HomeIsolatedTestCase):
@@ -949,7 +828,7 @@ class TestDocsCheckCommand(HomeIsolatedTestCase):
                 "--prj-base",
                 str(self.TEST_DIR),
                 "--enable",
-                "codex:prompts",
+                "codex",
             ]
         )
 
@@ -1298,7 +1177,7 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
             self.base_argv
             + [
                 "--enable",
-                "codex:prompts",
+                "codex",
                 "--enable-static-check",
                 "Python=Pylance",
             ]
@@ -1316,7 +1195,7 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
             self.base_argv
             + [
                 "--enable",
-                "codex:prompts",
+                "codex",
                 "--enable-static-check",
                 "Python=Pylance",
             ]
@@ -1339,7 +1218,7 @@ class TestStaticCheckConfig(HomeIsolatedTestCase):
             self.base_argv
             + [
                 "--enable",
-                "codex:prompts",
+                "codex",
                 "--enable-static-check",
                 "Python=Pylance",
                 "--enable-static-check",
@@ -1401,7 +1280,7 @@ class TestSetDirectoryCommands(HomeIsolatedTestCase):
                 "--prj-base",
                 str(self.TEST_DIR),
                 "--enable",
-                "codex:prompts",
+                "codex",
                 "--enable-static-check",
                 "Python=Pylance",
             ]
@@ -1412,7 +1291,7 @@ class TestSetDirectoryCommands(HomeIsolatedTestCase):
         self.assertEqual(rc, 0)
         data = self.read_config()
         self.assertEqual(data["docs-dir"], "docs")
-        self.assertEqual(data["providers"], ["codex:prompts"])
+        self.assertEqual(data["providers"], ["codex"])
         self.assertEqual(data["static-check"], {"Python": [{"module": "Pylance"}]})
 
     def test_set_directory_requires_prj_base(self) -> None:
@@ -1430,7 +1309,7 @@ class TestPrjBaseRequirements(HomeIsolatedTestCase):
         """SRS-447/SRS-448/SRS-461: install neither accepts nor consumes --prj-base."""
         project_dir = Path(tempfile.mkdtemp(prefix="usereq-install-prj-"))
         self.addCleanup(shutil.rmtree, project_dir, ignore_errors=True)
-        self.run_cli(["--enable", "codex:prompts"])
+        self.run_cli(["--enable", "codex"])
         with (
             patch("sys.stdout", new_callable=io.StringIO),
             patch("sys.stderr", new_callable=io.StringIO),
@@ -1615,37 +1494,35 @@ class TestProviderLifecycleCommands(HomeIsolatedTestCase):
 
     def test_enable_provider_is_config_only(self) -> None:
         """SRS-276: --enable persists config and installs nothing."""
-        rc = self.run_cli(["--enable", "pi:prompts,skills"])
+        rc = self.run_cli(["--enable", "pi"])
         self.assertEqual(rc, 0)
-        self.assertEqual(self._read_config()["providers"], ["pi:prompts,skills"])
+        self.assertEqual(self._read_config()["providers"], ["pi"])
         self.assertFalse((self.HOME / ".pi" / "agent" / "skills").exists())
 
     def test_enable_provider_replaces_named_provider_only(self) -> None:
         """SRS-279: re-enabling replaces the named provider, preserving others."""
-        self.run_cli(["--enable", "codex:prompts"])
-        self.run_cli(
-            ["--enable", "pi:skills", "--enable", "pi:prompts"]
-        )
+        self.run_cli(["--enable", "codex"])
+        self.run_cli(["--enable", "pi", "--enable", "pi"])
         self.assertEqual(
             self._read_config()["providers"],
-            ["codex:prompts", "pi:skills", "pi:prompts"],
+            ["codex", "pi"],
         )
 
-    def test_disable_provider_removes_specs(self) -> None:
-        """SRS-413: --disable removes all specs of the provider."""
+    def test_disable_provider_removes_entries(self) -> None:
+        """SRS-413: --disable removes the provider from the persisted array."""
         self.run_cli(
-            ["--enable", "codex:prompts", "--enable", "pi:skills"]
+            ["--enable", "codex", "--enable", "pi"]
         )
         rc = self.run_cli(["--disable", "pi"])
         self.assertEqual(rc, 0)
-        self.assertEqual(self._read_config()["providers"], ["codex:prompts"])
+        self.assertEqual(self._read_config()["providers"], ["codex"])
 
-    def test_disable_provider_absent_specs_keeps_config(self) -> None:
-        """SRS-413: disabling a provider without specs leaves the config unchanged."""
-        self.run_cli(["--enable", "codex:prompts"])
+    def test_disable_provider_absent_entries_keeps_config(self) -> None:
+        """SRS-413: disabling a provider without entries leaves the config unchanged."""
+        self.run_cli(["--enable", "codex"])
         rc = self.run_cli(["--disable", "pi"])
         self.assertEqual(rc, 0)
-        self.assertEqual(self._read_config()["providers"], ["codex:prompts"])
+        self.assertEqual(self._read_config()["providers"], ["codex"])
 
     def test_disable_provider_unknown_token_fails(self) -> None:
         """SRS-422: unknown provider token exits with code 1."""
@@ -1654,15 +1531,16 @@ class TestProviderLifecycleCommands(HomeIsolatedTestCase):
         self.assertEqual(rc, 1)
         self.assertIn("unknown provider", mock_stderr.getvalue())
 
-    def test_enable_provider_invalid_spec_fails(self) -> None:
-        """SRS-278: invalid SPEC token exits with code 1."""
-        with patch("sys.stderr", new_callable=io.StringIO):
-            rc = self.run_cli(["--enable", "pi:bogus"])
-        self.assertEqual(rc, 1)
+    def test_enable_provider_invalid_token_fails(self) -> None:
+        """SRS-278: invalid provider token, including legacy SPEC forms, exits with code 1."""
+        for token in ("pi:bogus", "pi:prompts,skills"):
+            with patch("sys.stderr", new_callable=io.StringIO):
+                rc = self.run_cli(["--enable", token])
+            self.assertEqual(rc, 1)
 
     def test_legacy_provider_flag_is_not_parsed(self) -> None:
         """SRS-034: --provider, --enable-provider, and --disable-provider are removed legacy flags."""
-        for legacy in (["--provider", "pi:prompts"], ["--enable-provider", "pi:prompts"], ["--disable-provider", "pi"]):
+        for legacy in (["--provider", "pi"], ["--enable-provider", "pi"], ["--disable-provider", "pi"]):
             with (
                 patch("sys.stderr", new_callable=io.StringIO),
                 self.assertRaises(SystemExit),
@@ -1765,7 +1643,7 @@ class TestAutoInstallLifecycle(HomeIsolatedTestCase):
 
     def test_upgrade_auto_install_runs_install(self) -> None:
         """SRS-421: successful --upgrade with auto-install triggers the install flow."""
-        self.run_cli(["--enable", "pi:skills"])
+        self.run_cli(["--enable", "pi"])
         with (
             patch("usereq.cli.run_upgrade"),
             patch("usereq.cli.run_install") as mock_install,
@@ -1776,7 +1654,7 @@ class TestAutoInstallLifecycle(HomeIsolatedTestCase):
 
     def test_upgrade_auto_install_runs_without_prj_base(self) -> None:
         """SRS-421: successful --upgrade triggers auto-install without --prj-base."""
-        self.run_cli(["--enable", "pi:skills"])
+        self.run_cli(["--enable", "pi"])
         with (
             patch("usereq.cli.run_upgrade"),
             patch("usereq.cli.run_install") as mock_install,
@@ -1789,7 +1667,7 @@ class TestAutoInstallLifecycle(HomeIsolatedTestCase):
     def test_upgrade_auto_install_disabled_skips_install(self) -> None:
         """SRS-420/SRS-421: disabled auto-install skips the install flow."""
         self.run_cli(
-            ["--enable", "pi:skills", "--disable-auto-install"]
+            ["--enable", "pi", "--disable-auto-install"]
         )
         with (
             patch("usereq.cli.run_upgrade"),
@@ -1812,12 +1690,12 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
         self.seed_directory_config()
 
     def test_install_and_uninstall_roundtrip(self) -> None:
-        """SRS-418/SRS-419: install creates artifacts, uninstall removes them."""
-        self.run_cli(["--enable", "pi:skills"])
+        """SRS-418/SRS-419: install creates skill artifacts, uninstall removes them."""
+        self.run_cli(["--enable", "pi"])
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["install"])
         self.assertEqual(rc, 0)
-        self.assertIn("Modules Installed", mock_stdout.getvalue())
+        self.assertIn("Skills Installed", mock_stdout.getvalue())
         skills_root = self.HOME / ".pi" / "agent" / "skills"
         self.assertTrue(skills_root.is_dir())
         rc = self.run_cli(["uninstall"])
@@ -1837,7 +1715,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
         self.run_cli(
             [
                 "--enable",
-                "pi:skills",
+                "pi",
                 "--enable-static-check",
                 "Python=Ruff",
             ]
@@ -1855,20 +1733,49 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             "auto-install",
             "enabled",
             "Providers",
+            "Skills Path",
+            "~/.pi/agent/skills",
             "Provider pi",
             "Component",
             "Configured",
             "Status",
             "installed",
-            "not installed",
             "Static Checks",
             "Ruff",
         ):
             self.assertIn(token, output)
 
-    def test_show_reports_not_installed_components(self) -> None:
-        """SRS-417: components without artifacts are reported as not installed."""
-        self.run_cli(["--enable", "codex:prompts,skills"])
+    def test_show_providers_table_is_alphabetical_with_skills_path(self) -> None:
+        """SRS-462/SRS-463/SRS-485/SRS-487: alphabetical rows with the Skills Path column."""
+        self.run_cli(
+            ["--enable", "pi", "--enable", "openclaw", "--enable", "codex"]
+        )
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["show"])
+        self.assertEqual(rc, 0)
+        output = mock_stdout.getvalue()
+        self.assertIn("Provider", output)
+        self.assertIn("Skills Path", output)
+        self.assertNotIn("Prompts", output)
+        self.assertNotIn("Agents", output)
+        self.assertIn("~/.pi/agent/skills", output)
+        self.assertIn("~/.openclaw/workspace/skills", output)
+        self.assertIn("~/.agents/skills", output)
+        codex_row = output.index("\u2502 codex ")
+        openclaw_row = output.index("\u2502 openclaw ")
+        pi_row = output.index("\u2502 pi ")
+        self.assertLess(codex_row, openclaw_row)
+        self.assertLess(openclaw_row, pi_row)
+        provider_tables = [
+            output.index("Provider codex"),
+            output.index("Provider openclaw"),
+            output.index("Provider pi"),
+        ]
+        self.assertEqual(provider_tables, sorted(provider_tables))
+
+    def test_show_reports_not_installed_skills(self) -> None:
+        """SRS-417: skills without artifacts are reported as not installed."""
+        self.run_cli(["--enable", "codex"])
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["show"])
         self.assertEqual(rc, 0)

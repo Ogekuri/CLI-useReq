@@ -21,8 +21,8 @@
 </p>
 
 <p align="center">
-<strong>The `req` CLI provisions requirements-driven development prompts for LLM agents.</strong><br>
-In more detail: useReq packages a catalog of requirements-engineering prompts (write, create, change, implement, check, and more) and installs them as user-level prompts, commands, skills, and agents for the CLIs and agents you already use — exposed as `/req-<name>`, `/req:<name>`, `/skill:req-<name>`, or `$req-<name>` depending on the provider. It also ships an embedded source-analysis toolkit (token counting, references, compression, construct extraction, static checks) that operates on your project across 20 programming languages, plus git-worktree helpers for parallel task execution. Everything is driven by one user-global configuration file (`~/.config/usereq/config.json`); nothing is written into your project repository. It runs as a Python package (installed as `req` or `usereq`) or directly via `uvx`.
+<strong>The `req` CLI provisions requirements-driven development skills for LLM agents.</strong><br>
+In more detail: useReq packages a catalog of requirements-engineering prompts (write, create, change, implement, check, and more) and installs them as user-level skills for the CLIs and agents you already use — exposed as `/skill:req-<name>` or `$req-<name>` depending on the provider. It also ships an embedded source-analysis toolkit (token counting, references, compression, construct extraction, static checks) that operates on your project across 20 programming languages, plus git-worktree helpers for parallel task execution. Everything is driven by one user-global configuration file (`~/.config/usereq/config.json`); nothing is written into your project repository. It runs as a Python package (installed as `req` or `usereq`) or directly via `uvx`.
 </p>
 
 <p align="center">
@@ -43,7 +43,7 @@ In more detail: useReq packages a catalog of requirements-engineering prompts (w
 The highlights below are what give the most value day-to-day:
 
 - **Drives development through requirement changes**, keeping the work under control with an uninterrupted linear progression.
-- **One catalog, many CLIs**: a single prompt/skill/agent catalog published to pi.dev, Antigravity, Claude Code, OpenAI Codex, and OpenCode through a common interface.
+- **One catalog, many CLIs**: a single skill catalog published to pi.dev, Antigravity, Claude Code, OpenAI Codex, OpenClaw, and OpenCode through a common interface.
 - **LLM-optimized documentation**: creates and maintains a *Software Requirements Specification* (SRS) plus `WORKFLOW.md`, `REFERENCES.md`, and `FLOWCHART.md` for new or existing projects, tuned for LLM-agent reasoning.
 - **Embedded source analysis** for 20 languages (Python, C, C++, C#, Rust, JavaScript, TypeScript, Java, Go, Ruby, PHP, Swift, Kotlin, Scala, Lua, Shell, Perl, Haskell, Zig, Elixir): token counting, reference markdown, compression, and construct extraction.
 - **Configurable static analysis** with Pylance, Ruff, or arbitrary Command-Line checkers — sensible defaults included, with per-checker pre-flight validation that never blocks the run.
@@ -72,19 +72,19 @@ uvx --from cli-usereq req --help
 uvx --from git+https://github.com/Ogekuri/CLI-useReq.git req --help
 ```
 
-**2. Configure** — enable a provider (configuration only; nothing is installed yet, all providers are disabled by default):
+**2. Configure** — enable a provider by name (configuration only; nothing is installed yet, all providers are disabled by default):
 
 ```bash
-req --enable pi:prompts,skills
+req --enable pi
 ```
 
-**3. Run** — install the artifacts for the configured providers on your project:
+**3. Run** — install the skills for the configured providers:
 
 ```bash
-req install --prj-base myproject/
+req install
 ```
 
-Prompts and skills are installed under your HOME (e.g. `~/.pi/agent/prompts/` and `~/.pi/agent/skills/` for the `pi` provider) and are immediately available as `/req-<name>` commands and `/skill:req-<name>` skills. Start with `/req-write` to draft the SRS of a new project, or `/req-create` to derive it from existing source code; then drive implementation with `/req-implement`, `/req-change`, and `/req-new`.
+Skills are installed under your HOME (e.g. `~/.pi/agent/skills/` for the `pi` provider) and are immediately available as `/skill:req-<name>` skills. Start with `/req-write` to draft the SRS of a new project, or `/req-create` to derive it from existing source code; then drive implementation with `/req-implement`, `/req-change`, and `/req-new`.
 
 <!-- Legacy section anchor retained for SRS-342 tooling: ## Requirements -->
 # Requirements
@@ -143,11 +143,11 @@ req --uninstall     # executes `uv tool uninstall cli-usereq` on Linux and clean
 
 ### Provider artifacts
 
-- `req install --prj-base PRJ_BASE` — installs or updates the providers persisted in the configuration and prints a Unicode installation summary report (per-provider `Prompts Installed` / `Modules Installed` columns). Requires at least one enabled provider, otherwise an English error is printed and the exit code is 4.
-- `req uninstall` — reciprocal of `install`: removes the `req-*` artifacts of the configured providers from the user-level provider directories.
-- `req show` — prints the active configuration as tables: settings (including `auto-install`), provider enablement status, one dedicated per-provider table showing the installation status of the `prompts`, `agents`, and `skills` components detected on disk, and the enabled static-check entries.
+- `req install` — installs or updates the skills of the providers persisted in the configuration into user-level directories and prints a Unicode installation summary report (`Provider` / `Skills Installed` columns). Requires at least one enabled provider, otherwise an English error is printed and the exit code is 4. Skills are the only supported artifact type: prompts and agents are no longer installed.
+- `req uninstall` — reciprocal of `install`: removes the `req-*` skill artifacts of the configured providers from the user-level skills directories.
+- `req show` — prints the active configuration as tables: settings (including `auto-install`), the `Provider` / `Skills Path` table listing enabled providers in alphabetical order with their hardcoded home-relative skills path, one dedicated per-provider table showing the installation status of the `skills` component detected on disk, and the enabled static-check entries.
 
-Artifacts are always installed into **user-level CLI configuration directories under your HOME** (`~/.claude`, `~/.codex`, `~/.gemini/config`, `~/.agents`, `~/.config/opencode`, `~/.pi/agent`); nothing is ever written into the project repository.
+Skills are always installed into **user-level CLI configuration directories under your HOME** (`~/.claude/skills`, `~/.agents/skills`, `~/.gemini/config/skills`, `~/.openclaw/workspace/skills`, `~/.config/opencode/skills`, `~/.pi/agent/skills`); nothing is ever written into the project repository.
 
 ## Configuration
 
@@ -172,25 +172,32 @@ Typical project layout:
 
 ### Providers
 
-All providers are disabled by default. Provider enablement is exclusive to the repeatable config-only flag:
+All providers are disabled by default. Provider enablement is exclusive to the repeatable config-only flag, which accepts only the provider CLI name exactly like `--disable PROVIDER`:
 
 ```bash
-req --enable SPEC
+req --enable PROVIDER
 ```
 
-- `SPEC` format: `PROVIDER:ARTIFACT_ITEM[,ARTIFACT_ITEM...][:PROVIDER_OPTIONS]`
-- `PROVIDER`: `antigravity`, `claude`, `codex`, `opencode`, or `pi`.
-- `ARTIFACT_ITEM`: one of `{prompts, agents, skills}`.
-- `PROVIDER_OPTIONS`: (optional) comma-separated list from `{prompts-use-agents}`.
-- Example: `req --enable pi:prompts,skills`
+- `PROVIDER`: `antigravity`, `claude`, `codex`, `openclaw`, `opencode`, or `pi`.
+- Example: `req --enable pi`
 
 Behavior:
 
-- `--enable` only updates `~/.config/usereq/config.json`; it never installs artifacts. Enabling a provider again replaces all its previously persisted specs while preserving every other provider.
-- `--disable PROVIDER` removes all persisted specs of that provider (unknown tokens exit with code 1).
-- Unknown or invalid tokens in a SPEC print an English error identifying the invalid token and exit with code 1.
-- `prompts-use-agents` is provider-scoped and applies only to `prompts` artifacts: it generates prompt files as **agent-only references** (adds an `agent:` front matter field) where supported (Claude commands, OpenCode commands, and pi prompts).
-- Configuration flags may be combined with the `install` subcommand in one invocation (`req --enable pi:prompts install --prj-base .`): configuration is applied first, then installation proceeds.
+- `--enable` only updates `~/.config/usereq/config.json`; it never installs artifacts. Enabling a provider again replaces all its previously persisted entries while preserving every other provider.
+- `--disable PROVIDER` removes all persisted entries of that provider (unknown tokens exit with code 1).
+- Unknown or invalid tokens print an English error identifying the invalid token and exit with code 1.
+- Configuration flags may be combined with the `install` subcommand in one invocation (`req --enable pi install`): configuration is applied first, then installation proceeds.
+
+Provider skills paths:
+
+| Provider | Skills path |
+| --- | --- |
+| antigravity | `~/.gemini/config/skills` |
+| claude | `~/.claude/skills` |
+| codex | `~/.agents/skills` |
+| openclaw | `~/.openclaw/workspace/skills` |
+| opencode | `~/.config/opencode/skills` |
+| pi | `~/.pi/agent/skills` |
 
 ### Static checks
 
@@ -223,7 +230,7 @@ A standalone testbed is available: `req --test-static-check {dummy,pylance,ruff,
 
 `req` can be run from any directory. Two path arguments drive location resolution:
 
-- `--prj-base <project-folder>` — mandatory for commands that read or write project files (`install`, `--docs-check`, `--set-*-dir`, and the project-scan subcommands `tokens`, `references`, `compress`, `find`, `static-check`, `files-static-check`).
+- `--prj-base <project-folder>` — mandatory for commands that read or write project files (`--docs-check`, `--set-*-dir`, and the project-scan subcommands `tokens`, `references`, `compress`, `find`, `static-check`, `files-static-check`); the `install` subcommand neither requires nor accepts it.
 - `--git-base <git-repository-folder>` — mandatory for the git commands (`--git-check`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`); not required by any analysis subcommand.
 - `--prj-base` and `--git-base` are never persisted in `~/.config/usereq/config.json`.
 
@@ -313,15 +320,16 @@ A startup release check queries the latest PyPI release (idle-gated to at most o
 
 # Documentation
 
-## Supported CLIs, Agents, and Extensions
+## Supported CLIs and Extensions
 
 ### High-Level Assessment
 
-- 🌟 **pi.dev CLI** 🌟 - Supports user-level prompt templates and Agent Skills from `~/.pi/agent/prompts/` and `~/.pi/agent/skills/`.
-- 🌟 **Antigravity CLI** 🌟 - Evolution of Gemini CLI; supports user-level workflows, agents, and skills from `~/.gemini/config/`.
-- 👍 **OpenCode** 👍 - Many models available; supports user-level commands, agents, and skills from `~/.config/opencode/`.
-- ⚖️ **Claude Code** ⚖️ - Only supports Claude/Anthropic models; supports user-level commands, agents, and skills from `~/.claude/`.
-- 🆗 **OpenAI Codex** 🆗 - Only supports OpenAI models; supports user-level prompts (deprecated), agents, and skills from `~/.codex/` and `~/.agents/`.
+- 🌟 **pi.dev CLI** 🌟 - Supports user-level Agent Skills from `~/.pi/agent/skills/`.
+- 🌟 **Antigravity CLI** 🌟 - Evolution of Gemini CLI; supports user-level skills from `~/.gemini/config/skills/`.
+- 👍 **OpenClaw** 👍 - Supports user-level skills from `~/.openclaw/workspace/skills/`.
+- 👍 **OpenCode** 👍 - Many models available; supports user-level skills from `~/.config/opencode/skills/`.
+- ⚖️ **Claude Code** ⚖️ - Only supports Claude/Anthropic models; supports user-level skills from `~/.claude/skills/`.
+- 🆘 **OpenAI Codex** 🆘 - Only supports OpenAI models; supports user-level skills from `~/.agents/skills/`.
 
 ### useReq/req Support
 
@@ -329,45 +337,23 @@ A startup release check queries the latest PyPI release (idle-gated to at most o
 - ✅ Antigravity CLI
 - ✅ Claude Code
 - ✅ OpenAI Codex
+- ✅ OpenClaw
 - ✅ OpenCode
 
 | ✅ supported | ❌ not supported |
 
-GitHub Copilot and Kiro CLI are not supported: their prompt/agent/skill configuration is repository-scoped only and cannot be managed at user level.
+GitHub Copilot and Kiro CLI are not supported: their skill configuration is repository-scoped only and cannot be managed at user level. Prompts and agents are no longer supported artifacts: useReq installs skills only.
 
 ### Skills Details
 
-- ✅ pi.dev CLI: [`/skill:req-create`]
-  - useReq generates `~/.pi/agent/skills/req-create/SKILL.md`.
-  - pi discovers user skills from `~/.pi/agent/skills/` and registers them as `/skill:name` commands.
-  - Arguments after the command are appended to the skill content as `User: <args>`.
-- ✅ Antigravity CLI: [`$req-create`]
-- ✅ OpenAI Codex: [`$req-create`]
-- ✅ Claude Code: [`/req-create`]
-- ✅ OpenCode: [`/req-create`]
+Every enabled provider receives `req-<name>/SKILL.md` skill directories under its hardcoded skills root:
 
-### CLI Prompt Details
-
-- ✅ pi.dev CLI: [`/req-create`]
-  - useReq generates `~/.pi/agent/prompts/req-create.md`.
-  - pi prompt templates use the filename without `.md` as the command name.
-  - Prompt arguments are supported by pi prompt templates (`$1`, `$2`, `$@`, `$ARGUMENTS`).
-- ✅ Antigravity CLI: [`/req-<name>` workflows under `~/.gemini/config/workflows/`]
-- ✅ OpenAI Codex: [`/prompts:/req-create`] (deprecated)
-- ✅ Claude Code: [`/req:create`]
-- ✅ OpenCode: [`/req-create`]
-
-### CLI Agents Details
-
-- ❌ pi.dev CLI
-  - useReq does not generate agents for provider `pi`; it emits prompts and skills only.
-- ✅ Antigravity CLI
-  - useReq generates `~/.gemini/config/agents/req-<name>/agent.md`.
-- ✅ OpenAI Codex
-  - useReq generates `~/.codex/agents/req-<name>.toml`.
-- ✅ Claude Code: [`@agent-req-create`]
-- ✔️ OpenCode: [`<TAB> ➡️ Req.Create ↩️`]
-  - **Starts a new session** (`/new`) for every prompt.
+- ✅ pi.dev CLI: [`/skill:req-create`] — `~/.pi/agent/skills/req-create/SKILL.md`; pi discovers user skills from `~/.pi/agent/skills/` and registers them as `/skill:name` commands; arguments after the command are appended to the skill content as `User: <args>`.
+- ✅ Antigravity CLI: [`$req-create`] — `~/.gemini/config/skills/req-create/SKILL.md`.
+- ✅ OpenAI Codex: [`$req-create`] — `~/.agents/skills/req-create/SKILL.md`.
+- ✅ Claude Code: [`/req-create`] — `~/.claude/skills/req-create/SKILL.md`.
+- ✅ OpenClaw: [`$req-create`] — `~/.openclaw/workspace/skills/req-create/SKILL.md`.
+- ✅ OpenCode: [`/req-create`] — `~/.config/opencode/skills/req-create/SKILL.md`.
 
 ## Default Workflow
 
@@ -391,7 +377,7 @@ Requirements-driven projects keep their normative documentation under the config
 ## Development Notes
 
 - `scripts/req.sh` runs the CLI via `uv run python -m usereq.cli` from the repository root, forwarding all user arguments unchanged.
-- `scripts/test-install.sh` performs an isolated-HOME smoke installation (`--enable pi:prompts,skills` + `install`).
+- `scripts/test-install.sh` performs an isolated-HOME smoke installation (`--enable pi` + `install`).
 - `scripts/prompts-update.sh` synchronizes the bundled prompts from the upstream [Ogekuri/CLI-Prompts](https://github.com/Ogekuri/CLI-Prompts) releases into `src/usereq/resources/prompts`.
 - `uv.lock` is the canonical dependency lockfile for execution, build, development, testing, and static analysis.
 
