@@ -47,7 +47,7 @@ In scope: reproduce/triage the defect with concrete evidence and prefer an evide
 - **CRITICAL**: Reuse injected or previously read file evidence only when repository, worktree, project-area, path, and revision identity match the active binding; do not re-read matching content. Refresh stale or unverified evidence under the pre-flight context-reuse rules.
 - **CRITICAL**: MUST NOT restate requirement text, prior tool output, or unchanged file contents into the context; cite them by file path, symbol, and line range, quoting only the minimal changed snippet.
 - **CRITICAL**: MUST add only information required by the active Step, a requirement ID, or explicit user-request text; omit narration, filler, restatements, and speculative commentary.
-- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find`, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
+- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
 - **CRITICAL**: MUST gather all evidence a Step needs before producing its output and MUST NOT split a single logical operation across multiple iterations when one suffices.
 - **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
 - **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
@@ -121,7 +121,7 @@ Structured index of all source-defined symbols (functions, classes, structs, obj
 
 Use to: identify candidate symbols by name, description, or `@satisfies` link; obtain exact file paths and line ranges; understand function signatures and contracts before extracting code. Cross-reference with WORKFLOW.md call-traces to narrow scope.
 
-### 3. Code Extraction: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find` / `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find`
+### 3. Code Extraction: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find` / `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`
 Extract actual source constructs as structured markdown with signatures, line ranges, and optional line-numbered code. Use after pillars 1-2 to extract only the targeted constructs identified during analysis.
 #### What these commands do (and what they don't)
 - Extract named constructs (e.g., CLASS, FUNCTION, STRUCT, INTERFACE, IMPORT, …) filtered by TAG and name-regex.
@@ -131,15 +131,15 @@ Extract actual source constructs as structured markdown with signatures, line ra
     - optional extracted Doxygen fields (if present in/around the construct)
     - fenced code block with the complete construct slice (comments stripped, strings preserved)
 #### Choose the right mode
-- Project-wide scan: use --find (the mandatory `--prj-base`/`--git-base` prefix is required; `--base` is forbidden)
-    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find <TAG_FILTER> <NAME_REGEX>`
-    - Note: --find scans all files under configured source dirs; does not take a filename.
-- Target specific files: use --files-find (standalone with the mandatory `--prj-base`/`--git-base` prefix)
-    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find <TAG_FILTER> <NAME_REGEX> <FILE1> [FILE2 ...]`
+- Project-wide scan: use find (the mandatory `--prj-base`/`--git-base` prefix is required; `--base` is forbidden)
+    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find <TAG_FILTER> <NAME_REGEX>`
+    - Note: find scans all files under configured source dirs; does not take a filename.
+- Target specific files: use files-find (standalone with the mandatory `--prj-base`/`--git-base` prefix)
+    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find <TAG_FILTER> <NAME_REGEX> <FILE1> [FILE2 ...]`
 #### Enable line-numbered code for evidence citation
 Add --enable-line-numbers (code lines prefixed as `<n>:`):
-- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers --find "<TAG_FILTER>" "<NAME_REGEX>"`
-- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers --files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
+- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers find "<TAG_FILTER>" "<NAME_REGEX>"`
+- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
 #### TAGs and filters
 - TAG_FILTER: pipe-separated, case-insensitive (e.g., `CLASS|FUNCTION|IMPORT`).
 - Tags are language-dependent; unsupported tags are ignored. Run `req -h` for supported TAGs per language.
@@ -157,7 +157,7 @@ Use for: string/pattern searches inside code bodies, cross-file references, conf
 ### Recommended Analysis Workflow
 1. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`** (full read) → identify execution units, call-trace paths, and function names relevant to the task.
 2. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`** (full read or targeted search) → locate candidate symbols by name/description/`@satisfies`, obtain file paths and line ranges, understand function contracts.
-3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find` → use symbol names from steps 1-2 as NAME_REGEX, file paths as --files-find targets; enable --enable-line-numbers when citing evidence.
+3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX, file paths as files-find targets; enable --enable-line-numbers when citing evidence.
 4. **Search code bodies** via `rg`/`git grep` → find patterns, references, or values not captured by construct-level extraction.
 
 
@@ -191,7 +191,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
 2. **CRITICAL**: Check `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` and `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` file presence
    - Check required docs presence with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --docs-check`. If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Required docs check failed!", and then terminate the execution.
 3. **CRITICAL**: Worktree Generation & Isolation
-   - Derive <BASE_PATH> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --get-base-path`, derive <GIT_PATH> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-path`, and generate <WORKTREE_NAME> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name` using literal `req` commands executed sequentially without shell composition.
+   - Bind <BASE_PATH> to the resolved `{{PRJ_BASE}}` and <GIT_PATH> to the resolved `{{GIT_BASE}}`, and generate <WORKTREE_NAME> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name` using literal `req` commands executed sequentially without shell composition.
    - Create the dedicated isolated worktree with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-create <WORKTREE_NAME>`, then execute `cd <GIT_PATH>/../<WORKTREE_NAME>` before proceeding to the next step.
    - If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Worktree generation failed!", and then terminate the execution.
    - After successful worktree creation and directory change, apply the pre-flight context-transition rules before the next project operation. If rebinding fails, OUTPUT exactly "ERROR: Unable to resolve context keywords!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution. Apply this same failure cleanup to later context-resolution failures before merge-phase cleanup.
@@ -211,15 +211,17 @@ After successful pre-flight resolution, create internally a *check-list* for the
       - For each requirement, report `OK` if satisfied or `FAIL` if not.
       - Do not mark a requirement as `OK` without code evidence; for `OK` items provide only a compact pointer (file path + symbol + line range). For each requirement, provide a concise evidence pointer (file path + symbol + line range) excerpts only for `FAIL` requirements or when requirement is architectural, structural, or negative (e.g., "MUST NOT ..."). For such high-level requirements, cite the specific file paths or directory structures that prove compliance. Line ranges MUST be obtained from tooling output (e.g., `nl -ba` / `sed -n`) and MUST NOT be estimated. If evidence is missing, you MUST report `FAIL`. Do not assume implicit behavior.
       - For every `FAIL`, provide evidence with a short explanation. Provide file path(s) and line numbers where possible.
-   - Perform a static analysis check by executing `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check`.
+   - Perform a static analysis check by executing `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} static-check`.
       - Review the produced output and fix every reported issue in source code.
-      - Re-run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check` until it produces no issues. If output is exactly `Error: no source files found in configured directories.`, treat it as successful no-source completion and continue without retries.
+      - Re-run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} static-check` until it produces no issues. If output is exactly `Error: no source files found in configured directories.`, treat it as successful no-source completion and continue without retries.
    - If relevant unit tests already exist in the repository, run them during verification using language-specific test-suite priority policy: project-defined test command first, language-default unit-test command second; if a reproducer unit test was created in Step 4, require explicit evidence that it now passes; if no relevant tests exist, record test execution as N/A and continue.
+      - Record each executed suite outcome in the Verification Delta report section: suite command, pass or fail result, and failing test identifiers with failure evidence; record N/A only when no relevant unit tests exist.
       - Verify that the implemented changes satisfy requirements evidence, static-analysis output, and unit-test outputs when tests are executed.
       - For Step 4, include before/after evidence that links the observed defect to the applied source fix.
       - Provide explicit concrete verification evidence that the defect is resolved, using requirement evidence and static-analysis output.
       - If static analysis reports issues or executed unit tests fail, analyze whether they are caused by source defects or requirement-implementation mismatch. Assume requirement evidence is authoritative; when static analysis reports issues, fix source code unless requirements explicitly justify alternative handling.
-      - Fix the source code to resolve valid verification findings autonomously without asking for user intervention. Execute a strict fix loop: 1) analyze static-check output and unit-test failures (when tests ran), 2) determine root cause from evidence, 3) fix code, 4) re-run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check` and re-run the selected unit-test suites when applicable. Repeat up to 2 times. If static analysis still reports issues after the second attempt, report the failure, OUTPUT exactly "ERROR: Defect fix failed due to inability to complete static analysis!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
+      - Fix the source code to resolve valid verification findings autonomously without asking for user intervention. Execute a strict fix loop: 1) analyze static-check output and unit-test failures (when tests ran), 2) determine root cause from evidence, 3) fix code, 4) re-run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} static-check` and re-run the selected unit-test suites when applicable. Repeat up to 2 times. If static analysis still reports issues after the second attempt, report the failure, OUTPUT exactly "ERROR: Defect fix failed due to inability to complete static analysis!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
+      - Unit-test completion gate: if any executed unit test still fails after the second fix-loop attempt, report the residual failing tests in the Verification Delta report section, OUTPUT exactly "ERROR: Defect fix failed due to persistent unit-test failures!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution without committing or merging.
       - Limitations: Do not introduce new features or change the architecture logic during this fix phase; if a fix requires substantial refactoring or requirements changes, report the failure, then OUTPUT exactly "ERROR: Defect fix failed due to requirements incompatible with static-analysis constraints!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution.
       - Do NOT create or modify tests outside the defect-focused scope; only the targeted reproducer test and strictly related assertions/fixtures may be changed when required by updated behavior.
 6. Update `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` via targeted edits using the canonical WORKFLOW.md contract (same terminology, same schema, same call-trace rules) and declaration file paths only, excluding line numbers, line ranges, and internal file-reference pointers.
@@ -248,7 +250,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
          - `<optional: brief invariants/external boundaries>`
          - `<child internal calls as nested bullet list, in call order>`
 7. Update `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` references file
-   -  Create/update the references file with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --references >"{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md"`
+   -  Create/update the references file with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} references >"{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md"`
 8. **CRITICAL**: Stage & commit
    - Show a summary of changes with `git diff` and `git diff --stat`.
    - Stage changes explicitly (prefer targeted add; avoid `git add -A` if it may include unintended files): `git add <file...>` (ensure to include all modified source code & test and WORKFLOW.md only if it was modified/created).
@@ -262,7 +264,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
    - Confirm the repo is clean with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-check`. If the command returns an error code or prints any text containing "ERROR", override the final line with EXACTLY "WARNING: Defect fix completed with unclean git repository!".
 9.  **CRITICAL**: Merge Conflict Management
    - Return to the original repository directory (the sibling directory of the worktree).
-   - Ensure you are on the original branch used before worktree creation by deriving `<BASE_PATH>` with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --get-base-path` if needed and executing `cd <BASE_PATH>`.
+   - Ensure you are on the original branch used before worktree creation by executing `cd <BASE_PATH>` with the retained pre-worktree base if needed.
    - Merge the isolated branch into the original branch: `git merge <WORKTREE_NAME>`
    - If the merge completes successfully, delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`; if the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Worktree cleanup verification failed!", and then terminate the execution.
    - If the merge fails or results in conflicts, do NOT remove the worktree directory and override the final line with EXACTLY "WARNING: Defect fix completed with merge conflicting!".

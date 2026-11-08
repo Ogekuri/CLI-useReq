@@ -30,7 +30,7 @@ usage: >
 Provide an evidence-backed compliance audit by running static analysis and mapping every requirement in the SRS (`{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`) to concrete implementation evidence, so downstream LLM Agents MUST decide whether coverage work is required and where to apply it.
 
 ## Scope
-In scope: read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` (and related docs), run static analysis evidence (`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check`) as evidence, mark ALL requirements as OK/FAIL with proof, and (only when FAILs exist) produce an implementation-only, patch-oriented technical report. Out of scope: any file modification (requirements/code/tests/docs) or applying fixes.
+In scope: read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` (and related docs), run static analysis evidence (`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} static-check`) as evidence, mark ALL requirements as OK/FAIL with proof, and (only when FAILs exist) produce an implementation-only, patch-oriented technical report. Out of scope: any file modification (requirements/code/tests/docs) or applying fixes.
 
 
 ## Professional Personas
@@ -47,7 +47,7 @@ In scope: read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` (and related docs), r
 - **CRITICAL**: Reuse injected or previously read file evidence only when repository, worktree, project-area, path, and revision identity match the active binding; do not re-read matching content. Refresh stale or unverified evidence under the pre-flight context-reuse rules.
 - **CRITICAL**: MUST NOT restate requirement text, prior tool output, or unchanged file contents into the context; cite them by file path, symbol, and line range, quoting only the minimal changed snippet.
 - **CRITICAL**: MUST add only information required by the active Step, a requirement ID, or explicit user-request text; omit narration, filler, restatements, and speculative commentary.
-- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find`, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
+- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
 - **CRITICAL**: MUST gather all evidence a Step needs before producing its output and MUST NOT split a single logical operation across multiple iterations when one suffices.
 - **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
 - **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
@@ -103,7 +103,7 @@ Structured index of all source-defined symbols (functions, classes, structs, obj
 
 Use to: identify candidate symbols by name, description, or `@satisfies` link; obtain exact file paths and line ranges; understand function signatures and contracts before extracting code. Cross-reference with WORKFLOW.md call-traces to narrow scope.
 
-### 3. Code Extraction: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find` / `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find`
+### 3. Code Extraction: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find` / `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`
 Extract actual source constructs as structured markdown with signatures, line ranges, and optional line-numbered code. Use after pillars 1-2 to extract only the targeted constructs identified during analysis.
 #### What these commands do (and what they don't)
 - Extract named constructs (e.g., CLASS, FUNCTION, STRUCT, INTERFACE, IMPORT, …) filtered by TAG and name-regex.
@@ -113,15 +113,15 @@ Extract actual source constructs as structured markdown with signatures, line ra
     - optional extracted Doxygen fields (if present in/around the construct)
     - fenced code block with the complete construct slice (comments stripped, strings preserved)
 #### Choose the right mode
-- Project-wide scan: use --find (the mandatory `--prj-base`/`--git-base` prefix is required; `--base` is forbidden)
-    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find <TAG_FILTER> <NAME_REGEX>`
-    - Note: --find scans all files under configured source dirs; does not take a filename.
-- Target specific files: use --files-find (standalone with the mandatory `--prj-base`/`--git-base` prefix)
-    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find <TAG_FILTER> <NAME_REGEX> <FILE1> [FILE2 ...]`
+- Project-wide scan: use find (the mandatory `--prj-base`/`--git-base` prefix is required; `--base` is forbidden)
+    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find <TAG_FILTER> <NAME_REGEX>`
+    - Note: find scans all files under configured source dirs; does not take a filename.
+- Target specific files: use files-find (standalone with the mandatory `--prj-base`/`--git-base` prefix)
+    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find <TAG_FILTER> <NAME_REGEX> <FILE1> [FILE2 ...]`
 #### Enable line-numbered code for evidence citation
 Add --enable-line-numbers (code lines prefixed as `<n>:`):
-- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers --find "<TAG_FILTER>" "<NAME_REGEX>"`
-- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers --files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
+- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers find "<TAG_FILTER>" "<NAME_REGEX>"`
+- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
 #### TAGs and filters
 - TAG_FILTER: pipe-separated, case-insensitive (e.g., `CLASS|FUNCTION|IMPORT`).
 - Tags are language-dependent; unsupported tags are ignored. Run `req -h` for supported TAGs per language.
@@ -139,7 +139,7 @@ Use for: string/pattern searches inside code bodies, cross-file references, conf
 ### Recommended Analysis Workflow
 1. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`** (full read) → identify execution units, call-trace paths, and function names relevant to the task.
 2. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`** (full read or targeted search) → locate candidate symbols by name/description/`@satisfies`, obtain file paths and line ranges, understand function contracts.
-3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find` → use symbol names from steps 1-2 as NAME_REGEX, file paths as --files-find targets; enable --enable-line-numbers when citing evidence.
+3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX, file paths as files-find targets; enable --enable-line-numbers when citing evidence.
 4. **Search code bodies** via `rg`/`git grep` → find patterns, references, or values not captured by construct-level extraction.
 
 
@@ -171,7 +171,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
 1. **CRITICAL**: Check `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` and `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` file presence
    - Check required docs presence with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --docs-check`. If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Required docs check failed!", and then terminate the execution.
 2. Run static analysis, check requirements coverage and generate **Implementation Delta**
-   - Run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --static-check` to verify the current state. Do not modify repository files during this check. Record the static-check result as evidence for the final analysis report. If output is exactly `Error: no source files found in configured directories.`, treat it as successful no-source completion and continue.
+   - Run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} static-check` to verify the current state. Do not modify repository files during this check. Record the static-check result as evidence for the final analysis report. If output is exactly `Error: no source files found in configured directories.`, treat it as successful no-source completion and continue.
    - Read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` and cross-reference with the source code from {{PRJ_BASE}}/%%SRC_PATHS%%, {{PRJ_BASE}}/%%TEST_PATH%% to check ALL requirements, but use progressive disclosure: provide full evidence only for `FAIL` items and a compact pointer-only index for `OK` items. For each requirement, use tools (e.g., `git grep`, `find`, `ls`) to locate the relevant source code files used as evidence, read only the identified files to verify compliance and do not assume compliance without locating the specific code implementation.
       - For each requirement, report `OK` if satisfied or `FAIL` if not.
       - Do not mark a requirement as `OK` without code evidence; for `OK` items provide only a compact pointer (file path + symbol + line range). For each requirement, provide a concise evidence pointer (file path + symbol + line range) excerpts only for `FAIL` requirements or when requirement is architectural, structural, or negative (e.g., "MUST NOT ..."). For such high-level requirements, cite the specific file paths or directory structures that prove compliance. Line ranges MUST be obtained from tooling output (e.g., `nl -ba` / `sed -n`) and MUST NOT be estimated. If evidence is missing, you MUST report `FAIL`. Do not assume implicit behavior.

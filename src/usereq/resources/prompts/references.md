@@ -30,7 +30,7 @@ usage: >
 Maintain a machine-usable reference index (`{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`) derived from repository evidence so downstream LLM Agents MUST quickly discover entrypoints, modules, dependencies, and other navigational anchors during SRS-driven work.
 
 ## Scope
-In scope: generate/update only `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` in English (following the prompt’s `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --references` workflow) and commit that doc change. Out of scope: changes to requirements, workflow docs, source code, or tests.
+In scope: generate/update only `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` in English (following the prompt’s `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} references` workflow) and commit that doc change. Out of scope: changes to requirements, workflow docs, source code, or tests.
 
 ## Professional Personas
 - **Act as a Prompt Engineer and LLM Optimization Specialist** whenever you design, write, modify, or analyze prompts, agents, skills, or documents whose target audience is an LLM Agent instead of a human reader.
@@ -43,7 +43,7 @@ In scope: generate/update only `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` in Engl
 - **CRITICAL**: Reuse injected or previously read file evidence only when repository, worktree, project-area, path, and revision identity match the active binding; do not re-read matching content. Refresh stale or unverified evidence under the pre-flight context-reuse rules.
 - **CRITICAL**: MUST NOT restate requirement text, prior tool output, or unchanged file contents into the context; cite them by file path, symbol, and line range, quoting only the minimal changed snippet.
 - **CRITICAL**: MUST add only information required by the active Step, a requirement ID, or explicit user-request text; omit narration, filler, restatements, and speculative commentary.
-- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --files-find`, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
+- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
 - **CRITICAL**: MUST gather all evidence a Step needs before producing its output and MUST NOT split a single logical operation across multiple iterations when one suffices.
 - **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
 - **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
@@ -103,13 +103,13 @@ After successful pre-flight resolution, create internally a *check-list* for the
 1. **CRITICAL**: Check GIT Status
    - Check GIT status with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-check`. If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Git status unclear!", and then terminate the execution.
 2. **CRITICAL**: Worktree Generation & Isolation
-   - Derive <BASE_PATH> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --get-base-path`, derive <GIT_PATH> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-path`, and generate <WORKTREE_NAME> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name` using literal `req` commands executed sequentially without shell composition.
+   - Bind <BASE_PATH> to the resolved `{{PRJ_BASE}}` and <GIT_PATH> to the resolved `{{GIT_BASE}}`, and generate <WORKTREE_NAME> with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name` using literal `req` commands executed sequentially without shell composition.
    - Create the dedicated isolated worktree with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-create <WORKTREE_NAME>`, then execute `cd <GIT_PATH>/../<WORKTREE_NAME>` before proceeding to the next step.
    - If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Worktree generation failed!", and then terminate the execution.
    - After successful worktree creation and directory change, apply the pre-flight context-transition rules before the next project operation. If rebinding fails, OUTPUT exactly "ERROR: Unable to resolve context keywords!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`, and then terminate the execution. Apply this same failure cleanup to later context-resolution failures before merge-phase cleanup.
 
 3. Update `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` references file
-   -  Create/update the references file with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --references >"{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md"`
+   -  Create/update the references file with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} references >"{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md"`
 4. **CRITICAL**: Stage & commit
    - Show a summary of changes with `git diff` and `git diff --stat`.
    - Stage changes explicitly (prefer targeted add; avoid `git add -A` if it may include unintended files): `git add <file...>` (ensure to include only `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`).
@@ -123,7 +123,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
    - Confirm the repo is clean with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-check`. If the command returns an error code or prints any text containing "ERROR", override the final line with EXACTLY "WARNING: References request completed with unclean git repository!".
 5. **CRITICAL**: Merge Conflict Management
    - Return to the original repository directory (the sibling directory of the worktree).
-   - Ensure you are on the original branch used before worktree creation by deriving `<BASE_PATH>` with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --get-base-path` if needed and executing `cd <BASE_PATH>`.
+   - Ensure you are on the original branch used before worktree creation by executing `cd <BASE_PATH>` with the retained pre-worktree base if needed.
    - Merge the isolated branch into the original branch: `git merge <WORKTREE_NAME>`
    - If the merge completes successfully, delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete <WORKTREE_NAME>`; if the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Worktree cleanup verification failed!", and then terminate the execution.
    - If the merge fails or results in conflicts, do NOT remove the worktree directory and override the final line with EXACTLY "WARNING: References request completed with merge conflicting!".
