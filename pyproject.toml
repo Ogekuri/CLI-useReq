@@ -51,3 +51,6 @@ usereq = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Import the repository package before any PYTHONPATH or user-site shadow so
+# the suite always tests the checked-out source (pre-release unit-tests stage).
+pythonpath = ["src"]
