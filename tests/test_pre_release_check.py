@@ -1,9 +1,11 @@
 """@file test_pre_release_check.py
-@brief Verify pre-release cleanup without invoking external build services.
-@details Level 1: script orchestration -> EXIT cleanup -> Git/filesystem boundaries.
-Uses temporary repositories and a fake uv executable; no network or user paths.
-Covers successful termination, stage failure, and tracked-target preservation.
-@satisfies SRS-480, SRS-481, SRS-483, SRS-484
+@brief Verify pre-release cleanup and stale-venv repair without external services.
+@details Level 1: script orchestration -> EXIT cleanup -> Git/filesystem boundaries,
+plus dependency-sync entry-point guarding for the unit-tests stage. Uses temporary
+repositories and a fake uv executable; no network or user paths. Covers successful
+termination, stage failure, tracked-target preservation, and repair or rejection of
+stale virtual-environment pytest entry points.
+@satisfies SRS-475, SRS-479, SRS-480, SRS-481, SRS-483, SRS-484
 """
 
 import os
@@ -109,3 +111,135 @@ def test_pre_release_cleanup_preserves_only_tracked_cache(
         assert "Pre-release check passed." not in result.stdout
     else:
         assert "Pre-release check passed." in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("heal_succeeds",),
+    [(True,), (False,)],
+    ids=["healed", "unhealable"],
+)
+def test_pre_release_check_stale_venv_pytest_entry_point(
+    tmp_path: Path, heal_succeeds: bool,
+) -> None:
+    """@brief Repair or reject a stale foreign pytest entry point before unit tests.
+    @details Level 1 regression: dependency-sync stage -> venv entry-point guard ->
+    unit-tests stage. A console script copied from a relocated virtual environment
+    keeps a foreign shebang; `uv sync --frozen` reuses its dist-info without
+    rewriting it, so `uv run pytest` executes under a foreign interpreter and the
+    conftest import fails with `ModuleNotFoundError: No module named 'tiktoken'`.
+    Arrange an isolated repository with a poisoned `.venv/bin/pytest` and a fake uv
+    that heals it only on `--reinstall-package` sync calls; assert the pipeline
+    passes after repair, or stops at `dependency-sync` with English guidance when
+    repair cannot localize the interpreter. Complexity O(1) plus one subprocess
+    pipeline execution; all writes stay under tmp_path.
+    @param tmp_path {Path} Pytest-owned disposable filesystem root.
+    @param heal_succeeds {bool} Fake uv rewrites the entry point when true.
+    @return {None} Completes when the observable pipeline outcome is asserted.
+    @throws {AssertionError} When repair, stage gating, or exit status violates the
+        documented pre-release behavior.
+    @satisfies SRS-475, SRS-479, SRS-480
+    """
+    # @brief Arrange repository paths and a deterministic foreign interpreter stub.
+    repository = tmp_path / "repository"
+    scripts = repository / "scripts"
+    scripts.mkdir(parents=True)
+    script = scripts / "pre-release-check.sh"
+    shutil.copyfile(
+        Path(__file__).resolve().parents[1] / "scripts/pre-release-check.sh",
+        script,
+    )
+    for directory in ("src", "tests", ".venv"):
+        (repository / directory).mkdir()
+    venv_bin = repository / ".venv" / "bin"
+    venv_bin.mkdir()
+    venv_python = venv_bin / "python3"
+    venv_python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    venv_python.chmod(0o755)
+    foreign_bin = tmp_path / "foreign-venv" / "bin"
+    foreign_bin.mkdir(parents=True)
+    foreign_python = foreign_bin / "python3"
+    foreign_python.write_text("#!/bin/sh\nexit 9\n", encoding="utf-8")
+    foreign_python.chmod(0o755)
+    pytest_entry_point = venv_bin / "pytest"
+    pytest_entry_point.write_text(
+        f"#!{foreign_python}\nexit 9\n",
+        encoding="utf-8",
+    )
+    pytest_entry_point.chmod(0o755)
+    subprocess.run(
+        ["git", "init", "--quiet", str(repository)], check=True,
+        capture_output=True,
+    )
+    # @brief Fake uv heals the entry point only for --reinstall-package sync calls.
+    binary_dir = tmp_path / "bin"
+    binary_dir.mkdir()
+    uv = binary_dir / "uv"
+    uv.write_text(
+        "#!/bin/sh\n"
+        "# @brief Emulate uv sync, build, run, and entry-point repair flows.\n"
+        "# @details Capture the --project path; rewrite .venv/bin/pytest only when\n"
+        "# --reinstall-package is present and FAKE_HEAL_ENTRY_POINT is enabled.\n"
+        "# @return Exit status of the emulated uv operation.\n"
+        "project=\"\"\n"
+        "heal=0\n"
+        "prev=\"\"\n"
+        "for arg in \"$@\"; do\n"
+        "  [ \"$prev\" = \"--project\" ] && project=\"$arg\"\n"
+        "  [ \"$arg\" = \"--reinstall-package\" ] && heal=1\n"
+        "  prev=\"$arg\"\n"
+        "done\n"
+        'case "$*" in\n'
+        "  sync*)\n"
+        "    if [ \"$heal\" -eq 1 ] && [ \"$FAKE_HEAL_ENTRY_POINT\" = \"1\" ]; then\n"
+        "      printf '#!%s/.venv/bin/python3\\nexit 0\\n' \"$project\""
+        " > \"$project/.venv/bin/pytest\"\n"
+        "      chmod 755 \"$project/.venv/bin/pytest\"\n"
+        "    fi\n"
+        "    exit 0\n"
+        "    ;;\n"
+        '  *" -m build "*)\n'
+        "    mkdir -p \"$project/dist\"\n"
+        "    touch \"$project/dist/package.tar.gz\" \"$project/dist/package.whl\"\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "  run*\" pytest\")\n"
+        "    exec \"$project/.venv/bin/pytest\"\n"
+        "    ;;\n"
+        "esac\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    uv.chmod(0o755)
+    # @brief Isolate subprocess HOME, Git configuration, and executable lookup.
+    environment = dict(os.environ)
+    environment.update({
+        "HOME": str(tmp_path),
+        "BASH_ENV": os.devnull,
+        "ENV": os.devnull,
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "PATH": str(binary_dir) + os.pathsep + os.defpath,
+        "FAKE_HEAL_ENTRY_POINT": "1" if heal_succeeds else "0",
+    })
+
+    # @brief Act through the public shell interface from a foreign directory.
+    result = subprocess.run(
+        ["bash", str(script), "--allow-dirty"], cwd=tmp_path,
+        env=environment, capture_output=True, text=True, check=False,
+    )
+
+    # @brief Assert repair success or dependency-sync gating with English guidance.
+    shebang = pytest_entry_point.read_text(encoding="utf-8").splitlines()[0]
+    if heal_succeeds:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "Pre-release check passed." in result.stdout
+        assert shebang == f"#!{repository}/.venv/bin/python3"
+        assert "stale virtual environment entry point" in result.stderr
+    else:
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert (
+            "Pre-release check failed at stage dependency-sync." in result.stderr
+        )
+        assert "still targets a foreign interpreter" in result.stderr
+        assert "stage unit-tests" not in result.stdout
+        assert shebang == f"#!{foreign_python}"

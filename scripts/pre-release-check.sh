@@ -10,7 +10,9 @@
 # 1. `environment`: verify the `uv` command is executable (SRS-473).
 # 2. `worktree-cleanliness`: abort when `git status --porcelain` reports any entry,
 #    unless `--allow-dirty` was supplied (SRS-474).
-# 3. `dependency-sync`: run `uv sync --frozen` against the canonical SRS-055 lockfile (SRS-475).
+# 3. `dependency-sync`: run `uv sync --frozen` against the canonical SRS-055 lockfile and
+#    repair stale `.venv/bin/pytest` entry points that target foreign interpreters left
+#    behind by a copied or relocated virtual environment (SRS-475, SRS-479).
 # 4. `build`: remove the untracked `dist/` staging directory, build sdist and wheel through
 #    `uv run --frozen --with build python -m build` (mirroring `.github/workflows/release-pypi.yml`)
 #    and verify that at least one `.tar.gz` and one `.whl` artifact exist (SRS-476, SRS-477).
@@ -147,6 +149,74 @@ check_worktree_clean() {
 }
 
 ##
+# @brief Determine whether a virtual-environment console script targets the project interpreter.
+# @details Reads the first line of `script_path`; an absent file is classified as local
+# because the subsequent `uv run` invocation surfaces the absence itself. The script is
+# local exactly when its shebang interpreter path is anchored at `<BASE_DIR>/.venv/bin/`,
+# so shebangs inherited from a copied or relocated virtual environment are classified as
+# foreign regardless of whether the referenced interpreter still exists. Complexity O(1)
+# per invocation; reads one file line and performs no writes.
+# @param[in] $1 Absolute path of the console script to classify.
+# @retval 0 The script is absent or its interpreter is inside the project virtual environment.
+# @retval 1 The script shebang references an interpreter outside the project virtual environment.
+# @satisfies SRS-475, SRS-479
+venv_entry_point_targets_project() {
+  local script_path="$1"
+  [ -f "${script_path}" ] || return 0
+  local shebang_line
+  shebang_line="$(head -n 1 "${script_path}")"
+  case "${shebang_line}" in
+    "#!${BASE_DIR}/.venv/bin/"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+##
+# @brief Detect and repair a stale pytest entry point inside the project virtual environment.
+# @details `uv sync --frozen` reuses packages whose dist-info is already present and never
+# rewrites console-script shebangs inherited from a copied or relocated virtual environment;
+# the SRS-479 `uv run pytest` invocation then executes pytest under a foreign interpreter and
+# the unit-tests stage aborts with a misleading conftest `ModuleNotFoundError`. This guard
+# verifies the `.venv/bin/pytest` shebang after synchronization, repairs it through
+# `uv sync --frozen --reinstall-package pytest`, and fails the stage with actionable English
+# guidance when the entry point still targets a foreign interpreter. Only `pytest` is guarded
+# because every other pipeline stage spawns Python through module-form invocations that bypass
+# console-script shebangs. Complexity O(1) plus one conditional uv subprocess on repair.
+# @return Returns 0 when the pytest entry point targets the project virtual environment,
+#   possibly after one repair reinstall.
+# @retval 1 The entry point still targets a foreign interpreter after the repair attempt.
+# @warning The repair rewrites the uv-managed `.venv` console script; no git-tracked file changes.
+# @satisfies SRS-475, SRS-479, SRS-480
+ensure_venv_pytest_entry_point_local() {
+  local pytest_entry_point="${BASE_DIR}/.venv/bin/pytest"
+  if venv_entry_point_targets_project "${pytest_entry_point}"; then
+    return 0
+  fi
+  echo "WARNING: stale virtual environment entry point '${pytest_entry_point}' targets a foreign interpreter; reinstalling the pytest entry point" >&2
+  uv sync --project "${BASE_DIR}" --frozen --reinstall-package pytest
+  if venv_entry_point_targets_project "${pytest_entry_point}"; then
+    return 0
+  fi
+  echo "ERROR: virtual environment entry point '${pytest_entry_point}' still targets a foreign interpreter; recreate the environment with 'rm -rf .venv && uv sync --frozen'" >&2
+  return "${PRERELEASE_CHECK_ERROR_EXIT_CODE}"
+}
+
+##
+# @brief Stage `dependency-sync`: synchronize the frozen lockfile and guard entry points.
+# @details Runs the canonical SRS-475 `uv sync --frozen` command against the SRS-055
+# lockfile, propagates any synchronization failure status, and then enforces a
+# project-local pytest entry point so the SRS-479 unit-tests stage cannot be hijacked
+# by a stale virtual-environment copy. Stage failure propagates through `run_stage`
+# for either a synchronization failure or an unrepairable entry point.
+# @return Returns 0 when synchronization and entry-point verification both succeed.
+# @retval 1 Synchronization failed or the pytest entry point stays foreign after repair.
+# @satisfies SRS-475, SRS-479, SRS-480
+sync_dependencies() {
+  uv sync --project "${BASE_DIR}" --frozen || return $?
+  ensure_venv_pytest_entry_point_local
+}
+
+##
 # @brief Stage `build`: produce the release sdist and wheel and verify their presence.
 # @details Removes the untracked `dist/` staging directory so artifact detection cannot be
 # satisfied by stale outputs (`dist/` is gitignored and contains no tracked files, so the
@@ -234,7 +304,7 @@ cd "${BASE_DIR}"
 
 run_stage "environment" check_uv_available
 run_stage "worktree-cleanliness" check_worktree_clean
-run_stage "dependency-sync" uv sync --project "${BASE_DIR}" --frozen
+run_stage "dependency-sync" sync_dependencies
 run_stage "build" build_distribution_artifacts
 run_stage "static-analysis" run_static_analysis
 run_stage "unit-tests" run_unit_tests
