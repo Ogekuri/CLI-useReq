@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.71.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.70.0..v0.71.0) - 2026-11-08
+### 🐛  Bug Fixes
+- render skills paths without resolving symlinks [useReq] *(providers)*
+  - format_home_relative_path now normalizes lexically via os.path.abspath
+  - instead of Path.resolve, so a symlinked ~/.config no longer rewrites
+  - the hardcoded provider skills roots.
+  - Restores SRS-385/SRS-463 rendering (~/.config/opencode/skills) and the
+  - SRS-402/SRS-403 home-relative guideline rendering semantics.
+  - Adds failing-then-passing reproducer test for the symlinked-config case.
+- tolerate legacy persisted provider entries in show/install/uninstall [useReq] *(providers)*
+  - Drop persisted "providers" entries that are not valid provider names (e.g.
+  - legacy 'antigravity:skills' SPEC strings from the pre-1.20 grammar) with one
+  - English stderr warning each instead of crashing show/install/uninstall with
+  - 'unknown provider'. Only providers that remain enabled are considered; the
+  - install flow still raises the SRS-035 config-invalid error when no valid
+  - provider remains (SRS-064). CLI --enable/--disable token validation is
+  - unchanged (SRS-278/SRS-422). Adds one reproducer unit test; no config
+  - migration or rewrite.
+
+### 🚜  Changes
+- BREAKING CHANGE: copilot provider, codex path, enabled-only status [useReq] *(providers)*
+  - SRS-364/SRS-493: add copilot provider installing skills to
+  - ~/.copilot/skills.
+  - SRS-383: codex skills root moves from ~/.agents/skills to
+  - ~/.codex/skills.
+  - SRS-417/SRS-489: Installation Status table now lists rows only for
+  - enabled providers.
+  - SRS-463/SRS-492/SRS-494: update root references, status-table and
+  - path-coverage unit tests in tests/test_cli.py; regenerate docs.
+- BREAKING CHANGE: print all providers and unified Installation Status table [useReq] *(cli-show)*
+  - SRS-462/SRS-485/SRS-488: Providers table renders every configurable
+  - provider with CLI, Enabled, and Skills Path columns alphabetically.
+  - SRS-417/SRS-489/SRS-490/SRS-491: single Installation Status table with
+  - Type/Name/CLI/Enabled/Installed rows reporting OK or MISSING per
+  - packaged prompt and provider pair.
+  - Add _provider_skill_installed/_packaged_prompt_names; remove
+  - _provider_skills_installed per-provider status helper.
+  - SRS-487/SRS-492: update and extend tests/test_cli.py show suites;
+  - update SRS in usereq/docs/REQUIREMENTS.md, regenerate docs.
+- BREAKING CHANGE: skills-only providers, --enable PROVIDER, openclaw support [useReq] *(providers)*
+  - Breaking change: remove prompts and agents support entirely; skills are the only artifact.
+  - Replace --enable SPEC grammar with --enable PROVIDER (name only, like --disable)
+  - Add openclaw provider installing skills to ~/.openclaw/workspace/skills
+  - show: Providers table prints Provider + Skills Path columns in alphabetical order
+  - install summary table reduced to Provider + Skills Installed columns (50-char wrap)
+  - Update requirements (SRS-035..291, 353, 365, 417..470, 485..487), tests, README, help
+
 ## [0.70.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.69.0..v0.70.0) - 2026-11-08
 ### ⛰️  Features
 - Update prompts.
@@ -1566,6 +1613,7 @@
 - \[0.68.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.68.0
 - \[0.69.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.69.0
 - \[0.70.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.70.0
+- \[0.71.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.71.0
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1636,3 +1684,4 @@
 [0.68.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.67.0..v0.68.0
 [0.69.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.69.0
 [0.70.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.69.0..v0.70.0
+[0.71.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.70.0..v0.71.0
