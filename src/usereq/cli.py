@@ -2088,11 +2088,18 @@ def _static_check_entry_identity(
 def load_persisted_providers() -> list[str]:
     """!
     @brief Load persisted provider names from the user-global configuration file.
-    @return List of provider names; empty list if key is missing or config is unreadable.
+    @return List of valid provider names; empty list if key is missing, config is
+    unreadable, or no persisted entry is a valid provider name.
     @details Reads the ``"providers"`` key from `~/.config/usereq/config.json` (SRS-064,
-    SRS-279). All providers are disabled by default because the key defaults to an empty
-    list. Returns ``[]`` on any read or parse error rather than raising.
-    @see SRS-279, SRS-064
+    SRS-279). Foreign entries (non-string values or strings that are not valid provider
+    names, e.g. legacy `PROVIDER:ARTIFACT` SPEC strings persisted by the pre-1.20 grammar)
+    are dropped with one English stderr warning each; provider-reading commands
+    (`show`, `install`, `uninstall`) therefore consider only providers that remain
+    enabled, and the install flow raises the SRS-035 config-invalid error exactly when
+    no valid provider remains (SRS-064). The configuration file is never rewritten by
+    this read path. All providers are disabled by default because the key defaults to
+    an empty list. Returns ``[]`` on any read or parse error rather than raising.
+    @see SRS-279, SRS-064, SRS-416, SRS-419
     @satisfies SRS-064, SRS-279
     """
     config_path = get_global_config_path()
@@ -2103,9 +2110,21 @@ def load_persisted_providers() -> list[str]:
     except (json.JSONDecodeError, OSError):
         return []
     providers = payload.get("providers", [])
-    if isinstance(providers, list) and all(isinstance(p, str) for p in providers):
-        return providers
-    return []
+    if not isinstance(providers, list):
+        return []
+    valid_providers: list[str] = []
+    for entry in providers:
+        if not isinstance(entry, str):
+            continue
+        normalized = entry.strip().lower()
+        if normalized in VALID_PROVIDERS:
+            valid_providers.append(normalized)
+        else:
+            print(
+                f"Warning: ignoring invalid persisted provider entry '{entry}'.",
+                file=sys.stderr,
+            )
+    return valid_providers
 
 
 def _read_config_payload() -> dict:

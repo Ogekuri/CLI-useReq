@@ -1781,6 +1781,41 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
         self.assertEqual(rc, 0)
         self.assertIn("not installed", mock_stdout.getvalue())
 
+    def test_show_tolerates_legacy_persisted_provider_entries(self) -> None:
+        """Defect: legacy persisted SPEC entries must not crash provider commands.
+
+        expected_output: exit code 0 with the Providers table listing only the
+        valid provider (`pi`), the legacy `antigravity:skills` entry ignored with
+        an English stderr warning, and uninstall completing with exit code 0
+        (SRS-416, SRS-417, SRS-419, SRS-462, SRS-064).
+        """
+        # Arrange: seed a legacy SPEC entry persisted by the pre-1.20 CLI grammar.
+        config_path = self.HOME / ".config" / "usereq" / "config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        data["providers"] = ["antigravity:skills", "pi"]
+        config_path.write_text(json.dumps(data), encoding="utf-8")
+        # Act: show must complete and render the Providers table.
+        with (
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+            patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
+        ):
+            rc = self.run_cli(["show"])
+        # Assert: no crash; only the valid provider is reported as enabled.
+        self.assertEqual(rc, 0)
+        output = mock_stdout.getvalue()
+        self.assertIn("Skills Path", output)
+        self.assertIn("~/.pi/agent/skills", output)
+        self.assertNotIn("antigravity", output)
+        self.assertIn(
+            "ignoring invalid persisted provider entry 'antigravity:skills'",
+            mock_stderr.getvalue(),
+        )
+        # Act/Assert: uninstall shares the persisted-providers read path (SRS-419).
+        self.run_cli(["install"])
+        rc = self.run_cli(["uninstall"])
+        self.assertEqual(rc, 0)
+        self.assertFalse((self.HOME / ".pi" / "agent" / "skills").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
