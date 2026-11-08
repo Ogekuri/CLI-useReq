@@ -759,6 +759,24 @@ class TestUserLevelPathHelpers(unittest.TestCase):
                 "~/.openclaw/workspace/skills",
             )
 
+    def test_provider_skills_path_keeps_symlinked_config_prefix(self) -> None:
+        """SRS-385/SRS-463: symlinked HOME subpaths keep the hardcoded rendering.
+
+        expected_output: `provider_skills_path("opencode")` renders the hardcoded
+        home-relative skills root `~/.config/opencode/skills` even when
+        `<HOME>/.config` is a symbolic link to a backup directory.
+        """
+        home = Path(tempfile.mkdtemp(prefix="usereq-symlink-home-"))
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        backup_config = home / "My-Backup" / "config"
+        backup_config.mkdir(parents=True)
+        (home / ".config").symlink_to(backup_config, target_is_directory=True)
+        with patch("usereq.cli.home_dir", return_value=home):
+            self.assertEqual(
+                cli.provider_skills_path("opencode"),
+                "~/.config/opencode/skills",
+            )
+
     def test_unknown_provider_raises(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             with self.assertRaises(cli.ReqError):

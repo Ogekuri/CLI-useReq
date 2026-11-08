@@ -171,13 +171,17 @@ def format_home_relative_path(path: Path) -> str:
     """!
     @brief Render an absolute path in ``~/`` home-relative form.
     @details Returns ``~`` for the HOME directory, ``~/<rel>`` with POSIX separators for any
-    path under HOME, and the absolute string for paths outside HOME.
+    path under HOME, and the absolute string for paths outside HOME. Normalization is
+    strictly lexical via ``os.path.abspath``: symbolic links are never resolved, so a
+    symlinked ``~/.config`` still renders as ``~/.config/...`` and the hardcoded provider
+    skills roots of SRS-382..SRS-386, SRS-486, and SRS-493 render verbatim (SRS-385,
+    SRS-463). No filesystem access occurs beyond path composition. Complexity: O(1).
     @param path {Path} Absolute path to render.
     @return {str} Home-relative rendering when the path is under HOME, otherwise absolute.
-    @satisfies SRS-402, SRS-403
+    @satisfies SRS-385, SRS-402, SRS-403, SRS-463
     """
-    resolved_home = home_dir().resolve(strict=False)
-    resolved_path = Path(path).resolve(strict=False)
+    resolved_home = Path(os.path.abspath(home_dir()))
+    resolved_path = Path(os.path.abspath(path))
     if resolved_path == resolved_home:
         return "~"
     try:
