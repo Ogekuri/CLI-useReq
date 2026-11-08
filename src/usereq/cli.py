@@ -115,7 +115,7 @@ GUIDELINES_DIR_RELATIVE_TO_HOME = (
 """! @brief Home-relative, non-configurable installation path of GUIDELINES_DIR (SRS-360)."""
 
 VALID_PROVIDERS = frozenset(
-    {"antigravity", "claude", "codex", "openclaw", "opencode", "pi"}
+    {"antigravity", "claude", "codex", "copilot", "openclaw", "opencode", "pi"}
 )
 """! @brief Valid provider names accepted by ``--enable PROVIDER`` and ``--disable PROVIDER`` (SRS-275, SRS-364)."""
 
@@ -192,20 +192,22 @@ def provider_skills_root(provider: str) -> Path:
     @brief Resolve the user-level skills installation root for one provider.
     @details Maps ``provider`` to its hardcoded user-level skills directory under the
     user HOME (antigravity -> ``~/.gemini/config/skills``, claude -> ``~/.claude/skills``,
-    codex -> ``~/.agents/skills``, openclaw -> ``~/.openclaw/workspace/skills``, opencode
-    -> ``~/.config/opencode/skills``, pi -> ``~/.pi/agent/skills``). Paths are computed
-    lazily from :func:`home_dir` so HOME redirection stays consistent across a single
-    process run. Skills are the only supported artifact type (SRS-381).
-    @param provider {str} Provider selector from ``{antigravity, claude, codex, openclaw, opencode, pi}``.
+    codex -> ``~/.codex/skills``, copilot -> ``~/.copilot/skills``, openclaw ->
+    ``~/.openclaw/workspace/skills``, opencode -> ``~/.config/opencode/skills``, pi ->
+    ``~/.pi/agent/skills``). Paths are computed lazily from :func:`home_dir` so HOME
+    redirection stays consistent across a single process run. Skills are the only
+    supported artifact type (SRS-381).
+    @param provider {str} Provider selector from ``{antigravity, claude, codex, copilot, openclaw, opencode, pi}``.
     @return {Path} Absolute user-level skills target directory for the provider.
     @throws {ReqError} Raised when the provider defines no user-level skills root.
-    @satisfies SRS-381, SRS-382, SRS-383, SRS-384, SRS-385, SRS-386, SRS-486
+    @satisfies SRS-381, SRS-382, SRS-383, SRS-384, SRS-385, SRS-386, SRS-486, SRS-493
     """
     home = home_dir()
     roots: dict[str, Path] = {
         "antigravity": home / ".gemini" / "config" / "skills",
         "claude": home / ".claude" / "skills",
-        "codex": home / ".agents" / "skills",
+        "codex": home / ".codex" / "skills",
+        "copilot": home / ".copilot" / "skills",
         "openclaw": home / ".openclaw" / "workspace" / "skills",
         "opencode": home / ".config" / "opencode" / "skills",
         "pi": home / ".pi" / "agent" / "skills",
@@ -223,10 +225,10 @@ def provider_skills_path(provider: str) -> str:
     """!
     @brief Render the home-relative hardcoded skills root shown in the `show` Providers table.
     @details Joins the effective user HOME with the hardcoded provider skills root from
-    :func:`provider_skills_root` (SRS-382..SRS-386, SRS-486) and renders the result through
+    :func:`provider_skills_root` (SRS-382..SRS-386, SRS-486, SRS-493) and renders the result through
     :func:`format_home_relative_path` as a `~/`-prefixed POSIX path. Complexity: O(1).
     No side effects.
-    @param provider {str} Provider selector from ``{antigravity, claude, codex, openclaw, opencode, pi}``.
+    @param provider {str} Provider selector from ``{antigravity, claude, codex, copilot, openclaw, opencode, pi}``.
     @return {str} Home-relative skills installation root such as
     ``~/.pi/agent/skills``.
     @satisfies SRS-462, SRS-463, SRS-485
@@ -2734,7 +2736,7 @@ def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
 def _provider_skill_installed(provider: str, skill_name: str) -> bool:
     """!
     @brief Detect whether one named skill artifact exists for a provider.
-    @param provider {str} Provider selector from `{antigravity, claude, codex, openclaw, opencode, pi}`.
+    @param provider {str} Provider selector from `{antigravity, claude, codex, copilot, openclaw, opencode, pi}`.
     @param skill_name {str} Skill directory name such as `req-<prompt_name>`.
     @return {bool} True when the skill path exists under the provider skills root.
     @details Per-skill installation-status detection for the `show` `Installation Status`
@@ -2808,8 +2810,8 @@ def run_show(args: Namespace) -> None:
     `CLI`, `Enabled`, and `Skills Path` columns in alphabetical order (SRS-462, SRS-463,
     SRS-485, SRS-488), exactly one `Installation Status` table with `Type`, `Name`,
     `CLI`, `Enabled`, and `Installed` columns reporting one row per packaged prompt and
-    provider pair ordered by prompt name then provider name (SRS-417, SRS-489, SRS-490,
-    SRS-491), and the enabled static-check entries (SRS-416).
+    enabled provider pair ordered by prompt name then provider name (SRS-417, SRS-489,
+    SRS-490, SRS-491), and the enabled static-check entries (SRS-416).
     @throws ReqError If persisted provider names are invalid.
     @satisfies SRS-416, SRS-417, SRS-462, SRS-463, SRS-485, SRS-488, SRS-489, SRS-490, SRS-491
     """
@@ -2853,6 +2855,9 @@ def run_show(args: Namespace) -> None:
     )
 
     prompt_names = _packaged_prompt_names()
+    enabled_providers = sorted(
+        name for name, enabled in provider_configs.items() if enabled
+    )
     status_rows = [
         [
             "Skill",
@@ -2866,7 +2871,7 @@ def run_show(args: Namespace) -> None:
             ),
         ]
         for prompt_name in prompt_names
-        for name in provider_names
+        for name in enabled_providers
     ]
     print()
     print("Installation Status")

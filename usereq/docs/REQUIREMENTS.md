@@ -98,7 +98,7 @@ No explicit performance optimizations identified.
 - **SRS-264**: MUST implement the following behavior: Runtime dependency declarations in `pyproject.toml` `[project].dependencies` MUST be present in the locked package set defined by `uv.lock`; `[project].dependencies` MUST include `ruff` and `pyright`; `[build-system].requires` MAY be outside `uv.lock`.
 - **SRS-064**: MUST load persisted `providers` from `~/.config/usereq/config.json` for the `install` command and the implicit installation flow; if no provider remains enabled, it MUST raise a config-invalid error.
 - **SRS-275**: MUST implement the following behavior: The CLI MUST accept a repeatable `--enable PROVIDER` argument as the sole mechanism for provider enablement, accepting only the provider CLI name exactly like `--disable PROVIDER`.
-- **SRS-364**: MUST implement the following behavior: `PROVIDER` MUST be one of `antigravity`, `claude`, `codex`, `openclaw`, `opencode`, `pi`.
+- **SRS-364**: MUST implement the following behavior: `PROVIDER` MUST be one of `antigravity`, `claude`, `codex`, `copilot`, `openclaw`, `opencode`, `pi`.
 - **SRS-365**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-276**: MUST implement the following behavior: `--enable` MUST only update `~/.config/usereq/config.json` and MUST NOT install provider artifacts.
 - **SRS-278**: MUST implement the following behavior: If an `--enable` or `--disable` token is unknown, invalid, or misplaced, the CLI MUST print an English error message identifying the invalid token and exit with code 1.
@@ -135,9 +135,9 @@ No explicit performance optimizations identified.
 - **SRS-414**: MUST implement the following behavior: `--disable-static-check LANG=MODULE[,CMD[,PARAM...]]` MUST remove entries matching the SRS-301 identity tuple; `--disable-static-check LANG` MUST remove the whole canonical language key.
 - **SRS-415**: MUST implement the following behavior: `--enable-static-check` and `--disable-static-check` MUST only update the `"static-check"` key in `~/.config/usereq/config.json` and MUST NOT require `--prj-base`.
 - **SRS-416**: MUST implement the following behavior: The `show` subcommand MUST print the active configuration in tabular form, including `docs-dir`, `tests-dir`, `src-dir`, `auto-install`, enabled providers, and enabled static-check entries.
-- **SRS-417**: MUST implement the following behavior: The `show` subcommand MUST print exactly one installation-status table titled `Installation Status` covering all configurable providers.
+- **SRS-417**: MUST implement the following behavior: The `show` subcommand MUST print exactly one installation-status table titled `Installation Status` covering every enabled provider.
 - **SRS-462**: MUST implement the following behavior: The `show` Providers table MUST print every configurable provider with the `CLI`, `Enabled`, and `Skills Path` columns.
-- **SRS-463**: MUST implement the following behavior: Each `Skills Path` cell MUST render the home-relative `~/`-prefixed hardcoded provider skills root from SRS-382..SRS-386 and SRS-486.
+- **SRS-463**: MUST implement the following behavior: Each `Skills Path` cell MUST render the home-relative `~/`-prefixed hardcoded provider skills root from SRS-382..SRS-386, SRS-486, and SRS-493.
 - **SRS-464**: MUST implement the following behavior: Provider skill installation MUST write `{skills_root}/req-{prompt_name}/SKILL.md` files for every enabled provider.
 - **SRS-465**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-466**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
@@ -161,14 +161,14 @@ No explicit performance optimizations identified.
 - **SRS-453**: MUST implement the following behavior: When the SRS-451 GitHub query fails, `--upgrade --develop` MUST print an English stderr error, MUST NOT execute `uv`, and MUST exit with code 1.
 - **SRS-485**: MUST implement the following behavior: The `show` subcommand MUST print providers in alphabetical order by provider name in every provider table.
 - **SRS-488**: MUST implement the following behavior: The Providers table `Enabled` cell MUST print `yes` when the provider is enabled and `no` when the provider is disabled.
-- **SRS-489**: MUST implement the following behavior: The installation-status table MUST contain one row for every packaged prompt name and configurable provider pair, ordered by prompt name then provider name.
+- **SRS-489**: MUST implement the following behavior: The installation-status table MUST contain one row for every packaged prompt name and enabled provider pair, ordered by prompt name then provider name.
 - **SRS-490**: MUST implement the following behavior: Each installation-status `Installed` cell MUST print `OK` when `req-<prompt_name>` exists under the provider skills root and `MISSING` otherwise.
 - **SRS-491**: MUST implement the following behavior: Each installation-status row MUST report `Type` `Skill`, the skill name `req-<prompt_name>`, the provider CLI name, and the provider enabled state.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
 - **SRS-382**: MUST install provider `claude` skills to `~/.claude/skills`.
-- **SRS-383**: MUST install provider `codex` skills to `~/.agents/skills`.
+- **SRS-383**: MUST install provider `codex` skills to `~/.codex/skills`.
 - **SRS-384**: MUST install provider `antigravity` skills to `~/.gemini/config/skills`.
 - **SRS-385**: MUST install provider `opencode` skills to `~/.config/opencode/skills`.
 - **SRS-386**: MUST install provider `pi` skills to `~/.pi/agent/skills`.
@@ -194,6 +194,7 @@ No explicit performance optimizations identified.
 - **SRS-469**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-470**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-486**: MUST install provider `openclaw` skills to `~/.openclaw/workspace/skills`.
+- **SRS-493**: MUST install provider `copilot` skills to `~/.copilot/skills`.
 
 ### 3.4 Removal and Cleanup
 - **SRS-390**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
@@ -294,7 +295,8 @@ No explicit performance optimizations identified.
 - **SRS-459**: MUST include unit tests in `tests/test_release_workflow.py` verifying the SRS-455 Node24 runtime, the SRS-456/SRS-457 action-major floors, and the SRS-458 opt-out override prohibition.
 - **SRS-461**: MUST include unit tests in `tests/test_cli.py` verifying that `install` neither accepts `--prj-base` nor performs project-side operations, and that `--git-wt-create` exits with code 1 without `--prj-base` and copies only `--prj-base/.venv`.
 - **SRS-487**: MUST include unit tests in `tests/test_cli.py` verifying that the `show` Providers table renders every configurable provider with `CLI`, `Enabled`, and `Skills Path` columns in alphabetical order.
-- **SRS-492**: MUST include unit tests in `tests/test_cli.py` verifying the single `Installation Status` table with `Type`, `Name`, `CLI`, `Enabled`, and `Installed` columns reporting `OK` and `MISSING` rows.
+- **SRS-492**: MUST include unit tests in `tests/test_cli.py` verifying the single `Installation Status` table with `Type`, `Name`, `CLI`, `Enabled`, and `Installed` columns reporting only enabled providers with `OK` and `MISSING` rows.
+- **SRS-494**: MUST include unit tests in `tests/test_cli.py` verifying that `codex` skills install to `~/.codex/skills` and `copilot` skills install to `~/.copilot/skills`.
 
 ## 5. Static Code Analysis Requirements
 

@@ -16,7 +16,7 @@ SRS-345..351 (release check helpers), SRS-359..363 (install defaults),
 SRS-364..366 (provider grammar), SRS-368 (SKILL.md front matter),
 SRS-371/374 (flowchart artifacts), SRS-381..390 (user-level install,
 global config, model removal), SRS-391 (runtime git resolution),
-SRS-462..SRS-492 (show providers table, installation status, alphabetical
+SRS-462..SRS-494 (show providers table, installation status, alphabetical
 order, skills path).
 """
 
@@ -41,6 +41,8 @@ ALL_PROVIDERS = [
     "--enable",
     "codex",
     "--enable",
+    "copilot",
+    "--enable",
     "openclaw",
     "--enable",
     "opencode",
@@ -52,12 +54,13 @@ ALL_PROVIDERS = [
 EXPECTED_SKILL_ROOTS = {
     "antigravity": (".gemini", "config", "skills"),
     "claude": (".claude", "skills"),
-    "codex": (".agents", "skills"),
+    "codex": (".codex", "skills"),
+    "copilot": (".copilot", "skills"),
     "openclaw": (".openclaw", "workspace", "skills"),
     "opencode": (".config", "opencode", "skills"),
     "pi": (".pi", "agent", "skills"),
 }
-"""Hardcoded user-level skills roots per provider (SRS-382..SRS-386, SRS-486)."""
+"""Hardcoded user-level skills roots per provider (SRS-382..SRS-386, SRS-486, SRS-493)."""
 
 EXPECTED_PROMPTS = sorted(
     path.stem for path in (cli.RESOURCE_ROOT / "prompts").glob("*.md")
@@ -166,7 +169,7 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
     def test_no_project_local_files_are_created(self) -> None:
         """SRS-388: no `.req` directory or provider dirs are created in the project."""
         self.assertFalse((self.TEST_DIR / ".req").exists())
-        for hidden in (".claude", ".codex", ".gemini", ".agents", ".openclaw", ".pi", ".opencode"):
+        for hidden in (".claude", ".codex", ".copilot", ".gemini", ".openclaw", ".pi", ".opencode"):
             self.assertFalse(
                 (self.TEST_DIR / hidden).exists(),
                 f"The project must not contain {hidden}",
@@ -182,7 +185,8 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         """SRS-353/SRS-467..SRS-470: prompts and agents are no longer installed."""
         self.assertFalse((self.HOME / ".claude" / "commands").exists())
         self.assertFalse((self.HOME / ".claude" / "agents").exists())
-        self.assertFalse((self.HOME / ".codex").exists())
+        self.assertFalse((self.HOME / ".codex" / "prompts").exists())
+        self.assertFalse((self.HOME / ".codex" / "agents").exists())
         self.assertFalse((self.HOME / ".gemini" / "config" / "workflows").exists())
         self.assertFalse((self.HOME / ".gemini" / "config" / "agents").exists())
         self.assertFalse((self.HOME / ".pi" / "agent" / "prompts").exists())
@@ -211,7 +215,8 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         skill_roots = {
             "antigravity": self.HOME / ".gemini" / "config" / "skills",
             "claude": self.HOME / ".claude" / "skills",
-            "codex": self.HOME / ".agents" / "skills",
+            "codex": self.HOME / ".codex" / "skills",
+            "copilot": self.HOME / ".copilot" / "skills",
             "opencode": self.HOME / ".config" / "opencode" / "skills",
             "pi": self.HOME / ".pi" / "agent" / "skills",
         }
@@ -288,7 +293,7 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         )
         self.assertTrue(
             (
-                self.HOME / ".agents" / "skills" / "req-flowchart" / "SKILL.md"
+                self.HOME / ".codex" / "skills" / "req-flowchart" / "SKILL.md"
             ).exists()
         )
         self.assertTrue(
@@ -373,11 +378,19 @@ class TestProviderMultiple(HomeIsolatedTestCase):
         self.assertEqual(self.install("codex", "claude", "pi"), 0)
 
     def test_codex_skills_created(self) -> None:
+        """SRS-383: codex skills install under ~/.codex/skills."""
         self.install("codex")
         self.assertTrue(
-            (self.HOME / ".agents" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
+            (self.HOME / ".codex" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
         )
-        self.assertFalse((self.HOME / ".codex").exists())
+        self.assertFalse((self.HOME / ".agents").exists())
+
+    def test_copilot_skills_created(self) -> None:
+        """SRS-493/SRS-494: copilot skills install under ~/.copilot/skills."""
+        self.install("copilot")
+        self.assertTrue(
+            (self.HOME / ".copilot" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
+        )
 
     def test_claude_skills_created(self) -> None:
         self.install("claude")
@@ -438,11 +451,11 @@ class TestProviderPersistence(HomeIsolatedTestCase):
     def test_providers_restored_on_install(self) -> None:
         """SRS-280/SRS-064: install without --enable reuses persisted providers."""
         self.run_cli(self.base_argv + ["--enable", "codex", "install"])
-        shutil.rmtree(self.HOME / ".agents")
+        shutil.rmtree(self.HOME / ".codex")
         rc = self.run_cli(["install"])
         self.assertEqual(rc, 0)
         self.assertTrue(
-            (self.HOME / ".agents" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
+            (self.HOME / ".codex" / "skills" / f"req-{EXPECTED_PROMPTS[0]}").is_dir()
         )
 
     def test_cli_provider_replaces_persisted_on_update(self) -> None:
@@ -604,7 +617,7 @@ class TestUninstallCommand(HomeIsolatedTestCase):
         rc = self.run_cli(["uninstall"])
         self.assertEqual(rc, 0)
         self.assertFalse((self.HOME / ".claude" / "skills" / "req-write").exists())
-        self.assertFalse((self.HOME / ".agents" / "skills" / "req-write").exists())
+        self.assertFalse((self.HOME / ".codex" / "skills" / "req-write").exists())
 
     def test_uninstall_preserves_unrelated_user_content(self) -> None:
         unrelated_skill = self.HOME / ".claude" / "skills" / "user-skill"
@@ -717,7 +730,11 @@ class TestUserLevelPathHelpers(unittest.TestCase):
             )
             self.assertEqual(
                 cli.provider_skills_root("codex"),
-                Path("/tmp/testhome/.agents/skills"),
+                Path("/tmp/testhome/.codex/skills"),
+            )
+            self.assertEqual(
+                cli.provider_skills_root("copilot"),
+                Path("/tmp/testhome/.copilot/skills"),
             )
             self.assertEqual(
                 cli.provider_skills_root("openclaw"),
@@ -735,6 +752,8 @@ class TestUserLevelPathHelpers(unittest.TestCase):
     def test_provider_skills_path_renders_home_relative(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             self.assertEqual(cli.provider_skills_path("pi"), "~/.pi/agent/skills")
+            self.assertEqual(cli.provider_skills_path("codex"), "~/.codex/skills")
+            self.assertEqual(cli.provider_skills_path("copilot"), "~/.copilot/skills")
             self.assertEqual(
                 cli.provider_skills_path("openclaw"),
                 "~/.openclaw/workspace/skills",
@@ -1742,7 +1761,6 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             "Name",
             "Installed",
             "OK",
-            "MISSING",
             "Static Checks",
             "Ruff",
         ):
@@ -1763,7 +1781,8 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
         for skills_path in (
             "~/.gemini/config/skills",
             "~/.claude/skills",
-            "~/.agents/skills",
+            "~/.codex/skills",
+            "~/.copilot/skills",
             "~/.openclaw/workspace/skills",
             "~/.config/opencode/skills",
             "~/.pi/agent/skills",
@@ -1785,6 +1804,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             "antigravity": "no",
             "claude": "no",
             "codex": "yes",
+            "copilot": "no",
             "openclaw": "yes",
             "opencode": "no",
             "pi": "yes",
@@ -1803,7 +1823,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             )
 
     def test_show_installation_status_single_table(self) -> None:
-        """SRS-417/SRS-489/SRS-490/SRS-491/SRS-492: unified Installation Status table."""
+        """SRS-417/SRS-489/SRS-490/SRS-491/SRS-492: enabled-only Installation Status table."""
         self.run_cli(["--enable", "pi"])
         self.run_cli(["install"])
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
@@ -1823,27 +1843,23 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             [cell.strip() for cell in rows[0].split("\u2502")[1:-1]],
             ["Type", "Name", "CLI", "Enabled", "Installed"],
         )
-        expected_pairs = {
-            (prompt, provider)
-            for prompt in EXPECTED_PROMPTS
-            for provider in EXPECTED_SKILL_ROOTS
-        }
+        # Rows cover only the enabled provider `pi` (SRS-489).
+        expected_pairs = {(prompt, "pi") for prompt in EXPECTED_PROMPTS}
         seen_pairs: set[tuple[str, str]] = set()
         row_order: list[tuple[str, str]] = []
         for row in rows[1:]:
             cells = [cell.strip() for cell in row.split("\u2502")[1:-1]]
             self.assertEqual(cells[0], "Skill")
+            self.assertEqual(cells[2], "pi")
+            self.assertEqual(cells[3], "yes")
+            self.assertEqual(cells[4], "OK")
             pair = (cells[1][len("req-"):], cells[2])
             seen_pairs.add(pair)
             row_order.append(pair)
-            if cells[2] == "pi":
-                self.assertEqual(cells[3], "yes")
-                self.assertEqual(cells[4], "OK")
-            else:
-                self.assertEqual(cells[3], "no")
-                self.assertEqual(cells[4], "MISSING")
         self.assertEqual(seen_pairs, expected_pairs)
         self.assertEqual(row_order, sorted(row_order))
+        for provider in sorted(set(EXPECTED_SKILL_ROOTS) - {"pi"}):
+            self.assertNotIn(f"\u2502 {provider} ", status_section)
 
     def test_show_reports_not_installed_skills(self) -> None:
         """SRS-417/SRS-490: skills without artifacts are reported as MISSING."""
