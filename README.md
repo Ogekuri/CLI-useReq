@@ -63,7 +63,7 @@ Get running in three steps: install the tool, configure one provider, and instal
 uv tool install cli-usereq
 
 # or persistent install tracking the git repository
-uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git
+uv tool install cli-usereq --force --refresh --from git+https://github.com/Ogekuri/CLI-useReq.git
 
 # or run instantly without installing (PyPI release)
 uvx --from cli-usereq req --help
@@ -116,7 +116,7 @@ This exposes the CLI as `req` (also callable as `usereq` or `python -m usereq`).
 req --upgrade
 ```
 
-On Linux this executes `uv tool install cli-usereq --force` from the PyPI index; on other platforms the manual command is printed and `uv` is not executed. Use `req --upgrade --develop` (or the equivalent `req --upgrade --dev`) to install the latest tagged GitHub release instead of PyPI. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
+On Linux this executes `uv tool install cli-usereq --force --refresh` from the PyPI index (`--refresh` discards uv's cached index data so the latest published version is resolved); on other platforms the manual command is printed and `uv` is not executed. Use `req --upgrade --develop` (or the equivalent `req --upgrade --dev`) to install the latest tagged GitHub release instead of PyPI. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
 
 ### Install from GitHub (alternative channel)
 
@@ -124,7 +124,7 @@ Intermediate and test releases are published on GitHub at [`Ogekuri/CLI-useReq`]
 
 ```bash
 # persistent install tracking the git repository
-uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git
+uv tool install cli-usereq --force --refresh --from git+https://github.com/Ogekuri/CLI-useReq.git
 
 # or run instantly without installing
 uvx --from git+https://github.com/Ogekuri/CLI-useReq.git req --help
@@ -133,7 +133,7 @@ uvx --from git+https://github.com/Ogekuri/CLI-useReq.git req --help
 req --upgrade --develop
 ```
 
-On Linux `req --upgrade --develop` (or `req --upgrade --dev`) executes `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`, where `<TAG>` is the latest tagged release resolved through the GitHub releases API regardless of the branch holding it; on other platforms the manual command is printed and `uv` is not executed.
+On Linux `req --upgrade --develop` (or `req --upgrade --dev`) executes `uv tool install cli-usereq --force --refresh --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`, where `<TAG>` is the latest tagged release resolved through the GitHub releases API regardless of the branch holding it; on other platforms the manual command is printed and `uv` is not executed.
 
 ### Tool removal
 

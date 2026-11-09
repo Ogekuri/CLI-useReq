@@ -936,8 +936,12 @@ def run_upgrade(use_github: bool = False) -> None:
     @brief Executes the upgrade using uv from the PyPI index or the latest GitHub release tag.
         @param use_github {bool} When True, install the latest tagged GitHub release instead of
         the PyPI index (`--upgrade --develop` or equivalent alias `--dev`, SRS-440, SRS-445).
-    @details Builds `uv tool install cli-usereq --force` against the PyPI index by default
-    (SRS-343). When `use_github` is True, resolves the latest GitHub release tag through
+    @details Builds `uv tool install cli-usereq --force --refresh` against the PyPI index by
+    default (SRS-343); `--refresh` discards uv's cached simple-index data so resolution
+    selects the latest published PyPI version instead of reinstalling the previously
+    resolved one (uv refreshes cached data only when `--upgrade`/`--reinstall`/`--refresh`
+    is passed, not for `--force` alone). When `use_github` is True, resolves the latest
+    GitHub release tag through
     `_resolve_github_upgrade_tag()` (SRS-451) and appends
     `--from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` regardless of the branch
     holding that tag (SRS-440, SRS-452). Executes the command only on Linux; on non-Linux
@@ -957,6 +961,7 @@ def run_upgrade(use_github: bool = False) -> None:
         "install",
         TOOL_PROGRAM_NAME,
         "--force",
+        "--refresh",
     ]
     if use_github:
         resolved_tag = _resolve_github_upgrade_tag()

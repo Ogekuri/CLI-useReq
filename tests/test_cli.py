@@ -1538,7 +1538,10 @@ class TestUpgradeUninstall(unittest.TestCase):
             cli.run_upgrade()
         mock_run.assert_called_once()
         command = mock_run.call_args[0][0]
-        self.assertEqual(command, ["uv", "tool", "install", "cli-usereq", "--force"])
+        self.assertEqual(
+            command,
+            ["uv", "tool", "install", "cli-usereq", "--force", "--refresh"],
+        )
 
     def test_upgrade_with_github_on_linux_executes_uv_install_from_git(self) -> None:
         """SRS-440/SRS-452: GitHub upgrade pins the latest release tag on the git source."""
@@ -1559,6 +1562,7 @@ class TestUpgradeUninstall(unittest.TestCase):
                 "install",
                 "cli-usereq",
                 "--force",
+                "--refresh",
                 "--from",
                 "git+https://github.com/Ogekuri/CLI-useReq.git@v9.9.9",
             ],

@@ -547,9 +547,29 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 "install",
                 cli.TOOL_PROGRAM_NAME,
                 "--force",
+                "--refresh",
             ],
             check=False,
         )
+
+    def test_upgrade_command_refreshes_cached_index_data(self) -> None:
+        """--upgrade must refresh uv cached index data (SRS-343/SRS-440).
+
+        Defect evidence: `uv tool install cli-usereq --force` alone re-resolves from
+        cached simple-index data and reinstalls the previously resolved version
+        (user transcript: reinstalled 0.74.0 while PyPI latest was 0.75.0). The
+        upgrade command MUST pass `--refresh` so resolution reads fresh PyPI data.
+        """
+        # Arrange
+        result_mock = MagicMock(returncode=0)
+
+        # Act
+        with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
+            cli.run_upgrade()
+
+        # Assert
+        command = run_mock.call_args.args[0]
+        self.assertIn("--refresh", command)
 
     def test_fetch_github_latest_version_raw_tag_preserves_v_prefix(self) -> None:
         """raw_tag=True must return tag_name without stripping the v prefix (SRS-451)."""
@@ -591,6 +611,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 "install",
                 cli.TOOL_PROGRAM_NAME,
                 "--force",
+                "--refresh",
                 "--from",
                 "git+https://github.com/Ogekuri/CLI-useReq.git@v9.9.9",
             ],
