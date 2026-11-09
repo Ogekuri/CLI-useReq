@@ -123,7 +123,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
       - Ensure every requirement is atomic, unambiguous, and formatted for maximum testability using RFC 2119 keywords (MUST, MUST NOT, SHOULD, SHOULD NOT, MAY).
       - Output the entire response in clean, properly formatted Markdown.
 2. Present results
-   - PRINT a structured summary (outline + key requirements + assumptions) for a human reader using clear, easily understandable sentences and readable Markdown formatting. Since this workflow is based only on the User Request (no source code), do NOT claim code-level evidence (no file paths/line numbers) unless explicitly provided by the user. Use the fixed report schema: ## **Outcome**, ## **Requirement Delta**, ## **Design Delta**, ## **Implementation Delta**, ## **Verification Delta**, ## **Evidence**, ## **Assumptions**, ## **Next Workflow**. Final line MUST be exactly: STATUS: OK or STATUS: ERROR.
+   - PRINT a structured summary (outline + key requirements + assumptions) for a human reader using clear, easily understandable sentences and readable Markdown formatting. Since this workflow is based only on the User Request (no source code), do NOT claim code-level evidence (no file paths/line numbers) unless explicitly provided by the user. PRINT first a ## **Summary** section containing a synthetic summary (at most 1024 UTF-8 characters) of the entire final output, then the verbose report using the fixed report schema: ## **Outcome**, ## **Requirement Delta**, ## **Design Delta**, ## **Implementation Delta**, ## **Verification Delta**, ## **Evidence**, ## **Assumptions**, ## **Next Workflow**. Final line MUST be exactly: STATUS: OK or STATUS: ERROR.
 
 <h2 id="users-request">User's Request</h2>
 %%ARGS%%

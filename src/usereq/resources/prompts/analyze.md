@@ -125,7 +125,7 @@ Add --enable-line-numbers (code lines prefixed as `<n>:`):
 - `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
 #### TAGs and filters
 - TAG_FILTER: pipe-separated, case-insensitive (e.g., `CLASS|FUNCTION|IMPORT`).
-- Tags are language-dependent; unsupported tags are ignored. Run `req -h` for supported TAGs per language.
+- Tags are language-dependent; the per-language tag catalog is printed on invalid TAG or non-matching filter errors. Run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --help` for the full usage surface.
 - Broad cross-language TAG_FILTER: `CLASS|STRUCT|ENUM|INTERFACE|TRAIT|IMPL|FUNCTION|METHOD|MODULE|NAMESPACE|TYPE_ALIAS|TYPEDEF|IMPORT|CONSTANT|VARIABLE|MACRO|DECORATOR|COMPONENT|PROPERTY|PROTOCOL|EXTENSION|UNION`
 #### Regex rules (NAME_REGEX)
 - Regex matching follows `re.search()` semantics against construct names (tool behavior, independent of repository language).
@@ -185,7 +185,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
    - Generating this request text is a read-only output action; do not apply any fix, patch, or repository modification.
    - Include the generated request text verbatim under `## Next Workflow` in the Step 4 report.
 4. Present the analysis report
-   - PRINT, in the response, the final analysis report for a human reader using clear, easily understandable sentences and readable Markdown formatting that highlight key findings, file paths, and concise evidence. Use the fixed report schema: ## **Outcome**, ## **Requirement Delta**, ## **Design Delta**, ## **Implementation Delta**, ## **Verification Delta**, ## **Evidence**, ## **Assumptions**, ## **Next Workflow**. Final line MUST be exactly: STATUS: OK or STATUS: ERROR.
+   - PRINT, in the response, the final analysis report for a human reader using clear, easily understandable sentences and readable Markdown formatting that highlight key findings, file paths, and concise evidence. PRINT first a ## **Summary** section containing a synthetic summary (at most 1024 UTF-8 characters) of the entire final output, then the verbose report using the fixed report schema: ## **Outcome**, ## **Requirement Delta**, ## **Design Delta**, ## **Implementation Delta**, ## **Verification Delta**, ## **Evidence**, ## **Assumptions**, ## **Next Workflow**. Final line MUST be exactly: STATUS: OK or STATUS: ERROR.
 
 <h2 id="users-request">User's Request</h2>
 %%ARGS%%
