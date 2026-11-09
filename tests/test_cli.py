@@ -17,7 +17,7 @@ SRS-364..366 (provider grammar), SRS-368 (SKILL.md front matter),
 SRS-371/374 (flowchart artifacts), SRS-381..390 (user-level install,
 global config, model removal), SRS-391 (runtime git resolution),
 SRS-462..SRS-494 (show providers table, installation status, alphabetical
-order, skills path).
+order, skills path), SRS-495 (packaged templates directory).
 """
 
 import json
@@ -587,6 +587,41 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         self.assertEqual(rc, 0)
         self.assertFalse((project / "guidelines").exists())
         self.assertFalse((project / "usereq" / "guidelines").exists())
+
+
+class TestPackagedTemplatesDirectory(unittest.TestCase):
+    """SRS-495: packaged document templates resolve under resources/templates."""
+
+    def setUp(self) -> None:
+        self.original_resource_root = cli.RESOURCE_ROOT
+
+    def tearDown(self) -> None:
+        cli.RESOURCE_ROOT = self.original_resource_root
+
+    def test_list_docs_templates_reads_templates_directory(self) -> None:
+        """SRS-495: non-hidden packaged templates are listed from resources/templates."""
+        templates = cli.list_docs_templates()
+        expected_template = (
+            cli.RESOURCE_ROOT / "templates" / cli.REQUIREMENTS_TEMPLATE_NAME
+        )
+        self.assertIn(expected_template, templates)
+        for template in templates:
+            self.assertEqual(template.parent, cli.RESOURCE_ROOT / "templates")
+            self.assertFalse(template.name.startswith("."))
+
+    def test_find_requirements_template_locates_packaged_template(self) -> None:
+        """SRS-495: Requirements_Template.md is resolved from resources/templates."""
+        template = cli.find_requirements_template(cli.list_docs_templates())
+        self.assertEqual(template.name, cli.REQUIREMENTS_TEMPLATE_NAME)
+
+    def test_list_docs_templates_missing_directory_raises_req_error(self) -> None:
+        """SRS-495: absent resources/templates raises ReqError with exit code 9."""
+        empty_root = Path(tempfile.mkdtemp(prefix="usereq-templates-"))
+        self.addCleanup(shutil.rmtree, empty_root, ignore_errors=True)
+        cli.RESOURCE_ROOT = empty_root
+        with self.assertRaises(cli.ReqError) as ctx:
+            cli.list_docs_templates()
+        self.assertEqual(ctx.exception.code, 9)
 
 
 class TestUninstallCommand(HomeIsolatedTestCase):

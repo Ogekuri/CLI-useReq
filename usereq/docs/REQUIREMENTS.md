@@ -58,7 +58,7 @@ useReq is a text-based CLI that initializes and updates repository resources for
 │   ├── doxygen_parser.py
 │   ├── token_counter.py
 │   └── resources/
-│       ├── docs/
+│       ├── templates/
 │       └── prompts/
 └── tests/
     ├── fixtures/
@@ -214,13 +214,14 @@ No explicit performance optimizations identified.
 - **SRS-458**: MUST NOT set `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION` or `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` environment overrides in the workflow.
 
 ### 3.5.1 Package Distribution and Resource Inclusion
-- **SRS-272**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST enumerate only `resources/prompts/*.md`, `resources/docs/*.md`, and `resources/prompts-version.txt`.
+- **SRS-272**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST enumerate only `resources/prompts/*.md`, `resources/templates/*.md`, and `resources/prompts-version.txt`.
 - **SRS-273**: MUST implement the following behavior: The `[tool.setuptools.package-data]` section in `pyproject.toml` MUST NOT list glob patterns that reference non-existent directories under `src/usereq/resources/`.
 - **SRS-274**: MUST implement the following behavior: The built distribution (sdist and wheel) MUST include all files under `src/usereq/resources/` that are required for program operation, ensuring congruent behavior between local development execution, `uv`-installed package execution, and `uvx` live execution.
 - **SRS-435**: MUST implement the following behavior: `pyproject.toml` `[project].name` MUST be `cli-usereq`, matching the registered PyPI trusted-publisher project name for repository `Ogekuri/CLI-useReq` and workflow `release-pypi.yml`.
 - **SRS-436**: MUST implement the following behavior: `pyproject.toml` `[project].authors` MUST declare `Ogekuri` as the author.
 - **SRS-437**: MUST implement the following behavior: `pyproject.toml` `[project.urls]` `Homepage` and `Repository` MUST reference the `https://github.com/Ogekuri/CLI-useReq` repository.
 - **SRS-454**: MUST deploy exactly the console-script entry points `req` and `usereq` declared in `pyproject.toml` `[project.scripts]`, both bound to `usereq.cli:main`.
+- **SRS-495**: MUST resolve the packaged document-template directory as `src/usereq/resources/templates` and MUST raise an English error when it is absent or contains no non-hidden files.
 
 ### 3.6 Source Analysis Core
 - **SRS-131**: MUST implement the following behavior: The `usereq.source_analyzer` module MUST support 20 programming languages: C (`.c`), C++ (`.cpp`), C# (`.cs`), Elixir (`.ex`), Go (`.go`), Haskell (`.hs`), Java (`.java`), JavaScript (`.js`, `.mjs`), Kotlin (`.kt`), Lua (`.lua`), Perl (`.pl`), PHP (`.php`), Python (`.py`), Ruby (`.rb`), Rust (`.rs`), Scala (`.scala`), Shell (`.sh`), Swift (`.swift`), TypeScript (`.ts`), and Zig (`.zig`).

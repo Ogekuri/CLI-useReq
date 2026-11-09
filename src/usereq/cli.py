@@ -2606,37 +2606,39 @@ def yaml_double_quote_escape(value: str) -> str:
 
 def list_docs_templates() -> list[Path]:
     """!
-    @brief Returns non-hidden files available in resources/docs.
-        @return Sorted list of file paths under resources/docs.
-        @throws ReqError If resources/docs does not exist or has no non-hidden files.
+    @brief Returns non-hidden files available in resources/templates.
+        @return Sorted list of file paths under resources/templates.
+        @throws ReqError If resources/templates does not exist or has no non-hidden files.
     @details Implements the list_docs_templates function behavior with deterministic control flow.
+    @satisfies SRS-495
     """
-    candidate = RESOURCE_ROOT / "docs"
+    candidate = RESOURCE_ROOT / "templates"
     if not candidate.is_dir():
-        raise ReqError("Error: no docs templates directory found in resources", 9)
+        raise ReqError("Error: no templates directory found in resources", 9)
     templates = sorted(
         path
         for path in candidate.iterdir()
         if path.is_file() and not path.name.startswith(".")
     )
     if not templates:
-        raise ReqError("Error: no docs templates found in resources/docs", 9)
+        raise ReqError("Error: no templates found in resources/templates", 9)
     return templates
 
 
 def find_requirements_template(docs_templates: list[Path]) -> Path:
     """!
     @brief Returns the packaged Requirements template file.
-        @param docs_templates Runtime docs template file list from resources/docs.
+        @param docs_templates Runtime template file list from resources/templates.
         @return Path to `Requirements_Template.md`.
         @throws ReqError If `Requirements_Template.md` is not present.
     @details Implements the find_requirements_template function behavior with deterministic control flow.
+    @satisfies SRS-495
     """
     for template_path in docs_templates:
         if template_path.name == REQUIREMENTS_TEMPLATE_NAME:
             return template_path
     raise ReqError(
-        f"Error: no {REQUIREMENTS_TEMPLATE_NAME} template found in docs",
+        f"Error: no {REQUIREMENTS_TEMPLATE_NAME} template found in templates",
         9,
     )
 

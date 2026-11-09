@@ -30,7 +30,7 @@ README_PATH = REPO_ROOT / "README.md"
 RESOURCES_DIR = REPO_ROOT / "src" / "usereq" / "resources"
 REQUIRED_OPERATIONAL_RESOURCE_SUBDIRS = {
     "prompts",
-    "docs",
+    "templates",
 }
 
 
