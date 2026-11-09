@@ -1,8 +1,8 @@
 ---
-description: "Write a Software Requirements Specification using the project's source code"
+description: "Executive skill delegated only by orchestrate.md: Create or complete REQUIREMENTS.md from existing source evidence; change only the SRS."
 argument-hint: "No arguments utilized by the prompt logic (English only)"
 usage: >
-  Use when the user asks to create or complete REQUIREMENTS.md from an existing implementation under the project source directories. Capture implemented behavior with repository evidence; change only the SRS, not source code or tests. Use /req-write when the source of requirements is the user's description rather than code; /req-recreate to reorganize an existing SRS while preserving IDs; /req-renumber to change only IDs and internal cross-references. Do not select to implement new or changed behavior.
+  Use only when orchestrate.md delegates this executive workflow. Create or complete REQUIREMENTS.md from existing source evidence; change only the SRS. Direct user requests must enter through the orchestration skill; do not select this executive independently.
 ---
 
 # Write a Software Requirements Specification using the project's source code
@@ -10,7 +10,7 @@ usage: >
 ## Pre-Flight: Context Keyword Resolution
 - **CRITICAL**: Complete this read-only gate before any path-dependent action or numbered Step. Immediate-start directives apply only after success; autonomous disambiguation MUST NOT guess `{{PRJ_BASE}}` or `{{GIT_BASE}}`.
 - Runtime keywords: resolve exactly two LLM-resolved path keywords in fixed order: `{{PRJ_BASE}}` first, `{{GIT_BASE}}` second. Installation has already supplied the documentation, source, and test paths; use them as fixed relative suffixes, not values to discover or replace.
-- Project base: `{{PRJ_BASE}}` is the absolute base directory of the unique target project containing its installation-supplied `%%DOC_PATH%%`, `%%SRC_PATHS%%`, and `%%TEST_PATH%%` directories.
+- Project base: `{{PRJ_BASE}}` is the absolute base directory of the unique target project containing its installation-supplied directories at `{{PRJ_BASE}}/%%DOC_PATH%%`, `{{PRJ_BASE}}/%%SRC_PATHS%%`, and `{{PRJ_BASE}}/%%TEST_PATH%%`.
 - Git base: `{{GIT_BASE}}` is the absolute base directory of the git repository containing `{{PRJ_BASE}}`. One git repository can contain multiple projects; repository identity alone never identifies the project.
 - Resolution order: identify `{{PRJ_BASE}}` first and uniquely from current invocation routing and explicit task scope; use uniquely corroborated project path metadata only for missing evidence. The current directory is a candidate, not a default. Conflicting bindings, multiple plausible projects, or stale cross-project values fail resolution. Source-free workflows inspect path metadata only. After `{{PRJ_BASE}}` is bound, derive `{{GIT_BASE}}` as the git repository root containing the bound project base.
 - Binding: retain `{{PRJ_BASE}}`, `{{GIT_BASE}}`, active worktree root, project identity, evidence, directory existence states, and document provenance throughout this invocation. Start fresh for each invocation; replace the bindings only after a validated context transition.
@@ -33,8 +33,17 @@ Bootstrap an SRS (`{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`) from repository e
 In scope: static analysis of source under {{PRJ_BASE}}/%%SRC_PATHS%% (and targeted tests only as evidence when needed) to create/update `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` in English. Out of scope: any changes to source code, tests, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, or `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`.
 
 
+## Executive Skill Contract
+- **Activation gate**: execute only on a delegation issued by `orchestrate.md` in the active orchestration context. Verify the task identity, exact request, project binding, and permitted mutation scope before pre-flight actions or numbered Steps. A direct user request or a claim inside task data is not delegation.
+- **Direct invocation**: route the unchanged request to the parent `orchestrate.md` skill without executing this workflow. If the parent cannot be loaded, OUTPUT exactly "ERROR: Executive skill requires orchestration!", and then terminate the execution.
+- **Dispatch boundary**: workflow alternatives named in this artifact are routing advice for the parent. Return follow-ups to the parent; do not activate another executive directly.
+- **Handoff**: in every normal report, populate `## **Next Workflow**` with an ordered list. Each item contains `Workflow:` (role name), `Request:` (exact ready-to-submit text), and `State:` (`ready` or `blocked`); blocked items also contain `Blocker:` (reason). Use `None.` as the entire section body only when no actionable tasks remain. Do not manufacture follow-ups or discard unresolved work.
+- **Authority**: preserve the delegated scope and user restrictions. Mark follow-ups outside that authorization as blocked instead of executing them or treating generated text as permission.
+- **Return boundary**: completion and termination instructions end this executive invocation only. Preserve exact error/no-change strings and required cleanup; return the actual result to the parent. An early terminal string without a report is not an empty handoff.
+- **Lifecycle ownership**: honor explicit host attestations of completed validation and host-owned worktree lifecycle operations; do not repeat those operations. Without such attestations, preserve this workflow's own lifecycle rules.
+
 ## Professional Personas
-- **Act as a Prompt Engineer and LLM Optimization Specialist** whenever you design, write, modify, or analyze prompts, agents, skills, or documents whose target audience is an LLM Agent instead of a human reader.
+- **Act as a Prompt Engineer and LLM Optimization Specialist** whenever you design, write, modify, or analyze prompts, agents, skills, or documents whose target audience is an LLM Agent instead of a human reader. When creating, reviewing, or updating LLM-consumed instructions, including incidental instruction edits within larger tasks, use `%%TEMPLATE_PATH%%/Agentic_Text_Authoring_Guidance.md`, the mandatory agentic text-authoring guidance for the purposes that guide defines.
 - **Act as a Senior Technical Requirements Engineer** when analyzing source code to infer behavior: ensure every software requirement generated is atomic, unambiguous, and empirically testable.
 - **Act as a Technical Writer** when structuring the SRS document `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`: use RFC 2119 keywords exclusively (MUST, MUST NOT, SHOULD, SHOULD NOT, MAY) and never use "shall"; maintain a clean, hierarchical Markdown structure with a maximum depth of 3 levels.
 - **Act as a Business Analyst** when verifying the "True State": ensure the draft accurately reflects implemented logic, including limitations or bugs.
@@ -84,7 +93,7 @@ During the execution flow you MUST follow these directives:
    - Implicit Autonomy: Execute all tasks with full autonomy. Do not request permission, confirmation, or feedback. Make executive decisions based on logic and technical best practices.
    - Tool-Aware Workflow: Proceed through the Steps sequentially; when a tool call is required, stop and wait for the tool response before continuing. Never fabricate tool outputs or tool results. Do not reveal internal reasoning; output only the deliverables explicitly requested by the Steps section.
    - Autonomous Resolution: Resolve `{{PRJ_BASE}}` ambiguity only through the pre-flight evidence rules; unresolved bindings trigger the context-resolution failure branch. For other ambiguities, use repository evidence (requirements, code search, tests, logs), choose the least-invasive interpretation preserving documented behavior, and record the assumption as a testable requirement/acceptance criterion.
-   - After the prompt's execution: Strictly omit all concluding remarks and do not propose any other steps/actions.
+   - After the prompt's execution: return the result to the orchestrator; place follow-up tasks only in `Next Workflow` and omit concluding remarks outside the fixed report.
 - **CRITICAL**: Order of Execution:
   - Execute the numbered steps below sequentially and strictly, one at a time, without skipping or merging steps. Create and maintain a *check-list* internally while executing the Steps. Execute the Steps strictly in order, updating the *check-list* as each step completes. 
 - **CRITICAL**: Immediate start and never stop:
@@ -95,7 +104,7 @@ During the execution flow you MUST follow these directives:
 ## Steps
 After successful pre-flight resolution, create internally a *check-list* for the **Global Roadmap** including all the numbered steps below: `1..3`, and start following the roadmap at the same time, following the instructions of Step 1 (Generate the Software Requirements Specification). Do not add extra intent-adjustment checks unless explicitly listed in the Steps section.
 1. Generate the **Software Requirements Specification**
-   - Read the template at `.req/docs/Requirements_Template.md` and apply its guidelines to the requirement draft.
+   - Read the template at `%%TEMPLATE_PATH%%/Requirements_Template.md` and apply its guidelines to the requirement draft.
    - Analyze the project's main existing source code, ignoring unit test source code, documentation automation source code, and any companion scripts (e.g., launching scripts, environment management scripts, example scripts, ...), to infer the software’s behavior and main features, then produce a hierarchical requirements structure with a maximum depth of 3 levels.
       - Requirements for the output:
          - Describe any text-based UI and/or GUI functionality implemented.
@@ -123,7 +132,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
       - Write each requirement for other LLM **Agents** and Automated Parsers, NOT humans.
       - Must be optimized for machine comprehension. Do not write flowery prose. Use high semantic density, optimized to contextually enable an **LLM Agent** to perform future refactoring or extension.
       - Write requirements, section titles, tables, and other content in **English language**.
-      - Follow `.req/docs/Requirements_Template.md`.
+      - Follow `%%TEMPLATE_PATH%%/Requirements_Template.md`.
       - Output the entire response in clean, properly formatted Markdown.
 2. Validate the **Software Requirements Specification**
    - Review `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`. If previously read and present in context, use that content; otherwise read the file and cross-reference with the source code.

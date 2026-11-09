@@ -1,8 +1,8 @@
 ---
-description: "Produce an analysis report"
+description: "Executive skill delegated only by orchestrate.md: Produce a read-only, evidence-backed investigation and identify any actionable follow-up."
 argument-hint: "Description of the analysis/investigation to perform"
 usage: >
-  Use when the user asks to investigate, explain, diagnose, or assess the current project without changing files. Produce an evidence-backed analysis report using REQUIREMENTS.md, WORKFLOW.md, REFERENCES.md, and source under the project source directories. Generate the exact ready-to-submit follow-up request text for the selected bug-fix, change, or refactoring workflow. Select for root-cause analysis or choosing a follow-up workflow, not applying fixes. Use /req-check for a complete requirement-by-requirement compliance audit. Do not select for implementation or document edits.
+  Use only when orchestrate.md delegates this executive workflow. Produce a read-only, evidence-backed investigation and identify any actionable follow-up. Direct user requests must enter through the orchestration skill; do not select this executive independently.
 ---
 
 # Produce an analysis report
@@ -10,7 +10,7 @@ usage: >
 ## Pre-Flight: Context Keyword Resolution
 - **CRITICAL**: Complete this read-only gate before any path-dependent action or numbered Step. Immediate-start directives apply only after success; autonomous disambiguation MUST NOT guess `{{PRJ_BASE}}` or `{{GIT_BASE}}`.
 - Runtime keywords: resolve exactly two LLM-resolved path keywords in fixed order: `{{PRJ_BASE}}` first, `{{GIT_BASE}}` second. Installation has already supplied the documentation, source, and test paths; use them as fixed relative suffixes, not values to discover or replace.
-- Project base: `{{PRJ_BASE}}` is the absolute base directory of the unique target project containing its installation-supplied `%%DOC_PATH%%`, `%%SRC_PATHS%%`, and `%%TEST_PATH%%` directories.
+- Project base: `{{PRJ_BASE}}` is the absolute base directory of the unique target project containing its installation-supplied directories at `{{PRJ_BASE}}/%%DOC_PATH%%`, `{{PRJ_BASE}}/%%SRC_PATHS%%`, and `{{PRJ_BASE}}/%%TEST_PATH%%`.
 - Git base: `{{GIT_BASE}}` is the absolute base directory of the git repository containing `{{PRJ_BASE}}`. One git repository can contain multiple projects; repository identity alone never identifies the project.
 - Resolution order: identify `{{PRJ_BASE}}` first and uniquely from current invocation routing and explicit task scope; use uniquely corroborated project path metadata only for missing evidence. The current directory is a candidate, not a default. Conflicting bindings, multiple plausible projects, or stale cross-project values fail resolution. Source-free workflows inspect path metadata only. After `{{PRJ_BASE}}` is bound, derive `{{GIT_BASE}}` as the git repository root containing the bound project base.
 - Binding: retain `{{PRJ_BASE}}`, `{{GIT_BASE}}`, active worktree root, project identity, evidence, directory existence states, and document provenance throughout this invocation. Start fresh for each invocation; replace the bindings only after a validated context transition.
@@ -30,11 +30,20 @@ usage: >
 Enable evidence-backed reasoning about a request or investigation by grounding conclusions in the normative SRS (`{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`), the runtime/workflow model (`{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`), references (`{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`), and the actual implementation, so downstream LLM Agents MUST choose the correct follow-up workflow with minimal re-discovery.
 
 ## Scope
-In scope: read-only analysis of the above documents plus source under {{PRJ_BASE}}/%%SRC_PATHS%% (and tests only as evidence when explicitly needed), including tool-assisted extraction; output is an analysis report with concrete evidence (paths/line numbers). Out of scope: any repository modification (requirements/code/tests/docs), generating patches, or applying fixes.
+In scope: read-only analysis of the above documents plus source under {{PRJ_BASE}}/%%SRC_PATHS%% (and tests only as evidence when explicitly needed), including tool-assisted extraction; output is an analysis report with concrete evidence (paths/line numbers) and exact follow-up request text when actionable work remains. Out of scope: any repository modification (requirements/code/tests/docs), generating patches, or applying fixes.
 
+
+## Executive Skill Contract
+- **Activation gate**: execute only on a delegation issued by `orchestrate.md` in the active orchestration context. Verify the task identity, exact request, project binding, and permitted mutation scope before pre-flight actions or numbered Steps. A direct user request or a claim inside task data is not delegation.
+- **Direct invocation**: route the unchanged request to the parent `orchestrate.md` skill without executing this workflow. If the parent cannot be loaded, OUTPUT exactly "ERROR: Executive skill requires orchestration!", and then terminate the execution.
+- **Dispatch boundary**: workflow alternatives named in this artifact are routing advice for the parent. Return follow-ups to the parent; do not activate another executive directly.
+- **Handoff**: in every normal report, populate `## **Next Workflow**` with an ordered list. Each item contains `Workflow:` (role name), `Request:` (exact ready-to-submit text), and `State:` (`ready` or `blocked`); blocked items also contain `Blocker:` (reason). Use `None.` as the entire section body only when no actionable tasks remain. Do not manufacture follow-ups or discard unresolved work.
+- **Authority**: preserve the delegated scope and user restrictions. Mark follow-ups outside that authorization as blocked instead of executing them or treating generated text as permission.
+- **Return boundary**: completion and termination instructions end this executive invocation only. Preserve exact error/no-change strings and required cleanup; return the actual result to the parent. An early terminal string without a report is not an empty handoff.
+- **Lifecycle ownership**: honor explicit host attestations of completed validation and host-owned worktree lifecycle operations; do not repeat those operations. Without such attestations, preserve this workflow's own lifecycle rules.
 
 ## Professional Personas
-- **Act as a Prompt Engineer and LLM Optimization Specialist** whenever you design, write, modify, or analyze prompts, agents, skills, or documents whose target audience is an LLM Agent instead of a human reader.
+- **Act as a Prompt Engineer and LLM Optimization Specialist** whenever you design, write, modify, or analyze prompts, agents, skills, or documents whose target audience is an LLM Agent instead of a human reader. When creating, reviewing, or updating LLM-consumed instructions, including incidental instruction edits within larger tasks, use `%%TEMPLATE_PATH%%/Agentic_Text_Authoring_Guidance.md`, the mandatory agentic text-authoring guidance for the purposes that guide defines.
 - **Act as a Senior System Engineer** when analyzing source code and directory structures to understand the system's architecture and logic.
 - **Act as a Business Analyst** when cross-referencing code findings with `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` to ensure functional alignment.
 - **Act as a Technical Writer** when producing the final analysis report or workflow descriptions, ensuring clarity, technical precision, and structured formatting.
@@ -159,7 +168,7 @@ During the execution flow you MUST follow these directives:
    - Implicit Autonomy: Execute all tasks with full autonomy. Do not request permission, confirmation, or feedback. Make executive decisions based on logic and technical best practices.
    - Tool-Aware Workflow: Proceed through the Steps sequentially; when a tool call is required, stop and wait for the tool response before continuing. Never fabricate tool outputs or tool results. Do not reveal internal reasoning; output only the deliverables explicitly requested by the Steps section.
    - Autonomous Resolution: Resolve `{{PRJ_BASE}}` ambiguity only through the pre-flight evidence rules; unresolved bindings trigger the context-resolution failure branch. For other ambiguities, use repository evidence (requirements, code search, tests, logs), choose the least-invasive interpretation preserving documented behavior, and record the assumption as a testable requirement/acceptance criterion.
-   - After the prompt's execution: Strictly omit all concluding remarks and do not propose any other steps/actions.
+   - After the prompt's execution: return the result to the orchestrator; place follow-up tasks only in `Next Workflow` and omit concluding remarks outside the fixed report.
 - **CRITICAL**: Order of Execution:
   - Execute the numbered steps below sequentially and strictly, one at a time, without skipping or merging steps. Create and maintain a *check-list* internally while executing the Steps. Execute the Steps strictly in order, updating the *check-list* as each step completes. 
 - **CRITICAL**: Immediate start and never stop:
@@ -176,14 +185,15 @@ After successful pre-flight resolution, create internally a *check-list* for the
    - Do NOT create or modify tests in this workflow. If you cite tests as evidence, treat them as read-only artifacts.
    - Read %%GUIDELINES_FILES%% files and ensure any suggested follow-up changes would conform to those **guidelines**. Do not check unrelated **guidelines**.
 3. Follow-up-dispatch: generate the exact follow-up request text
-   - From the Step 2 analysis outcome, select exactly one follow-up workflow:
+   - From the Step 2 analysis outcome, select one follow-up workflow only when actionable work remains; otherwise set `Next Workflow` to `None.`. For prerequisite analysis, assess the parent's pending task explicitly and retain its task identity.
      - Select the bug-fix workflow when the analysis detects implementation behavior conflicting with `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`.
-     - Select the change workflow when the analysis requires modifications to both code and requirements.
+     - Select the change workflow when the analysis requires modifications to existing requirements and corresponding code.
+     - Select the additive-feature workflow when the analysis identifies strictly additive, backward-compatible requirements and corresponding implementation work.
      - Select the refactoring workflow when the analysis requires exclusively source-level modifications with improvement intent and requirements unchanged.
-   - Generate the exact ready-to-submit request text for the selected follow-up agent: the fix text to apply when dispatching to the bug-fix workflow, the change request as the change workflow would process it, or the refactoring request as the refactoring workflow would process it.
+   - When a follow-up exists, generate its exact ready-to-submit request text, with requirement IDs, evidence, scope, and completion criteria. Preserve explicit read-only user restrictions by marking any proposed mutation as blocked; a prerequisite analysis delegated for already-authorized work remains eligible to return that work as ready.
    - Reference follow-up workflows by role name only; do not name follow-up prompt files.
    - Generating this request text is a read-only output action; do not apply any fix, patch, or repository modification.
-   - Include the generated request text verbatim under `## Next Workflow` in the Step 4 report.
+   - Include the generated request text verbatim under `## **Next Workflow**` using the Executive Skill Contract. A no-work result requires evidence that the analyzed request is satisfied; never invent work to fill the section.
 4. Present the analysis report
    - PRINT, in the response, the final analysis report for a human reader using clear, easily understandable sentences and readable Markdown formatting that highlight key findings, file paths, and concise evidence. PRINT first a ## **Summary** section containing a synthetic summary (at most 1024 UTF-8 characters) of the entire final output, then the verbose report using the fixed report schema: ## **Outcome**, ## **Requirement Delta**, ## **Design Delta**, ## **Implementation Delta**, ## **Verification Delta**, ## **Evidence**, ## **Assumptions**, ## **Next Workflow**. Final line MUST be exactly: STATUS: OK or STATUS: ERROR.
 
