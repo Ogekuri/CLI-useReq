@@ -31,8 +31,8 @@ from typing import Any, Mapping, Optional
 REPO_ROOT = Path(__file__).resolve().parents[2]
 """! @brief The absolute path to the repository root."""
 
-RESOURCE_ROOT = Path(__file__).resolve().parent / "resources"
-"""! @brief The absolute path to the resources directory."""
+RESOURCE_ROOT = Path(os.path.abspath(__file__)).parent / "resources"
+"""! @brief The absolute lexical path of the packaged resources directory; never resolves symbolic links (SRS-505)."""
 
 VERBOSE = False
 """! @brief Whether verbose output is enabled."""
@@ -149,9 +149,10 @@ def guidelines_dir() -> Path:
     @brief Resolve the packaged guidelines directory of the running installation.
     @details Composes the packaged resources root of the running installation with the
     non-configurable ``guidelines`` suffix so installed skills reference the resources
-    shipped with this installation instead of any external copy (SRS-360, SRS-497).
+    shipped with this installation instead of any external copy (SRS-360, SRS-497);
+    composition is lexical and never resolves symbolic links (SRS-505).
     @return {Path} Absolute path of the packaged guidelines directory.
-    @satisfies SRS-360, SRS-497
+    @satisfies SRS-360, SRS-497, SRS-505
     """
     return RESOURCE_ROOT / "guidelines"
 
@@ -161,9 +162,10 @@ def templates_dir() -> Path:
     @brief Resolve the packaged document-template directory of the running installation.
     @details Composes the packaged resources root of the running installation with the
     non-configurable ``templates`` suffix feeding the ``%%TEMPLATE_PATH%%`` substitution
-    so installed skills reference the templates shipped with this installation (SRS-498).
+    so installed skills reference the templates shipped with this installation (SRS-498);
+    composition is lexical and never resolves symbolic links (SRS-505).
     @return {Path} Absolute path of the packaged templates directory.
-    @satisfies SRS-495, SRS-498
+    @satisfies SRS-495, SRS-498, SRS-505
     """
     return RESOURCE_ROOT / "templates"
 
@@ -2410,24 +2412,45 @@ def run_config_commands(args: Namespace) -> None:
         apply_auto_install_config(False)
 
 
+def _non_symlink_regular_files(directory: Path) -> list[Path]:
+    """!
+    @brief List non-hidden regular files in one directory without following symbolic links.
+    @details Scans ``directory`` with ``os.scandir`` and ``follow_symlinks=False`` so
+    symbolic-link entries are never followed or resolved: symlinked files, symlinked
+    subdirectories, and broken links are excluded, and only entries whose own inode is
+    a regular file are kept (SRS-504). Hidden names starting with ``.`` are excluded.
+    When ``directory`` is itself a symbolic link or is absent, returns an empty list so
+    callers apply their absent-directory fallback instead of reading through the link.
+    @param directory {Path} Absolute directory to enumerate.
+    @return {list[Path]} Sorted paths of non-symlink regular files.
+    @satisfies SRS-504
+    """
+    if directory.is_symlink() or not directory.is_dir():
+        return []
+    entries = [
+        Path(entry.path)
+        for entry in os.scandir(directory)
+        if entry.is_file(follow_symlinks=False)
+        and not entry.name.startswith(".")
+    ]
+    return sorted(entries)
+
+
 def generate_guidelines_file_list() -> str:
     """!
     @brief Build the `%%GUIDELINES_FILES%%` substitution payload from GUIDELINES_DIR.
-    @details Enumerates non-hidden regular files in :func:`guidelines_dir` (packaged
-    `resources/guidelines` of the running installation, SRS-360) in deterministic sorted
-    order and renders each as a backticked home-relative path (SRS-402). When the directory
-    is absent or empty, renders the home-relative directory itself with a trailing slash.
+    @details Enumerates non-hidden non-symlink regular files in :func:`guidelines_dir`
+    (packaged `resources/guidelines` of the running installation, SRS-360) in deterministic
+    sorted order without following symbolic links (SRS-504) and renders each as a backticked
+    home-relative path (SRS-402). When the directory is absent, symlinked, or empty, renders
+    the home-relative directory itself with a trailing slash.
     @return {str} Comma-separated backticked home-relative paths, or the directory fallback.
-    @satisfies SRS-403
+    @satisfies SRS-403, SRS-504
     """
     source_dir = guidelines_dir()
-    if not source_dir.is_dir():
-        return f"`{format_home_relative_path(source_dir)}/`"
-
     files = [
         f"`{format_home_relative_path(file_path)}`"
-        for file_path in sorted(source_dir.iterdir())
-        if file_path.is_file() and not file_path.name.startswith(".")
+        for file_path in _non_symlink_regular_files(source_dir)
     ]
     if not files:
         return f"`{format_home_relative_path(source_dir)}/`"
@@ -2437,21 +2460,17 @@ def generate_guidelines_file_list() -> str:
 def generate_guidelines_file_items() -> list[str]:
     """!
     @brief List the home-relative guideline entries reported after installation.
-    @details Returns one home-relative path per non-hidden regular file in
-    :func:`guidelines_dir` (packaged `resources/guidelines` of the running installation);
-    when the directory is absent or empty, returns the home-relative directory itself with
-    a trailing slash.
+    @details Returns one home-relative path per non-hidden non-symlink regular file in
+    :func:`guidelines_dir` (packaged `resources/guidelines` of the running installation)
+    without following symbolic links (SRS-504); when the directory is absent, symlinked,
+    or empty, returns the home-relative directory itself with a trailing slash.
     @return {list[str]} Ordered home-relative guideline paths.
-    @satisfies SRS-360, SRS-403
+    @satisfies SRS-360, SRS-403, SRS-504
     """
     source_dir = guidelines_dir()
-    if not source_dir.is_dir():
-        return [f"{format_home_relative_path(source_dir)}/"]
-
     items = [
         format_home_relative_path(file_path)
-        for file_path in sorted(source_dir.iterdir())
-        if file_path.is_file() and not file_path.name.startswith(".")
+        for file_path in _non_symlink_regular_files(source_dir)
     ]
     if not items:
         return [f"{format_home_relative_path(source_dir)}/"]
@@ -3051,14 +3070,15 @@ def run(args: Namespace) -> None:
     roots (SRS-381..SRS-386, SRS-464, SRS-486) with home-relative packaged-resource token
     substitution for `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, `%%TEMPLATE_PATH%%`,
     `%%DOC_PATH%%`, `%%SRC_PATHS%%`, and `%%TEST_PATH%%` (SRS-360, SRS-402, SRS-403,
-    SRS-498, SRS-500, SRS-501, SRS-502), and never rewrites the user-global configuration
-    file (SRS-448). Install does not consume `--prj-base` (SRS-447); project scaffolding,
-    containment validation, and directory persistence are removed legacy behaviors
-    (SRS-363, SRS-407, SRS-449).
+    SRS-498, SRS-500, SRS-501, SRS-502), never following or resolving symbolic links in
+    substitution sources (SRS-504, SRS-505, SRS-506), and never rewrites the user-global
+    configuration file (SRS-448). Install does not consume `--prj-base` (SRS-447); project
+    scaffolding, containment validation, and directory persistence are removed legacy
+    behaviors (SRS-363, SRS-407, SRS-449).
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @throws ReqError If no provider is enabled.
-    @satisfies SRS-035, SRS-064, SRS-279, SRS-359, SRS-360, SRS-361, SRS-362, SRS-381, SRS-387, SRS-388, SRS-402, SRS-403, SRS-418, SRS-447, SRS-448, SRS-498, SRS-500, SRS-501, SRS-502
+    @satisfies SRS-035, SRS-064, SRS-279, SRS-359, SRS-360, SRS-361, SRS-362, SRS-381, SRS-387, SRS-388, SRS-402, SRS-403, SRS-418, SRS-447, SRS-448, SRS-498, SRS-500, SRS-501, SRS-502, SRS-504, SRS-505, SRS-506
     """
     global VERBOSE, DEBUG
     VERBOSE = getattr(args, "verbose", False)

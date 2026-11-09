@@ -587,6 +587,47 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         self.assertEqual(cli.templates_dir(), self.templates)
         self.assertEqual(cli.templates_dir(), self.resource_root / "templates")
 
+    def test_guidelines_enumeration_excludes_symlinks(self) -> None:
+        """SRS-504/SRS-507: %%GUIDELINES_FILES%% never follows symbolic links."""
+        # Arrange
+        self.guidelines.mkdir(parents=True, exist_ok=True)
+        (self.guidelines / "RFC2119.md").write_text("rfc\n", encoding="utf-8")
+        (self.guidelines / "Linked.md").symlink_to(self.guidelines / "RFC2119.md")
+        (self.guidelines / "LinkedDir").symlink_to(self.resource_root)
+        # Act
+        file_list = cli.generate_guidelines_file_list()
+        items = cli.generate_guidelines_file_items()
+        # Assert
+        self.assertEqual(file_list, "`~/resources/guidelines/RFC2119.md`")
+        self.assertEqual(items, ["~/resources/guidelines/RFC2119.md"])
+
+    def test_symlinked_guidelines_directory_falls_back_to_directory(self) -> None:
+        """SRS-504/SRS-507: a symlinked guidelines directory is not followed."""
+        # Arrange
+        real_dir = self.HOME / "real-guidelines"
+        real_dir.mkdir(parents=True)
+        (real_dir / "RFC2119.md").write_text("rfc\n", encoding="utf-8")
+        self.guidelines.symlink_to(real_dir)
+        # Act
+        file_list = cli.generate_guidelines_file_list()
+        # Assert
+        self.assertEqual(file_list, "`~/resources/guidelines/`")
+
+    def test_packaged_paths_render_lexically_without_symlink_resolution(self) -> None:
+        """SRS-505/SRS-507: packaged directory tokens never resolve symbolic links."""
+        # Arrange
+        shutil.rmtree(self.resource_root)
+        real_root = self.HOME / "real-resources"
+        (real_root / "guidelines").mkdir(parents=True)
+        (real_root / "templates").mkdir(parents=True)
+        self.resource_root.symlink_to(real_root)
+        # Act
+        rendered_guidelines = cli.format_home_relative_path(cli.guidelines_dir())
+        rendered_templates = cli.format_home_relative_path(cli.templates_dir())
+        # Assert
+        self.assertEqual(rendered_guidelines, "~/resources/guidelines")
+        self.assertEqual(rendered_templates, "~/resources/templates")
+
     def test_install_does_not_copy_guidelines_into_project(self) -> None:
         """SRS-404: installation never writes guideline files into the project."""
         project = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
@@ -619,6 +660,20 @@ class TestDirectoryTokenSubstitution(HomeIsolatedTestCase):
         self.assertNotIn("%%TEST_PATH%%", content)
         self.assertIn("usereq/docs/REQUIREMENTS.md", content)
         self.assertIn("`src/`", content)
+
+    def test_directory_tokens_render_configured_lexical_values(self) -> None:
+        """SRS-506/SRS-507: configured directory values render without resolution."""
+        # Arrange
+        (self.HOME / "real-docs").mkdir()
+        (self.HOME / "docs").symlink_to(self.HOME / "real-docs")
+        cli.update_directory_config("docs", "tests", ["src"])
+        # Act
+        self.run_cli(["--enable", "claude", "install"])
+        skill = self.HOME / ".claude" / "skills" / "req-analyze" / "SKILL.md"
+        content = skill.read_text(encoding="utf-8")
+        # Assert
+        self.assertIn("docs/REQUIREMENTS.md", content)
+        self.assertNotIn("real-docs", content)
 
 
 class TestPackagedTemplatesDirectory(unittest.TestCase):

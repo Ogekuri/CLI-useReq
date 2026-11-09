@@ -182,6 +182,8 @@ No explicit performance optimizations identified.
 - **SRS-500**: MUST render the `%%DOC_PATH%%` substitution as the configured `docs-dir` value from `~/.config/usereq/config.json`, defaulting per SRS-359.
 - **SRS-501**: MUST render the `%%SRC_PATHS%%` substitution as comma-separated backticked `src-dir` entries from `~/.config/usereq/config.json`, each ending with `/`.
 - **SRS-502**: MUST render the `%%TEST_PATH%%` substitution as the backticked `tests-dir` value from `~/.config/usereq/config.json`, ending with `/`.
+- **SRS-504**: MUST enumerate the `%%GUIDELINES_FILES%%` substitution without following symbolic links, excluding symbolic-link directory entries.
+- **SRS-505**: MUST render the `%%GUIDELINES_PATH%%` and `%%TEMPLATE_PATH%%` substitutions as lexical packaged directory paths without resolving symbolic links.
 - **SRS-404**: MUST NOT copy, create, update, or delete guideline files in project or user directories.
 - **SRS-371**: MUST implement the following behavior: When `src/usereq/resources/prompts/flowchart.md` exists, provider resource generation MUST emit `req-flowchart` skill artifacts for every enabled provider.
 
@@ -307,6 +309,8 @@ No explicit performance optimizations identified.
 - **SRS-494**: MUST include unit tests in `tests/test_cli.py` verifying that `codex` skills install to `~/.codex/skills` and `copilot` skills install to `~/.copilot/skills`.
 - **SRS-499**: MUST include unit tests in `tests/test_cli.py` verifying installed skills contain no residual `%%TEMPLATE_PATH%%` token and rendered template and guideline paths target the packaged resources of the running installation.
 - **SRS-503**: MUST include unit tests in `tests/test_cli.py` verifying installed skills contain no residual `%%DOC_PATH%%`, `%%SRC_PATHS%%`, or `%%TEST_PATH%%` token and render configured directory values.
+- **SRS-506**: MUST render the `%%DOC_PATH%%`, `%%SRC_PATHS%%`, and `%%TEST_PATH%%` substitutions from configured values without filesystem resolution.
+- **SRS-507**: MUST include unit tests in `tests/test_cli.py` verifying substitution sources exclude or do not resolve symbolic links.
 
 ## 5. Static Code Analysis Requirements
 
