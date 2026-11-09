@@ -27,7 +27,7 @@ useReq is a text-based CLI that initializes and updates repository resources for
 - This document MUST NOT introduce requirements about source-code comment authoring style beyond already preserved requirements.
 
 ### 1.2 Project Scope
-- Primary interface: CLI (`req`, `usereq`).
+- Primary interface: CLI (`req`, `usereq`, `cli-usereq`).
 - Functional domains: user-level CLI resource generation, global configuration persistence, source analysis, token counting, compression, construct extraction, Doxygen field extraction, and git worktree management.
 - Out-of-scope for this SRS rewrite: source-code modification.
 
@@ -221,7 +221,7 @@ No explicit performance optimizations identified.
 - **SRS-435**: MUST implement the following behavior: `pyproject.toml` `[project].name` MUST be `cli-usereq`, matching the registered PyPI trusted-publisher project name for repository `Ogekuri/CLI-useReq` and workflow `release-pypi.yml`.
 - **SRS-436**: MUST implement the following behavior: `pyproject.toml` `[project].authors` MUST declare `Ogekuri` as the author.
 - **SRS-437**: MUST implement the following behavior: `pyproject.toml` `[project.urls]` `Homepage` and `Repository` MUST reference the `https://github.com/Ogekuri/CLI-useReq` repository.
-- **SRS-454**: MUST deploy exactly the console-script entry points `req` and `usereq` declared in `pyproject.toml` `[project.scripts]`, both bound to `usereq.cli:main`.
+- **SRS-454**: MUST deploy exactly the console-script entry points `req`, `usereq`, and `cli-usereq` declared in `pyproject.toml` `[project.scripts]`, all bound to `usereq.cli:main`.
 - **SRS-495**: MUST resolve the packaged document-template directory as `src/usereq/resources/templates` and MUST raise an English error when it is absent or contains no non-hidden files.
 - **SRS-497**: MUST bundle the guideline documents as package data under `src/usereq/resources/guidelines`, and the directory MUST contain at least one non-hidden guideline file.
 

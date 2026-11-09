@@ -36,6 +36,7 @@ Repository = "https://github.com/Ogekuri/CLI-useReq"
 [project.scripts]
 req = "usereq.cli:main"
 usereq = "usereq.cli:main"
+cli-usereq = "usereq.cli:main"
 
 [tool.setuptools]
 packages = ["usereq"]
