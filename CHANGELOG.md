@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.72.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.71.0..v0.72.0) - 2026-11-09
+### ⛰️  Features
+- Update prompt files.
+
+### 🚜  Changes
+- sync upstream templates into bundled templates [useReq] *(prompts-update)*
+  - Root cause: prompts-update.sh synchronized only upstream src/prompts, so the new CLI-Prompts template Agentic_Text_Authoring_Guidance.md was never downloaded.
+  - Add TEMPLATES_SOURCE_REL/TEMPLATES_TARGET_REL full-synchronization stage for src/templates into src/usereq/resources/templates (new SRS-496).
+  - Extend SRS-380 write-scope to src/usereq/resources/templates.
+  - Bundled templates realigned with CLI-Prompts v0.36.0: Agentic_Text_Authoring_Guidance.md added; Document_Source_Code_in_Doxygen_Style.md and Requirements_Template.md refreshed.
+  - Functional proof: prompts re-sync idempotent (16 files, zero diff), templates synced (4 files), release marker stays v0.36.0; full pytest suite 1972 passed.
+- rename bundled docs resources to templates [useReq] *(resources)*
+  - Rename src/usereq/resources/docs to src/usereq/resources/templates mirroring the upstream CLI-Prompts/pi-usereq layout.
+  - Update SRS-272 package-data glob to resources/templates/*.md; add SRS-495 requiring packaged template resolution with English errors.
+  - cli.py list_docs_templates/find_requirements_template now resolve resources/templates with updated diagnostics.
+  - Add TestPackagedTemplatesDirectory regression tests for SRS-495; align package-data coverage test with SRS-272.
+  - GUIDELINES_DIR stays on pi-usereq src/resources/guidelines, distinct from the renamed templates directory.
+
 ## [0.71.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.70.0..v0.71.0) - 2026-11-08
 ### 🐛  Bug Fixes
 - render skills paths without resolving symlinks [useReq] *(providers)*
@@ -1614,6 +1632,7 @@
 - \[0.69.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.69.0
 - \[0.70.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.70.0
 - \[0.71.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.71.0
+- \[0.72.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.72.0
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1685,3 +1704,4 @@
 [0.69.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.68.0..v0.69.0
 [0.70.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.69.0..v0.70.0
 [0.71.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.70.0..v0.71.0
+[0.72.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.71.0..v0.72.0
