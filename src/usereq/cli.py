@@ -102,18 +102,6 @@ DEFAULT_STATIC_CHECK: dict = {
 defaults (SRS-424, SRS-425, SRS-426). The `pyright` and `ruff` checkers from the external
 configuration trace map to the native `Pylance` and `Ruff` modules (SRS-338, SRS-339)."""
 
-GUIDELINES_DIR_RELATIVE_TO_HOME = (
-    Path(".pi")
-    / "agent"
-    / "npm"
-    / "node_modules"
-    / "pi-usereq"
-    / "src"
-    / "resources"
-    / "guidelines"
-)
-"""! @brief Home-relative, non-configurable installation path of GUIDELINES_DIR (SRS-360)."""
-
 VALID_PROVIDERS = frozenset(
     {"antigravity", "claude", "codex", "copilot", "openclaw", "opencode", "pi"}
 )
@@ -158,13 +146,26 @@ def get_global_config_path() -> Path:
 
 def guidelines_dir() -> Path:
     """!
-    @brief Resolve the fixed installation-owned guidelines directory.
-    @details Composes the effective user HOME returned by :func:`home_dir` with the
-    non-configurable :data:`GUIDELINES_DIR_RELATIVE_TO_HOME` suffix.
-    @return {Path} Absolute path of the installed guidelines directory.
-    @satisfies SRS-360
+    @brief Resolve the packaged guidelines directory of the running installation.
+    @details Composes the packaged resources root of the running installation with the
+    non-configurable ``guidelines`` suffix so installed skills reference the resources
+    shipped with this installation instead of any external copy (SRS-360, SRS-497).
+    @return {Path} Absolute path of the packaged guidelines directory.
+    @satisfies SRS-360, SRS-497
     """
-    return home_dir() / GUIDELINES_DIR_RELATIVE_TO_HOME
+    return RESOURCE_ROOT / "guidelines"
+
+
+def templates_dir() -> Path:
+    """!
+    @brief Resolve the packaged document-template directory of the running installation.
+    @details Composes the packaged resources root of the running installation with the
+    non-configurable ``templates`` suffix feeding the ``%%TEMPLATE_PATH%%`` substitution
+    so installed skills reference the templates shipped with this installation (SRS-498).
+    @return {Path} Absolute path of the packaged templates directory.
+    @satisfies SRS-495, SRS-498
+    """
+    return RESOURCE_ROOT / "templates"
 
 
 def format_home_relative_path(path: Path) -> str:
@@ -2407,10 +2408,10 @@ def run_config_commands(args: Namespace) -> None:
 def generate_guidelines_file_list() -> str:
     """!
     @brief Build the `%%GUIDELINES_FILES%%` substitution payload from GUIDELINES_DIR.
-    @details Enumerates non-hidden regular files in :func:`guidelines_dir` in deterministic
-    sorted order and renders each as a backticked home-relative path (SRS-402). When the
-    directory is absent or empty, renders the home-relative directory itself with a trailing
-    slash.
+    @details Enumerates non-hidden regular files in :func:`guidelines_dir` (packaged
+    `resources/guidelines` of the running installation, SRS-360) in deterministic sorted
+    order and renders each as a backticked home-relative path (SRS-402). When the directory
+    is absent or empty, renders the home-relative directory itself with a trailing slash.
     @return {str} Comma-separated backticked home-relative paths, or the directory fallback.
     @satisfies SRS-403
     """
@@ -2432,8 +2433,9 @@ def generate_guidelines_file_items() -> list[str]:
     """!
     @brief List the home-relative guideline entries reported after installation.
     @details Returns one home-relative path per non-hidden regular file in
-    :func:`guidelines_dir`; when the directory is absent or empty, returns the home-relative
-    directory itself with a trailing slash.
+    :func:`guidelines_dir` (packaged `resources/guidelines` of the running installation);
+    when the directory is absent or empty, returns the home-relative directory itself with
+    a trailing slash.
     @return {list[str]} Ordered home-relative guideline paths.
     @satisfies SRS-360, SRS-403
     """
@@ -3041,15 +3043,16 @@ def run(args: Namespace) -> None:
     @details Loads the persisted `"providers"` names from `~/.config/usereq/config.json`
     (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), installs
     `req-<prompt_name>/SKILL.md` skill artifacts into the user-level hardcoded skills
-    roots (SRS-381..SRS-386, SRS-464, SRS-486) with home-relative GUIDELINES_DIR token
-    substitution (SRS-402, SRS-403), and never rewrites the user-global configuration
+    roots (SRS-381..SRS-386, SRS-464, SRS-486) with home-relative packaged-resource token
+    substitution for `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, and `%%TEMPLATE_PATH%%`
+    (SRS-360, SRS-402, SRS-403, SRS-498), and never rewrites the user-global configuration
     file (SRS-448). Install does not consume `--prj-base` (SRS-447); project scaffolding,
     containment validation, and directory persistence are removed legacy behaviors
     (SRS-363, SRS-407, SRS-449).
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @throws ReqError If no provider is enabled.
-    @satisfies SRS-035, SRS-064, SRS-279, SRS-381, SRS-387, SRS-388, SRS-402, SRS-403, SRS-418, SRS-447, SRS-448
+    @satisfies SRS-035, SRS-064, SRS-279, SRS-360, SRS-381, SRS-387, SRS-388, SRS-402, SRS-403, SRS-418, SRS-447, SRS-448, SRS-498
     """
     global VERBOSE, DEBUG
     VERBOSE = getattr(args, "verbose", False)
@@ -3079,12 +3082,14 @@ def run(args: Namespace) -> None:
     # providers are already stored by --enable and directory persistence is a removed
     # legacy behavior (SRS-363, SRS-407, SRS-449).
 
-    # Resolve the installation-owned guidelines substitution values (SRS-360, SRS-402, SRS-403).
+    # Resolve the packaged-resource substitution values (SRS-360, SRS-402, SRS-403, SRS-498).
     guidelines_file_list = generate_guidelines_file_list()
     guidelines_path_value = f"{format_home_relative_path(guidelines_dir())}/"
+    templates_path_value = f"{format_home_relative_path(templates_dir())}/"
 
     dlog(f"GUIDELINES_DIR={guidelines_path_value}")
     dlog(f"GUIDELINES_FILE_LIST={guidelines_file_list}")
+    dlog(f"TEMPLATE_PATH={templates_path_value}")
 
     # Resolve user-level skills roots under the user HOME (SRS-381..SRS-386, SRS-486).
     skills_roots: dict[str, Path] = {
@@ -3116,10 +3121,11 @@ def run(args: Namespace) -> None:
 
         # Skills are the only generated artifact: every enabled provider receives
         # req-<prompt_name>/SKILL.md under its hardcoded user-level skills root
-        # (SRS-095, SRS-368, SRS-464).
+        # (SRS-095, SRS-368, SRS-464, SRS-498).
         skill_replacements = {
             "%%GUIDELINES_FILES%%": guidelines_file_list,
             "%%GUIDELINES_PATH%%": guidelines_path_value,
+            "%%TEMPLATE_PATH%%": templates_path_value,
             "%%ARGS%%": "$ARGUMENTS",
         }
         skill_desc_yaml = yaml_double_quote_escape(

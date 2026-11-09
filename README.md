@@ -363,7 +363,7 @@ Click to zoom flowchart image.
 
 ## Guidelines
 
-`GUIDELINES_DIR` is fixed to `~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines` and is not configurable. Generated prompts and skills reference it through home-relative paths; guideline files themselves are never copied, created, or modified in project or user directories. Re-run `req install` after the installed guidelines change.
+`GUIDELINES_DIR` is fixed to the packaged `resources/guidelines` directory of the running installation and is not configurable. Generated prompts and skills reference the packaged resources of the active installation through home-relative paths, including `%%TEMPLATE_PATH%%` for templates; guideline files themselves are never copied, created, or modified in project or user directories. Re-run `req install` after an upgrade so rendered paths follow the active installation.
 
 ## Repository Documentation
 

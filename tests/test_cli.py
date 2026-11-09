@@ -308,15 +308,14 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         )
 
     def test_guidelines_tokens_replaced(self) -> None:
-        """SRS-402/SRS-403: guidelines tokens are substituted with home-relative paths."""
+        """SRS-402/SRS-403/SRS-499: packaged-resource tokens are fully substituted."""
         skill = self.HOME / ".claude" / "skills" / "req-analyze" / "SKILL.md"
         content = skill.read_text(encoding="utf-8")
         self.assertNotIn("%%GUIDELINES_PATH%%", content)
         self.assertNotIn("%%GUIDELINES_FILES%%", content)
-        self.assertIn(
-            "~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines",
-            content,
-        )
+        self.assertNotIn("%%TEMPLATE_PATH%%", content)
+        self.assertIn("src/usereq/resources/guidelines", content)
+        self.assertIn("src/usereq/resources/templates", content)
 
 
 class TestProviderNameParsing(unittest.TestCase):
@@ -515,24 +514,22 @@ class TestInstallDefaultDirectories(HomeIsolatedTestCase):
 
 
 class TestGuidelinesDirectory(HomeIsolatedTestCase):
-    """SRS-360/SRS-402/SRS-403/SRS-404: fixed installation-owned guidelines directory."""
+    """SRS-360/SRS-402/SRS-403/SRS-404/SRS-498: packaged resources of the running installation."""
 
     def setUp(self) -> None:
         super().setUp()
-        self.guidelines = (
-            self.HOME
-            / ".pi"
-            / "agent"
-            / "npm"
-            / "node_modules"
-            / "pi-usereq"
-            / "src"
-            / "resources"
-            / "guidelines"
+        self.resource_root = self.HOME / "resources"
+        self.guidelines = self.resource_root / "guidelines"
+        self.templates = self.resource_root / "templates"
+        (self.resource_root / "prompts").mkdir(parents=True, exist_ok=True)
+        self.original_resource_root = cli.RESOURCE_ROOT
+        cli.RESOURCE_ROOT = self.resource_root
+        self.addCleanup(
+            setattr, cli, "RESOURCE_ROOT", self.original_resource_root
         )
 
     def test_guidelines_dir_is_fixed_home_relative_path(self) -> None:
-        """SRS-360: GUIDELINES_DIR resolves under HOME and is not configurable."""
+        """SRS-360: GUIDELINES_DIR resolves to packaged resources and is not configurable."""
         self.assertEqual(cli.guidelines_dir(), self.guidelines)
         project = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
@@ -552,7 +549,7 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         self.assertEqual(cli.format_home_relative_path(self.HOME), "~")
         self.assertEqual(
             cli.format_home_relative_path(self.guidelines / "RFC2119.md"),
-            "~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines/RFC2119.md",
+            "~/resources/guidelines/RFC2119.md",
         )
 
     def test_guidelines_file_list_uses_installed_directory(self) -> None:
@@ -561,21 +558,24 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         (self.guidelines / "RFC2119.md").write_text("rfc\n", encoding="utf-8")
         self.assertEqual(
             cli.generate_guidelines_file_list(),
-            "`~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines/RFC2119.md`",
+            "`~/resources/guidelines/RFC2119.md`",
         )
         self.assertEqual(
             cli.generate_guidelines_file_items(),
-            [
-                "~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines/RFC2119.md"
-            ],
+            ["~/resources/guidelines/RFC2119.md"],
         )
 
     def test_guidelines_file_list_falls_back_to_directory(self) -> None:
         """SRS-402: missing guidelines directory renders the directory with a trailing slash."""
         self.assertEqual(
             cli.generate_guidelines_file_list(),
-            "`~/.pi/agent/npm/node_modules/pi-usereq/src/resources/guidelines/`",
+            "`~/resources/guidelines/`",
         )
+
+    def test_templates_dir_resolves_packaged_templates_directory(self) -> None:
+        """SRS-498: %%TEMPLATE_PATH%% renders the packaged templates directory."""
+        self.assertEqual(cli.templates_dir(), self.templates)
+        self.assertEqual(cli.templates_dir(), self.resource_root / "templates")
 
     def test_install_does_not_copy_guidelines_into_project(self) -> None:
         """SRS-404: installation never writes guideline files into the project."""
