@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # @file scripts/prompts-update.sh
-# @brief Updates bundled useReq prompt templates from the latest CLI-Prompts release.
+# @brief Updates bundled useReq prompts and document templates from the latest CLI-Prompts release.
 # @details Clones the CLI-Prompts repository (develop branch), resolves the newest
 #     release ref, and performs a full one-way synchronization of the upstream
 #     `src/prompts` directory into the local `src/usereq/resources/prompts`
-#     target. Cloning tries anonymous HTTPS transports first with every
+#     target and of the upstream `src/templates` directory into the local
+#     `src/usereq/resources/templates` target. Cloning tries anonymous HTTPS
+#     transports first with every
 #     interactive credential prompt disabled and then falls back to the
 #     read-only SSH transport under `ssh BatchMode`; the script embeds no
 #     user profile, token, or personal credential, and the optional
@@ -23,9 +25,10 @@
 #     Runtime is dominated by one git clone plus one ref checkout and
 #     per-file copies. Side effects include temporary-directory creation,
 #     git subprocesses, one optional GitHub Releases API request,
-#     replacement of the bundled prompts target directory, and overwrite of
-#     the one version marker file. No other repository content is modified.
-# @satisfies SRS-375, SRS-376, SRS-377, SRS-378, SRS-379, SRS-380
+#     replacement of the bundled prompts target directory, replacement of the
+#     bundled document templates target directory, and overwrite of the one
+#     version marker file. No other repository content is modified.
+# @satisfies SRS-375, SRS-376, SRS-377, SRS-378, SRS-379, SRS-380, SRS-496
 
 set -euo pipefail
 
@@ -56,6 +59,18 @@ PROMPTS_SOURCE_REL="src/prompts"
 ##     The constant is immutable at runtime.
 ## @satisfies SRS-375
 PROMPTS_TARGET_REL="src/usereq/resources/prompts"
+
+## @brief Stores the upstream document-templates source directory, relative to the cloned repository root.
+## @details The CLI-Prompts repository keeps every document template as one
+##     Markdown file below `src/templates`. The constant is immutable at runtime.
+## @satisfies SRS-496
+TEMPLATES_SOURCE_REL="src/templates"
+
+## @brief Stores the bundled document-templates target directory, relative to the repository root.
+## @details Fully replaced by the staged upstream copy during synchronization.
+##     The constant is immutable at runtime.
+## @satisfies SRS-496
+TEMPLATES_TARGET_REL="src/usereq/resources/templates"
 
 WORK_DIR=""
 STAGING_DIR=""
@@ -186,7 +201,7 @@ confirm_update() {
 
   log "Latest CLI-Prompts release : ${latest_version}"
   log "Stored version (${PROMPTS_VERSION_REL}): ${stored_version}"
-  log "This update replaces the bundled prompt templates in ${PROMPTS_TARGET_REL} with the content of the latest CLI-Prompts release."
+  log "This update replaces the bundled prompts in ${PROMPTS_TARGET_REL} and the bundled document templates in ${TEMPLATES_TARGET_REL} with the content of the latest CLI-Prompts release."
   printf 'Proceed with the update? [Y/n] '
   read -r answer || answer=""
   [ "${answer}" = "Y" ]
@@ -286,7 +301,7 @@ resolve_release_ref() {
 ## @param[in] target_dir {string} Absolute bundled target directory path.
 ## @return {void} No return value.
 ## @throws Exits through `fail(...)` when `source_dir` is not a directory.
-## @satisfies SRS-375, SRS-380
+## @satisfies SRS-375, SRS-380, SRS-496
 sync_directory() {
   local source_dir="$1"
   local target_dir="$2"
@@ -327,16 +342,17 @@ sync_directory() {
 ##     prints the resolved plus stored versions and requires an explicit `Y`
 ##     confirmation, checks out the resolved release ref, synchronizes the
 ##     upstream `${PROMPTS_SOURCE_REL}` directory into `${PROMPTS_TARGET_REL}`,
-##     and writes the resolved version into the version marker file. Runtime is
-##     dominated by the upstream clone plus the directory synchronization. Side
-##     effects include temporary-directory creation and removal, git
-##     subprocesses, one optional GitHub Releases API request, replacement of
-##     the bundled prompts target directory, and overwrite of the version
-##     marker file.
+##     synchronizes the upstream `${TEMPLATES_SOURCE_REL}` directory into
+##     `${TEMPLATES_TARGET_REL}`, and writes the resolved version into the
+##     version marker file. Runtime is dominated by the upstream clone plus the
+##     directory synchronizations. Side effects include temporary-directory
+##     creation and removal, git subprocesses, one optional GitHub Releases API
+##     request, replacement of the bundled prompts and document-templates
+##     target directories, and overwrite of the version marker file.
 ## @return {void} No return value.
 ## @throws Exits through `fail(...)` when any required tool, clone, checkout, or
 ##     synchronization step fails.
-## @satisfies SRS-375, SRS-376, SRS-377, SRS-378, SRS-379, SRS-380
+## @satisfies SRS-375, SRS-376, SRS-377, SRS-378, SRS-379, SRS-380, SRS-496
 main() {
   require_tool git
   require_tool find
@@ -372,10 +388,11 @@ main() {
   log "Synchronizing from ref: ${release_ref}"
 
   sync_directory "${repository}/${PROMPTS_SOURCE_REL}" "${REPO_ROOT}/${PROMPTS_TARGET_REL}"
+  sync_directory "${repository}/${TEMPLATES_SOURCE_REL}" "${REPO_ROOT}/${TEMPLATES_TARGET_REL}"
 
   printf '%s\n' "${release_version}" > "${REPO_ROOT}/${PROMPTS_VERSION_REL}"
 
-  log "Bundled prompt templates updated to ${release_version}."
+  log "Bundled prompts and document templates updated to ${release_version}."
 }
 
 trap cleanup EXIT

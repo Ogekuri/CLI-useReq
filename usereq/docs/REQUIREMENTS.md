@@ -249,7 +249,8 @@ No explicit performance optimizations identified.
 - **SRS-377**: `scripts/prompts-update.sh` MUST print the resolved release version and the stored version before modifications, and MUST require exact input `Y` to proceed; any other input MUST abort without modifications.
 - **SRS-378**: `scripts/prompts-update.sh` MUST report `unknown` for a missing or empty version marker and MUST write the resolved release version to `src/usereq/resources/prompts-version.txt` only after successful synchronization.
 - **SRS-379**: `scripts/prompts-update.sh` MUST clone the upstream `develop` branch into a temporary directory using the `.git` URL first and the plain URL as fallback, and MUST remove temporary directories on every exit path.
-- **SRS-380**: `scripts/prompts-update.sh` MUST preserve upstream file timestamps during synchronization and MUST NOT modify any repository content outside `src/usereq/resources/prompts` and `src/usereq/resources/prompts-version.txt`.
+- **SRS-380**: `scripts/prompts-update.sh` MUST preserve upstream file timestamps during synchronization and MUST NOT modify any repository content outside `src/usereq/resources/prompts`, `src/usereq/resources/templates`, and `src/usereq/resources/prompts-version.txt`.
+- **SRS-496**: `scripts/prompts-update.sh` MUST fully synchronize the upstream `src/templates` directory of `https://github.com/Ogekuri/CLI-Prompts` into `src/usereq/resources/templates`, overwriting existing files and removing files absent upstream.
 
 ### 3.13 Pre-Release Verification Script
 - **SRS-471**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST resolve the repository root from its own filesystem location, MUST execute every stage from that root, and MUST NOT depend on the caller working directory.
