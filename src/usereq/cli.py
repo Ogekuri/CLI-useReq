@@ -424,10 +424,12 @@ def build_parser() -> argparse.ArgumentParser:
     global base arguments ``--prj-base`` and ``--git-base`` both before and after the subcommand
     token; ``--prj-base`` is mandatory only for the SRS-396 project-scan subcommands (enforced by
     ``_require_prj_base``) and ``--git-base`` is never mandatory for any SRS-408 subcommand
-    (SRS-392, SRS-393, SRS-396, SRS-397, SRS-410).
+    (SRS-392, SRS-393, SRS-396, SRS-397, SRS-410). The ``--force`` auxiliary argument is
+    accepted by ``--upgrade`` (with or without ``--develop``/``--dev``) and forces full
+    package download and complete reinstallation (SRS-508, SRS-511).
     """
     usage = (
-        "req [-h] [--upgrade] [--develop] [--dev] [--uninstall] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
+        "req [-h] [--upgrade] [--develop] [--dev] [--force] [--uninstall] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
         "[--enable PROVIDER] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
@@ -507,6 +509,17 @@ def build_parser() -> argparse.ArgumentParser:
             "(git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>, resolved via the "
             "GitHub releases API regardless of branch) instead of PyPI. "
             "--dev is an equivalent alias of --develop."
+        ),
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        dest="force",
+        help=(
+            "With --upgrade: force full package download and complete "
+            "reinstallation (uv tool install ... --force --reinstall "
+            "--refresh). Without --force the standard install/update "
+            "process runs without any forcing option."
         ),
     )
     parser.add_argument(
@@ -933,38 +946,40 @@ def _resolve_github_upgrade_tag() -> str:
     return resolved_tag
 
 
-def run_upgrade(use_github: bool = False) -> None:
+def run_upgrade(use_github: bool = False, force: bool = False) -> None:
     """!
     @brief Executes the upgrade using uv from the PyPI index or the latest GitHub release tag.
         @param use_github {bool} When True, install the latest tagged GitHub release instead of
         the PyPI index (`--upgrade --develop` or equivalent alias `--dev`, SRS-440, SRS-445).
-    @details Builds `uv tool install cli-usereq --force --refresh` against the PyPI index by
-    default (SRS-343); `--refresh` discards uv's cached simple-index data so resolution
-    selects the latest published PyPI version instead of reinstalling the previously
-    resolved one (uv refreshes cached data only when `--upgrade`/`--reinstall`/`--refresh`
-    is passed, not for `--force` alone). When `use_github` is True, resolves the latest
-    GitHub release tag through
-    `_resolve_github_upgrade_tag()` (SRS-451) and appends
-    `--from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` regardless of the branch
-    holding that tag (SRS-440, SRS-452). Executes the command only on Linux; on non-Linux
-    platforms prints the manual command and skips uv execution.
+    @param force {bool} When True, append `--force --reinstall --refresh` so uv re-downloads
+        the package and fully reinstalls it (`--upgrade --force`, SRS-508, SRS-509, SRS-510).
+    @details Builds the standard `uv tool install cli-usereq` command against the PyPI index
+    by default (SRS-343); without `force` no forcing option is passed so the standard
+    install/update process runs unchanged. When `force` is True the command becomes
+    `uv tool install cli-usereq --force --reinstall --refresh` (SRS-509). When `use_github`
+    is True, resolves the latest GitHub release tag through `_resolve_github_upgrade_tag()`
+    (SRS-451) and appends `--from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`
+    regardless of the branch holding that tag (SRS-440, SRS-452, SRS-510). Executes the
+    command only on Linux; on non-Linux platforms prints the manual command and skips uv
+    execution.
     @throws {ReqError} When the SRS-451 GitHub tag resolution fails (exit code 1, SRS-453) or
     when the uv process fails.
     @return {None} Function return value.
     @note Tag resolution precedes the platform gate so the non-Linux manual command embeds the
     resolved tag (SRS-452).
-    @note The `--develop`/`--dev` argv alias mapping to `use_github=True` is resolved by
-    `main(...)` before calling this function.
-    @satisfies SRS-343, SRS-440, SRS-445, SRS-451, SRS-452, SRS-453
+    @note The `--develop`/`--dev` argv alias mapping to `use_github=True` and the `--force`
+    argv token mapping to `force=True` are resolved by `main(...)` before calling this
+    function.
+    @satisfies SRS-343, SRS-440, SRS-445, SRS-451, SRS-452, SRS-453, SRS-508, SRS-509, SRS-510
     """
     command = [
         "uv",
         "tool",
         "install",
         TOOL_PROGRAM_NAME,
-        "--force",
-        "--refresh",
     ]
+    if force:
+        command += ["--force", "--reinstall", "--refresh"]
     if use_github:
         resolved_tag = _resolve_github_upgrade_tag()
         command += ["--from", f"{GITHUB_UPGRADE_SOURCE}@{resolved_tag}"]
@@ -4285,7 +4300,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             run_uninstall()
             return 0
         if "--upgrade" in argv_list:
-            run_upgrade(use_github=("--develop" in argv_list or "--dev" in argv_list))
+            run_upgrade(
+                use_github=("--develop" in argv_list or "--dev" in argv_list),
+                force=("--force" in argv_list),
+            )
             _maybe_auto_install_after_upgrade(argv_list)
             return 0
         if maybe_print_version(argv_list, pypi_latest=pypi_latest_from_check):

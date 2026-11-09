@@ -534,7 +534,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
         )
 
     def test_upgrade_command_installs_from_pypi_by_default(self) -> None:
-        """Default upgrade command must install from the PyPI index without --from."""
+        """Default upgrade command must run the standard install without forcing (SRS-343)."""
         result_mock = MagicMock(returncode=0)
 
         with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
@@ -546,19 +546,15 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 "tool",
                 "install",
                 cli.TOOL_PROGRAM_NAME,
-                "--force",
-                "--refresh",
             ],
             check=False,
         )
 
-    def test_upgrade_command_refreshes_cached_index_data(self) -> None:
-        """--upgrade must refresh uv cached index data (SRS-343/SRS-440).
+    def test_upgrade_command_without_force_has_no_forcing_options(self) -> None:
+        """Standard --upgrade must run the plain install/update process (SRS-343, SRS-508).
 
-        Defect evidence: `uv tool install cli-usereq --force` alone re-resolves from
-        cached simple-index data and reinstalls the previously resolved version
-        (user transcript: reinstalled 0.74.0 while PyPI latest was 0.75.0). The
-        upgrade command MUST pass `--refresh` so resolution reads fresh PyPI data.
+        Without --force no uv forcing option (--force, --reinstall, --refresh)
+        may appear in the executed command.
         """
         # Arrange
         result_mock = MagicMock(returncode=0)
@@ -569,7 +565,32 @@ class TestOnlineUpdateCheck(unittest.TestCase):
 
         # Assert
         command = run_mock.call_args.args[0]
-        self.assertIn("--refresh", command)
+        self.assertNotIn("--force", command)
+        self.assertNotIn("--reinstall", command)
+        self.assertNotIn("--refresh", command)
+
+    def test_upgrade_command_with_force_reinstalls_completely(self) -> None:
+        """--upgrade --force must force download and full reinstallation (SRS-509)."""
+        # Arrange
+        result_mock = MagicMock(returncode=0)
+
+        # Act
+        with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
+            cli.run_upgrade(force=True)
+
+        # Assert
+        run_mock.assert_called_once_with(
+            [
+                "uv",
+                "tool",
+                "install",
+                cli.TOOL_PROGRAM_NAME,
+                "--force",
+                "--reinstall",
+                "--refresh",
+            ],
+            check=False,
+        )
 
     def test_fetch_github_latest_version_raw_tag_preserves_v_prefix(self) -> None:
         """raw_tag=True must return tag_name without stripping the v prefix (SRS-451)."""
@@ -610,13 +631,93 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 "tool",
                 "install",
                 cli.TOOL_PROGRAM_NAME,
+                "--from",
+                "git+https://github.com/Ogekuri/CLI-useReq.git@v9.9.9",
+            ],
+            check=False,
+        )
+
+    def test_upgrade_command_with_github_and_force_reinstalls_completely(self) -> None:
+        """--upgrade --develop --force must force reinstall of the GitHub tag (SRS-510)."""
+        # Arrange
+        result_mock = MagicMock(returncode=0)
+
+        # Act
+        with (
+            patch("usereq.cli.fetch_github_latest_version", return_value="v9.9.9"),
+            patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock,
+        ):
+            cli.run_upgrade(use_github=True, force=True)
+
+        # Assert
+        run_mock.assert_called_once_with(
+            [
+                "uv",
+                "tool",
+                "install",
+                cli.TOOL_PROGRAM_NAME,
                 "--force",
+                "--reinstall",
                 "--refresh",
                 "--from",
                 "git+https://github.com/Ogekuri/CLI-useReq.git@v9.9.9",
             ],
             check=False,
         )
+
+    def test_upgrade_accepts_force_argument(self) -> None:
+        """--upgrade must accept the auxiliary --force argument (SRS-508)."""
+        # Arrange / Act
+        args = cli.parse_args(["--upgrade", "--force"])
+
+        # Assert
+        self.assertTrue(args.upgrade)
+        self.assertTrue(args.force)
+
+    def test_upgrade_help_documents_force_argument(self) -> None:
+        """Inline help must document --force as an auxiliary --upgrade argument (SRS-511)."""
+        # Arrange
+        parser = cli.build_parser()
+
+        # Act
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["--help"])
+
+        # Assert
+        help_text = mock_stdout.getvalue()
+        self.assertIn("--force", help_text)
+        self.assertIn("--reinstall", help_text)
+
+    def test_main_upgrade_force_dispatches_forced_upgrade(self) -> None:
+        """main must dispatch --upgrade --force with force=True (SRS-508, SRS-509)."""
+        # Arrange / Act
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("usereq.cli.run_upgrade") as upgrade_mock,
+            patch("usereq.cli._maybe_auto_install_after_upgrade", autospec=True),
+            patch("sys.stdout"),
+        ):
+            exit_code = cli.main(["--upgrade", "--force"])
+
+        # Assert
+        self.assertEqual(exit_code, 0)
+        upgrade_mock.assert_called_once_with(use_github=False, force=True)
+
+    def test_main_upgrade_develop_force_dispatches_forced_github_upgrade(self) -> None:
+        """main must dispatch --upgrade --develop --force with both flags (SRS-510)."""
+        # Arrange / Act
+        with (
+            patch("usereq.cli.maybe_notify_newer_version", autospec=True),
+            patch("usereq.cli.run_upgrade") as upgrade_mock,
+            patch("usereq.cli._maybe_auto_install_after_upgrade", autospec=True),
+            patch("sys.stdout"),
+        ):
+            exit_code = cli.main(["--upgrade", "--develop", "--force"])
+
+        # Assert
+        self.assertEqual(exit_code, 0)
+        upgrade_mock.assert_called_once_with(use_github=True, force=True)
 
     def test_upgrade_command_with_github_fails_when_tag_unfetchable(self) -> None:
         """GitHub tag-resolution failure must raise ReqError code 1 without executing uv (SRS-453)."""

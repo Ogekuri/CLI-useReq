@@ -114,9 +114,12 @@ This exposes the CLI as `req` (also callable as `usereq` or `python -m usereq`).
 
 ```bash
 req --upgrade
+
+# force full package download and complete reinstallation
+req --upgrade --force
 ```
 
-On Linux this executes `uv tool install cli-usereq --force --refresh` from the PyPI index (`--refresh` discards uv's cached index data so the latest published version is resolved); on other platforms the manual command is printed and `uv` is not executed. Use `req --upgrade --develop` (or the equivalent `req --upgrade --dev`) to install the latest tagged GitHub release instead of PyPI. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
+On Linux this executes the standard `uv tool install cli-usereq` command from the PyPI index without any forcing option; on other platforms the manual command is printed and `uv` is not executed. Adding `--force` forces full package download and complete reinstallation: `req --upgrade --force` executes `uv tool install cli-usereq --force --reinstall --refresh`. Use `req --upgrade --develop` (or the equivalent `req --upgrade --dev`) to install the latest tagged GitHub release instead of PyPI. When the upgrade succeeds and `auto-install` is enabled (the default), the persisted providers are automatically re-provisioned — equivalent to running `install`. Provide `--prj-base` in the same invocation to enable this; without it, a warning is printed and the provider update is skipped. Disable the behavior persistently with `--disable-auto-install` and re-enable it with `--enable-auto-install`.
 
 ### Install from GitHub (alternative channel)
 
@@ -133,7 +136,7 @@ uvx --from git+https://github.com/Ogekuri/CLI-useReq.git req --help
 req --upgrade --develop
 ```
 
-On Linux `req --upgrade --develop` (or `req --upgrade --dev`) executes `uv tool install cli-usereq --force --refresh --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`, where `<TAG>` is the latest tagged release resolved through the GitHub releases API regardless of the branch holding it; on other platforms the manual command is printed and `uv` is not executed.
+On Linux `req --upgrade --develop` (or `req --upgrade --dev`) executes the standard `uv tool install cli-usereq --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` command, where `<TAG>` is the latest tagged release resolved through the GitHub releases API regardless of the branch holding it; on other platforms the manual command is printed and `uv` is not executed. Adding `--force` (`req --upgrade --develop --force`) executes `uv tool install cli-usereq --force --reinstall --refresh --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` instead.
 
 ### Tool removal
 
@@ -293,6 +296,7 @@ Notes:
 - `--verbose` / `--debug` — detailed and diagnostic output.
 - `--ver` / `--version` — print the installed package version, query PyPI and GitHub, and print `PyPI latest: <version>` and `GitHub latest: <version>` lines (`unknown` when a repository cannot be reached).
 - `--develop` / `--dev` — with `--upgrade`: install the latest tagged GitHub release from `git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`, with `<TAG>` resolved through the GitHub releases API regardless of branch, instead of PyPI; `--dev` is an equivalent alias of `--develop`.
+- `--force` — with `--upgrade`: force full package download and complete reinstallation (`uv tool install ... --force --reinstall --refresh`); without `--force` the standard install/update process runs without any forcing option.
 - `-h` / `--help` — print command help and exit.
 
 A startup release check queries the latest PyPI release (idle-gated to at most once per hour; once per day on API failures) and prints a bright-green stderr notice when a newer version is available.

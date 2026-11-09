@@ -107,7 +107,7 @@ No explicit performance optimizations identified.
 - **SRS-280**: MUST implement the following behavior: The bare `install`, `uninstall`, and `show` subcommands MUST be accepted without the `--` prefix and MUST NOT require `--git-base`.
 - **SRS-281**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-282**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
-- **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install cli-usereq --force` from the PyPI index only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
+- **SRS-343**: MUST implement the following behavior: `--upgrade` MUST execute `uv tool install cli-usereq` from the PyPI index only on Linux; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
 - **SRS-430**: MUST implement the following behavior: The startup release-check MUST query the PyPI JSON API endpoint `https://pypi.org/pypi/cli-usereq/json` and read `info.version` as the latest version.
 - **SRS-344**: MUST implement the following behavior: `--uninstall` on Linux MUST execute `uv tool uninstall cli-usereq` and MUST run release-check cache cleanup per SRS-346; on non-Linux, it MUST NOT execute `uv` and MUST print the manual command.
 - **SRS-345**: MUST persist startup release-check idle-state at `~/.cache/usereq/check_version_idle-time.json`; idle-state writes MUST create parent directories; `--ver`/`--version` MUST force the HTTP release-check and bypass idle gating.
@@ -158,13 +158,18 @@ No explicit performance optimizations identified.
 - **SRS-448**: MUST implement the following behavior: The `install` subcommand MUST NOT create project directories, validate project-path containment, or persist `docs-dir`/`tests-dir`/`src-dir` values.
 - **SRS-449**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 - **SRS-451**: MUST implement the following behavior: `--upgrade --develop` MUST resolve the installation tag by querying `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` and reading `tag_name`, regardless of the branch holding that tag.
-- **SRS-452**: MUST implement the following behavior: On Linux, `--upgrade --develop` MUST execute `uv tool install cli-usereq --force --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`; non-Linux MUST print this manual command and MUST NOT execute `uv`.
+- **SRS-452**: MUST implement the following behavior: On Linux, `--upgrade --develop` MUST execute `uv tool install cli-usereq --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`; non-Linux MUST print this manual command and MUST NOT execute `uv`.
 - **SRS-453**: MUST implement the following behavior: When the SRS-451 GitHub query fails, `--upgrade --develop` MUST print an English stderr error, MUST NOT execute `uv`, and MUST exit with code 1.
 - **SRS-485**: MUST implement the following behavior: The `show` subcommand MUST print providers in alphabetical order by provider name in every provider table.
 - **SRS-488**: MUST implement the following behavior: The Providers table `Enabled` cell MUST print `yes` when the provider is enabled and `no` when the provider is disabled.
 - **SRS-489**: MUST implement the following behavior: The installation-status table MUST contain one row for every packaged prompt name and enabled provider pair, ordered by prompt name then provider name.
 - **SRS-490**: MUST implement the following behavior: Each installation-status `Installed` cell MUST print `OK` when `req-<prompt_name>` exists under the provider skills root and `MISSING` otherwise.
 - **SRS-491**: MUST implement the following behavior: Each installation-status row MUST report `Type` `Skill`, the skill name `req-<prompt_name>`, the provider CLI name, and the provider enabled state.
+- **SRS-508**: MUST implement the following behavior: `--upgrade` MUST accept the auxiliary `--force` argument that forces full package download and complete reinstallation.
+- **SRS-509**: MUST implement the following behavior: `--upgrade --force` MUST execute `uv tool install cli-usereq --force --reinstall --refresh` on Linux only; on non-Linux it MUST print this command and MUST NOT execute `uv`.
+- **SRS-510**: MUST implement the following behavior: `--upgrade --develop --force` MUST execute `uv tool install cli-usereq --force --reinstall --refresh --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` on Linux; non-Linux MUST print this manual command and MUST NOT execute `uv`.
+- **SRS-511**: MUST implement the following behavior: The CLI inline help MUST document `--force` as an auxiliary `--upgrade` argument that forces download and complete reinstallation.
+- **SRS-512**: MUST implement the following behavior: `README.md` MUST document the `--force` auxiliary argument of `--upgrade` for both PyPI and GitHub develop upgrade channels.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
@@ -301,7 +306,7 @@ No explicit performance optimizations identified.
 - **SRS-423**: MUST include unit tests in `tests/test_cli.py` verifying `--enable`/`--disable` persistence, `--enable-auto-install`/`--disable-auto-install` persistence, `--disable-static-check` removal, `show` output, `install` dispatch, `uninstall` dispatch, and auto-install after successful `--upgrade`.
 - **SRS-438**: MUST include unit tests in `tests/test_release_workflow.py` verifying the `.github/workflows/release-pypi.yml` location, the SRS-433 OIDC publication steps, the SRS-434 master-only publication gating, and the SRS-432 build/release independence from master reachability.
 - **SRS-439**: MUST include unit tests in `tests/test_dependency_manifests.py` verifying the SRS-435 project name, the SRS-436 author, and the SRS-437 repository URLs in `pyproject.toml`.
-- **SRS-444**: MUST include unit tests in `tests/test_update_check.py` verifying the SRS-430 PyPI endpoint, the SRS-343/SRS-440 upgrade commands, and the SRS-441/SRS-442 `--ver` output.
+- **SRS-444**: MUST include unit tests in `tests/test_update_check.py` verifying the SRS-430 PyPI endpoint, the SRS-343/SRS-440/SRS-509/SRS-510 upgrade commands, and the SRS-441/SRS-442 `--ver` output.
 - **SRS-459**: MUST include unit tests in `tests/test_release_workflow.py` verifying the SRS-455 Node24 runtime, the SRS-456/SRS-457 action-major floors, and the SRS-458 opt-out override prohibition.
 - **SRS-461**: MUST include unit tests in `tests/test_cli.py` verifying that `install` neither accepts `--prj-base` nor performs project-side operations, and that `--git-wt-create` exits with code 1 without `--prj-base` and copies only `--prj-base/.venv`.
 - **SRS-487**: MUST include unit tests in `tests/test_cli.py` verifying that the `show` Providers table renders every configurable provider with `CLI`, `Enabled`, and `Skills Path` columns in alphabetical order.
