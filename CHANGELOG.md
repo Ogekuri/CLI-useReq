@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.73.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0) - 2026-11-09
+### ⛰️  Features
+- distribute full resources tree incl. guidelines [useReq] *(packaging)*
+  - Package-data now enumerates resources/guidelines/*, resources/prompts/*, resources/templates/*, and resources/prompts-version.txt so installation distributes the whole src/usereq/resources tree (SRS-272).
+  - SRS-274 now mandates every file under src/usereq/resources/ in sdist and wheel, replacing the operation-required subset wording.
+  - New SRS-497: guideline documents are bundled as package data under src/usereq/resources/guidelines with at least one non-hidden file.
+  - Build verification: wheel packages 25/25 resources files (4 guidelines + 16 prompts + 4 templates + version marker); sdist includes the guidelines directory.
+  - Section 1.4 evidence tree extended with the guidelines/ directory.
+- Add guidelines dir.
+
 ## [0.72.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.71.0..v0.72.0) - 2026-11-09
 ### ⛰️  Features
 - Update prompt files.
@@ -1633,6 +1643,7 @@
 - \[0.70.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.70.0
 - \[0.71.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.71.0
 - \[0.72.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.72.0
+- \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1705,3 +1716,4 @@
 [0.70.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.69.0..v0.70.0
 [0.71.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.70.0..v0.71.0
 [0.72.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.71.0..v0.72.0
+[0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
