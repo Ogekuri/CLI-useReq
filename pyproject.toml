@@ -44,8 +44,9 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 usereq = [
-  "resources/prompts/*.md",
-  "resources/templates/*.md",
+  "resources/guidelines/*",
+  "resources/prompts/*",
+  "resources/templates/*",
   "resources/prompts-version.txt",
 ]
 
