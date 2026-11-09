@@ -88,7 +88,7 @@ No explicit performance optimizations identified.
 - **SRS-034**: MUST accept `--upgrade` and `--uninstall`; provider configuration MUST remain exclusive to repeatable `--enable PROVIDER`; removed legacy flags, including `--provider`, `--enable-provider`, `--disable-provider`, `--base`, `--here`, `--get-base-path`, `--docs-dir`, `--src-dir`, `--tests-dir`, `--guidelines-dir`, `--add-guidelines`, `--upgrade-guidelines`, `--update`, and `--remove`, MUST NOT be parsed.
 - **SRS-035**: MUST implement the following behavior: The `install` command MUST require at least one enabled provider persisted under `"providers"`; otherwise it MUST print an English error and exit code 4. Each enabled provider installs skills only.
 - **SRS-036**: MUST implement the following behavior: The installation summary table MUST include rows only for providers whose skills were installed during the current invocation.
-- **SRS-049**: MUST implement the following behavior: Immediately after the file list, CLI MUST print a Unicode box-drawing installation summary table with bright-red border lines.
+- **SRS-049**: MUST implement the following behavior: Immediately after the SRS-513/SRS-514 resource report, CLI MUST print a Unicode box-drawing installation summary table with bright-red border lines.
 - **SRS-290**: MUST implement the following behavior: The `Skills Installed` column MUST use a maximum display width of 50 characters and MUST wrap overflowing content onto subsequent lines.
 - **SRS-291**: MUST implement the following behavior: The installation summary table MUST contain exactly the `Provider` and `Skills Installed` columns.
 - **SRS-296**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
@@ -170,6 +170,10 @@ No explicit performance optimizations identified.
 - **SRS-510**: MUST implement the following behavior: `--upgrade --develop --force` MUST execute `uv tool install cli-usereq --force --reinstall --refresh --from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` on Linux; non-Linux MUST print this manual command and MUST NOT execute `uv`.
 - **SRS-511**: MUST implement the following behavior: The CLI inline help MUST document `--force` as an auxiliary `--upgrade` argument that forces download and complete reinstallation.
 - **SRS-512**: MUST implement the following behavior: `README.md` MUST document the `--force` auxiliary argument of `--upgrade` for both PyPI and GitHub develop upgrade channels.
+- **SRS-513**: MUST implement the following behavior: When installation completes, the CLI MUST print the home-relative packaged guidelines directory path ending with `/` on one line, then bare guideline file names on the next line.
+- **SRS-514**: MUST implement the following behavior: Immediately after SRS-513, the CLI MUST print the home-relative packaged templates directory path ending with `/` on one line, then bare template file names on the next line.
+- **SRS-515**: MUST implement the following behavior: Every path printed by the installation completion report MUST be composed lexically and MUST NOT resolve symbolic links.
+- **SRS-516**: MUST implement the following behavior: Guideline and template file-name lists MUST enumerate only non-hidden, non-symbolic-link regular files in deterministic sorted order.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
@@ -316,6 +320,7 @@ No explicit performance optimizations identified.
 - **SRS-503**: MUST include unit tests in `tests/test_cli.py` verifying installed skills contain no residual `%%DOC_PATH%%`, `%%SRC_PATHS%%`, or `%%TEST_PATH%%` token and render configured directory values.
 - **SRS-506**: MUST render the `%%DOC_PATH%%`, `%%SRC_PATHS%%`, and `%%TEST_PATH%%` substitutions from configured values without filesystem resolution.
 - **SRS-507**: MUST include unit tests in `tests/test_cli.py` verifying substitution sources exclude or do not resolve symbolic links.
+- **SRS-517**: MUST include unit tests in `tests/test_cli.py` verifying that the installation completion report prints guidelines and templates directory paths followed by bare file-name lists without symbolic-link resolution.
 
 ## 5. Static Code Analysis Requirements
 

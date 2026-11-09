@@ -17,7 +17,8 @@ SRS-364..366 (provider grammar), SRS-368 (SKILL.md front matter),
 SRS-371/374 (flowchart artifacts), SRS-381..390 (user-level install,
 global config, model removal), SRS-391 (runtime git resolution),
 SRS-462..SRS-494 (show providers table, installation status, alphabetical
-order, skills path), SRS-495 (packaged templates directory).
+order, skills path), SRS-495 (packaged templates directory), SRS-513..SRS-517
+(compact post-installation resource report).
 """
 
 import json
@@ -571,8 +572,8 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
             "`~/resources/guidelines/RFC2119.md`",
         )
         self.assertEqual(
-            cli.generate_guidelines_file_items(),
-            ["~/resources/guidelines/RFC2119.md"],
+            cli.generate_guidelines_file_names(),
+            ["RFC2119.md"],
         )
 
     def test_guidelines_file_list_falls_back_to_directory(self) -> None:
@@ -596,10 +597,10 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         (self.guidelines / "LinkedDir").symlink_to(self.resource_root)
         # Act
         file_list = cli.generate_guidelines_file_list()
-        items = cli.generate_guidelines_file_items()
+        names = cli.generate_guidelines_file_names()
         # Assert
         self.assertEqual(file_list, "`~/resources/guidelines/RFC2119.md`")
-        self.assertEqual(items, ["~/resources/guidelines/RFC2119.md"])
+        self.assertEqual(names, ["RFC2119.md"])
 
     def test_symlinked_guidelines_directory_falls_back_to_directory(self) -> None:
         """SRS-504/SRS-507: a symlinked guidelines directory is not followed."""
@@ -627,6 +628,59 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         # Assert
         self.assertEqual(rendered_guidelines, "~/resources/guidelines")
         self.assertEqual(rendered_templates, "~/resources/templates")
+
+    def test_install_reports_guidelines_and_templates_compactly(self) -> None:
+        """SRS-513/SRS-514/SRS-516/SRS-517: compact bare file-name resource report."""
+        # Arrange
+        self.guidelines.mkdir(parents=True, exist_ok=True)
+        (self.guidelines / "RFC2119.md").write_text("rfc\n", encoding="utf-8")
+        (self.guidelines / "Linked.md").symlink_to(self.guidelines / "RFC2119.md")
+        self.templates.mkdir(parents=True, exist_ok=True)
+        (self.templates / "Requirements_Template.md").write_text(
+            "tpl\n", encoding="utf-8"
+        )
+        expected_output = [
+            "Installation completed successfully in ~",
+            "Guidelines: ~/resources/guidelines/",
+            "RFC2119.md",
+            "Templates: ~/resources/templates/",
+            "Requirements_Template.md",
+        ]
+        # Act
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["--enable", "codex", "install"])
+        lines = mock_stdout.getvalue().splitlines()
+        # Assert
+        self.assertEqual(rc, 0)
+        for expected_line in expected_output:
+            self.assertIn(expected_line, lines)
+        self.assertNotIn("Linked.md", mock_stdout.getvalue())
+        self.assertNotIn(
+            "~/resources/guidelines/RFC2119.md", mock_stdout.getvalue()
+        )
+
+    def test_install_report_keeps_symlinked_resource_root_lexical(self) -> None:
+        """SRS-515/SRS-517: printed resource paths never resolve symbolic links."""
+        # Arrange
+        real_root = self.HOME / "real-resources"
+        (real_root / "guidelines").mkdir(parents=True)
+        (real_root / "templates").mkdir(parents=True)
+        (real_root / "prompts").mkdir(parents=True)
+        shutil.rmtree(self.resource_root)
+        self.resource_root.symlink_to(real_root)
+        expected_output = [
+            "Guidelines: ~/resources/guidelines/",
+            "Templates: ~/resources/templates/",
+        ]
+        # Act
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["--enable", "codex", "install"])
+        lines = mock_stdout.getvalue().splitlines()
+        # Assert
+        self.assertEqual(rc, 0)
+        for expected_line in expected_output:
+            self.assertIn(expected_line, lines)
+        self.assertNotIn(str(real_root), mock_stdout.getvalue())
 
     def test_install_does_not_copy_guidelines_into_project(self) -> None:
         """SRS-404: installation never writes guideline files into the project."""

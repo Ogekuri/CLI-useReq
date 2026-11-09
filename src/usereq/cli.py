@@ -2472,24 +2472,56 @@ def generate_guidelines_file_list() -> str:
     return ", ".join(files)
 
 
-def generate_guidelines_file_items() -> list[str]:
+def generate_guidelines_file_names() -> list[str]:
     """!
-    @brief List the home-relative guideline entries reported after installation.
-    @details Returns one home-relative path per non-hidden non-symlink regular file in
+    @brief List the bare guideline file names reported after installation.
+    @details Returns one bare file name per non-hidden non-symlink regular file in
     :func:`guidelines_dir` (packaged `resources/guidelines` of the running installation)
-    without following symbolic links (SRS-504); when the directory is absent, symlinked,
-    or empty, returns the home-relative directory itself with a trailing slash.
-    @return {list[str]} Ordered home-relative guideline paths.
-    @satisfies SRS-360, SRS-403, SRS-504
+    without following symbolic links (SRS-504, SRS-516); names carry no directory
+    components, and an absent, symlinked, or empty directory yields an empty list.
+    @return {list[str]} Bare guideline file names in deterministic sorted order.
+    @satisfies SRS-360, SRS-513, SRS-516
     """
-    source_dir = guidelines_dir()
-    items = [
-        format_home_relative_path(file_path)
-        for file_path in _non_symlink_regular_files(source_dir)
+    return [
+        file_path.name for file_path in _non_symlink_regular_files(guidelines_dir())
     ]
-    if not items:
-        return [f"{format_home_relative_path(source_dir)}/"]
-    return items
+
+
+def generate_templates_file_names() -> list[str]:
+    """!
+    @brief List the bare template file names reported after installation.
+    @details Returns one bare file name per non-hidden non-symlink regular file in
+    :func:`templates_dir` (packaged `resources/templates` of the running installation)
+    without following symbolic links (SRS-516); names carry no directory components,
+    and an absent, symlinked, or empty directory yields an empty list.
+    @return {list[str]} Bare template file names in deterministic sorted order.
+    @satisfies SRS-498, SRS-514, SRS-516
+    """
+    return [
+        file_path.name for file_path in _non_symlink_regular_files(templates_dir())
+    ]
+
+
+def _print_resource_report() -> None:
+    """!
+    @brief Print the compact post-installation packaged-resource report.
+    @details Prints the home-relative lexical guidelines directory path ending with
+    `/`, then one comma-separated line of bare guideline file names (SRS-513), then
+    the home-relative lexical templates directory path ending with `/`, then one
+    comma-separated line of bare template file names (SRS-514). Every printed path
+    is composed lexically without resolving symbolic links (SRS-515); an empty
+    enumeration emits no file-name line (SRS-516).
+    @return {None} Function return value.
+    @satisfies SRS-513, SRS-514, SRS-515, SRS-516
+    """
+    print(f"Guidelines: {format_home_relative_path(guidelines_dir())}/")
+    guideline_names = generate_guidelines_file_names()
+    if guideline_names:
+        print(", ".join(guideline_names))
+    print(f"Templates: {format_home_relative_path(templates_dir())}/")
+    template_names = generate_templates_file_names()
+    if template_names:
+        print(", ".join(template_names))
 
 
 def ensure_relative(value: str, name: str, code: int) -> None:
@@ -3208,21 +3240,11 @@ def run(args: Namespace) -> None:
 
     # Final success notification: printed only when the command completed all
     # intended filesystem modifications without raising an exception.
-    try:
-        resolved_home = str(home_dir().resolve())
-    except Exception:
-        resolved_home = str(home_dir())
-    print(f"Installation completed successfully in {resolved_home}")
-
-    # Print the discovered directories used for token substitutions
-    # as required by REQ-078: one item per line prefixed with '- '.
-    guidelines_items = generate_guidelines_file_items()
-
-    if guidelines_items:
-        for entry in guidelines_items:
-            print(f"- {entry}")
-    else:
-        print("The folder %%GUIDELINES_FILES%% does not contain any files")
+    # SRS-513..SRS-516: compact packaged-resource report; SRS-515 keeps every
+    # reported path lexical, so symbolic links are never resolved here.
+    home_value = format_home_relative_path(home_dir())
+    print(f"Installation completed successfully in {home_value}")
+    _print_resource_report()
 
 
     # Build and print installation report table with per-provider skills details.
