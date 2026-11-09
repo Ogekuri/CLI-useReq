@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.74.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0) - 2026-11-09
+### ⛰️  Features
+- Update prompts.
+- add cli-usereq console-script entry point [useReq] *(packaging)*
+  - pyproject.toml [project.scripts] now deploys a third console script, cli-usereq = usereq.cli:main, alongside req and usereq (SRS-454).
+  - SRS-454 updated: the exact entry-point set is req, usereq, and cli-usereq, all bound to usereq.cli:main; Section 1.2 primary-interface line lists cli-usereq.
+  - Wheel verification: dist-info entry_points.txt exposes exactly the three console scripts bound to usereq.cli:main.
+  - WORKFLOW.md PROC:main lifecycle records the new cli-usereq process invocation name.
+  - Full pytest suite green (1972 passed); static-check clean; no src code changes required.
+
 ## [0.73.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0) - 2026-11-09
 ### ⛰️  Features
 - distribute full resources tree incl. guidelines [useReq] *(packaging)*
@@ -1644,6 +1654,7 @@
 - \[0.71.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.71.0
 - \[0.72.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.72.0
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
+- \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1717,3 +1728,4 @@
 [0.71.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.70.0..v0.71.0
 [0.72.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.71.0..v0.72.0
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
+[0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
