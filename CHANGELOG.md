@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.75.1](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.1) - 2026-11-09
+### 🐛  Bug Fixes
+- refresh uv index cache so upgrade installs latest version [useReq] *(run-upgrade)*
+run_upgrade() executed 'uv tool install cli-usereq --force', which re-resolves
+from cached simple-index data and reinstalls the previously resolved version
+(reproduced: 0.74.0 reinstalled while PyPI latest was 0.75.0). Append
+'--refresh' so resolution always reads fresh PyPI index data (SRS-343/SRS-440).
+Add failing-then-passing reproducer and update strictly related exact-command
+assertions in test_update_check.py and test_cli.py; align README and
+WORKFLOW/REFERENCES docs.
+
+### 🚜  Changes
+- print compact lexical resource report after install [useReq] *(cli)*
+Requirements: add SRS-513..SRS-517 and retarget SRS-049 to the new resource report.
+cli.py: print Guidelines and Templates directory paths each followed by one line of bare file names after installation; every reported path, including HOME, is lexical and never resolves symbolic links.
+tests: switch guideline enumeration to bare-name helpers and add resource-report and symlink-lexical coverage.
+docs: update WORKFLOW call traces and regenerate REFERENCES.
+- add --force auxiliary flag to --upgrade for full reinstall [useReq] *(cli)*
+REQUIREMENTS: modify SRS-343/SRS-452/SRS-444 and add SRS-508..SRS-512
+defining --upgrade --force full download/reinstall (uv --force
+--reinstall --refresh) for PyPI and GitHub develop channels
+src/usereq/cli.py: run_upgrade(force=...) composes standard vs forced
+uv commands; --force parsed and dispatched by main; inline help updated
+tests: test_update_check.py and test_cli.py cover standard/forced
+commands, parser acceptance, help documentation, and main dispatch
+docs: README.md upgrade sections and flag list updated; WORKFLOW.md
+run_upgrade node updated; REFERENCES.md regenerated
+- never follow symlinks in prompt token substitution [useReq] *(skill-install)*
+Add SRS-504..SRS-507: %%GUIDELINES_FILES%% enumeration excludes
+symbolic-link entries via scandir with follow_symlinks disabled;
+%%GUIDELINES_PATH%%/%%TEMPLATE_PATH%% render lexical packaged paths
+(RESOURCE_ROOT no longer resolves symlinks); %%DOC_PATH%%/%%SRC_PATHS%%/
+%%TEST_PATH%% render configured values without filesystem resolution.
+Add four symlink unit tests; update WORKFLOW/REFERENCES accordingly.
+
 ## [0.75.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0) - 2026-11-09
 ### 🚜  Changes
 - substitute directory tokens from configured values [useReq] *(skill-install)*
@@ -1468,6 +1503,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
+- \[0.75.1\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.1
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1543,3 +1579,4 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
+[0.75.1]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.1
