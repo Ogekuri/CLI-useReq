@@ -59,7 +59,7 @@ AUTO_INSTALL_CONFIG_KEY = "auto-install"
 DEFAULT_AUTO_INSTALL = True
 """! @brief Default auto-install state when the configuration stores no entry (SRS-420)."""
 
-DEFAULT_DOCS_DIR = "usereq"
+DEFAULT_DOCS_DIR = "usereq/docs"
 """! @brief Default docs-dir value stored when the configuration has no docs-dir (SRS-359)."""
 
 DEFAULT_TESTS_DIR = "tests"
@@ -1983,7 +1983,7 @@ def load_config() -> dict[str, str | list[str]]:
     @brief Loads directory parameters from the user-global configuration file.
     @return Dictionary containing `docs-dir`, `tests-dir`, and `src-dir` values.
     @details Reads `~/.config/usereq/config.json`; when the file is absent every key falls
-    back to its default (`usereq`, `tests`, `src`). Present but invalid values raise
+    back to its default (`usereq/docs`, `tests`, `src`). Present but invalid values raise
     `ReqError`; `--prj-base` and `--git-base` are never read from the file
     (SRS-359, SRS-361, SRS-362, SRS-394, SRS-407).
     @throws ReqError If the global config file is invalid or holds invalid directory values.
@@ -3044,15 +3044,16 @@ def run(args: Namespace) -> None:
     (SRS-064, SRS-279) and requires at least one enabled provider (SRS-035), installs
     `req-<prompt_name>/SKILL.md` skill artifacts into the user-level hardcoded skills
     roots (SRS-381..SRS-386, SRS-464, SRS-486) with home-relative packaged-resource token
-    substitution for `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, and `%%TEMPLATE_PATH%%`
-    (SRS-360, SRS-402, SRS-403, SRS-498), and never rewrites the user-global configuration
+    substitution for `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, `%%TEMPLATE_PATH%%`,
+    `%%DOC_PATH%%`, `%%SRC_PATHS%%`, and `%%TEST_PATH%%` (SRS-360, SRS-402, SRS-403,
+    SRS-498, SRS-500, SRS-501, SRS-502), and never rewrites the user-global configuration
     file (SRS-448). Install does not consume `--prj-base` (SRS-447); project scaffolding,
     containment validation, and directory persistence are removed legacy behaviors
     (SRS-363, SRS-407, SRS-449).
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @throws ReqError If no provider is enabled.
-    @satisfies SRS-035, SRS-064, SRS-279, SRS-360, SRS-381, SRS-387, SRS-388, SRS-402, SRS-403, SRS-418, SRS-447, SRS-448, SRS-498
+    @satisfies SRS-035, SRS-064, SRS-279, SRS-359, SRS-360, SRS-361, SRS-362, SRS-381, SRS-387, SRS-388, SRS-402, SRS-403, SRS-418, SRS-447, SRS-448, SRS-498, SRS-500, SRS-501, SRS-502
     """
     global VERBOSE, DEBUG
     VERBOSE = getattr(args, "verbose", False)
@@ -3091,6 +3092,19 @@ def run(args: Namespace) -> None:
     dlog(f"GUIDELINES_FILE_LIST={guidelines_file_list}")
     dlog(f"TEMPLATE_PATH={templates_path_value}")
 
+    # Resolve the configured directory substitution values (SRS-359, SRS-361, SRS-362,
+    # SRS-500, SRS-501, SRS-502); install reads them without persisting (SRS-448).
+    directory_config = load_config()
+    doc_path_value = directory_config["docs-dir"]
+    src_paths_value = ", ".join(
+        f"`{src_entry}/`" for src_entry in directory_config["src-dir"]
+    )
+    test_path_value = f"`{directory_config['tests-dir']}/`"
+
+    dlog(f"DOC_PATH={doc_path_value}")
+    dlog(f"SRC_PATHS={src_paths_value}")
+    dlog(f"TEST_PATH={test_path_value}")
+
     # Resolve user-level skills roots under the user HOME (SRS-381..SRS-386, SRS-486).
     skills_roots: dict[str, Path] = {
         provider_name: provider_skills_root(provider_name)
@@ -3121,11 +3135,14 @@ def run(args: Namespace) -> None:
 
         # Skills are the only generated artifact: every enabled provider receives
         # req-<prompt_name>/SKILL.md under its hardcoded user-level skills root
-        # (SRS-095, SRS-368, SRS-464, SRS-498).
+        # (SRS-095, SRS-368, SRS-464, SRS-498, SRS-500, SRS-501, SRS-502).
         skill_replacements = {
             "%%GUIDELINES_FILES%%": guidelines_file_list,
             "%%GUIDELINES_PATH%%": guidelines_path_value,
             "%%TEMPLATE_PATH%%": templates_path_value,
+            "%%DOC_PATH%%": doc_path_value,
+            "%%SRC_PATHS%%": src_paths_value,
+            "%%TEST_PATH%%": test_path_value,
             "%%ARGS%%": "$ARGUMENTS",
         }
         skill_desc_yaml = yaml_double_quote_escape(

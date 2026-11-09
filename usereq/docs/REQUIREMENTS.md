@@ -116,7 +116,7 @@ No explicit performance optimizations identified.
 - **SRS-349**: MUST persist a 3600-second idle-delay after a successful startup HTTP release-check; when the fetched version is newer than the installed version, it MUST print a bright-green stderr message `New version available: installed <installed_version>, latest <latest_version>.`.
 - **SRS-350**: MUST print a bright-red stderr diagnostic for every startup release-check failure and MUST rewrite `~/.cache/usereq/check_version_idle-time.json` with a newly calculated `idle_until_timestamp` on every failure.
 - **SRS-351**: MUST use an 86400-second idle-delay for startup release-check API call failures (`HTTPError`, `URLError`, `TimeoutError`); all other startup release-check failures MUST use the default 3600-second idle-delay.
-- **SRS-359**: MUST use `usereq` as the `docs-dir` default value when `~/.config/usereq/config.json` stores no `docs-dir` entry.
+- **SRS-359**: MUST use `usereq/docs` as the `docs-dir` default value when `~/.config/usereq/config.json` stores no `docs-dir` entry.
 - **SRS-360**: MUST resolve `GUIDELINES_DIR` as the packaged `resources/guidelines` directory of the running installation, which MUST NOT be configurable.
 - **SRS-361**: MUST use `tests` as the `tests-dir` default value when `~/.config/usereq/config.json` stores no `tests-dir` entry.
 - **SRS-362**: MUST use `src` as the sole `src-dir` list entry when `~/.config/usereq/config.json` stores no `src-dir` entry.
@@ -173,12 +173,15 @@ No explicit performance optimizations identified.
 - **SRS-384**: MUST install provider `antigravity` skills to `~/.gemini/config/skills`.
 - **SRS-385**: MUST install provider `opencode` skills to `~/.config/opencode/skills`.
 - **SRS-386**: MUST install provider `pi` skills to `~/.pi/agent/skills`.
-- **SRS-095**: MUST generate `SKILL.md` for each skill subdirectory of every enabled provider using prompt body substituted with only `%%TEMPLATE_PATH%%`, `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, and `%%ARGS%%` tokens, and provider-resolved YAML front matter.
+- **SRS-095**: MUST generate `SKILL.md` for each skill subdirectory of every enabled provider using prompt body substituted with only `%%TEMPLATE_PATH%%`, `%%GUIDELINES_FILES%%`, `%%GUIDELINES_PATH%%`, `%%DOC_PATH%%`, `%%SRC_PATHS%%`, `%%TEST_PATH%%`, and `%%ARGS%%` tokens, and provider-resolved YAML front matter.
 - **SRS-368**: MUST set `SKILL.md` YAML `name` to `req-<prompt_name>` and `description` to the YAML-escaped output of `extract_skill_description(prompt_frontmatter)`.
 - **SRS-389**: MUST NOT emit `model`, `tools`, or `allowed-tools` fields in generated skill artifacts.
 - **SRS-402**: MUST render the `%%GUIDELINES_PATH%%` substitution as the home-relative `~/`-prefixed GUIDELINES_DIR path ending with `/`.
 - **SRS-403**: MUST render the `%%GUIDELINES_FILES%%` substitution as a comma-separated list of home-relative `~/`-prefixed guideline file paths.
 - **SRS-498**: MUST render the `%%TEMPLATE_PATH%%` substitution as the home-relative `~/`-prefixed packaged `resources/templates` directory path of the running installation, ending with `/`.
+- **SRS-500**: MUST render the `%%DOC_PATH%%` substitution as the configured `docs-dir` value from `~/.config/usereq/config.json`, defaulting per SRS-359.
+- **SRS-501**: MUST render the `%%SRC_PATHS%%` substitution as comma-separated backticked `src-dir` entries from `~/.config/usereq/config.json`, each ending with `/`.
+- **SRS-502**: MUST render the `%%TEST_PATH%%` substitution as the backticked `tests-dir` value from `~/.config/usereq/config.json`, ending with `/`.
 - **SRS-404**: MUST NOT copy, create, update, or delete guideline files in project or user directories.
 - **SRS-371**: MUST implement the following behavior: When `src/usereq/resources/prompts/flowchart.md` exists, provider resource generation MUST emit `req-flowchart` skill artifacts for every enabled provider.
 
@@ -303,6 +306,7 @@ No explicit performance optimizations identified.
 - **SRS-492**: MUST include unit tests in `tests/test_cli.py` verifying the single `Installation Status` table with `Type`, `Name`, `CLI`, `Enabled`, and `Installed` columns reporting only enabled providers with `OK` and `MISSING` rows.
 - **SRS-494**: MUST include unit tests in `tests/test_cli.py` verifying that `codex` skills install to `~/.codex/skills` and `copilot` skills install to `~/.copilot/skills`.
 - **SRS-499**: MUST include unit tests in `tests/test_cli.py` verifying installed skills contain no residual `%%TEMPLATE_PATH%%` token and rendered template and guideline paths target the packaged resources of the running installation.
+- **SRS-503**: MUST include unit tests in `tests/test_cli.py` verifying installed skills contain no residual `%%DOC_PATH%%`, `%%SRC_PATHS%%`, or `%%TEST_PATH%%` token and render configured directory values.
 
 ## 5. Static Code Analysis Requirements
 

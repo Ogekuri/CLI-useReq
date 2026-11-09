@@ -317,6 +317,16 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         self.assertIn("src/usereq/resources/guidelines", content)
         self.assertIn("src/usereq/resources/templates", content)
 
+    def test_directory_tokens_use_configured_values(self) -> None:
+        """SRS-500/SRS-501/SRS-502/SRS-503: configured directory values are rendered."""
+        skill = self.HOME / ".claude" / "skills" / "req-analyze" / "SKILL.md"
+        content = skill.read_text(encoding="utf-8")
+        self.assertNotIn("%%DOC_PATH%%", content)
+        self.assertNotIn("%%SRC_PATHS%%", content)
+        self.assertNotIn("%%TEST_PATH%%", content)
+        self.assertIn("docs/REQUIREMENTS.md", content)
+        self.assertIn("`src/`", content)
+
 
 class TestProviderNameParsing(unittest.TestCase):
     """SRS-275/278/364: --enable/--disable PROVIDER name validation."""
@@ -587,6 +597,28 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         self.assertEqual(rc, 0)
         self.assertFalse((project / "guidelines").exists())
         self.assertFalse((project / "usereq" / "guidelines").exists())
+
+
+class TestDirectoryTokenSubstitution(HomeIsolatedTestCase):
+    """SRS-359/SRS-500..SRS-503: default directory token substitution."""
+
+    def test_defaults_apply_without_persisted_directory_keys(self) -> None:
+        """SRS-359/SRS-500..SRS-502: absent config keys fall back to defaults."""
+        config = cli.load_config()
+        self.assertEqual(config["docs-dir"], "usereq/docs")
+        self.assertEqual(config["src-dir"], ["src"])
+        self.assertEqual(config["tests-dir"], "tests")
+
+    def test_install_substitutes_directory_tokens_with_defaults(self) -> None:
+        """SRS-500/SRS-501/SRS-503: install renders default directory tokens."""
+        self.run_cli(["--enable", "claude", "install"])
+        skill = self.HOME / ".claude" / "skills" / "req-analyze" / "SKILL.md"
+        content = skill.read_text(encoding="utf-8")
+        self.assertNotIn("%%DOC_PATH%%", content)
+        self.assertNotIn("%%SRC_PATHS%%", content)
+        self.assertNotIn("%%TEST_PATH%%", content)
+        self.assertIn("usereq/docs/REQUIREMENTS.md", content)
+        self.assertIn("`src/`", content)
 
 
 class TestPackagedTemplatesDirectory(unittest.TestCase):

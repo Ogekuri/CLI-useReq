@@ -157,7 +157,7 @@ Canonical keys: `docs-dir`, `tests-dir`, `src-dir`, `providers`, `static-check`,
 
 ### Project directories
 
-- `--set-docs-dir DOCS_DIR`, `--set-src-dir SRC_DIR` (repeatable), and `--set-tests-dir TESTS_DIR` persist project-relative directory values (each requires `--prj-base`; values must resolve under it).
+- `--set-docs-dir DOCS_DIR`, `--set-src-dir SRC_DIR` (repeatable), and `--set-tests-dir TESTS_DIR` persist project-relative directory values (each requires `--prj-base`; values must resolve under it). Install-time prompt substitution renders `%%DOC_PATH%%`/`%%SRC_PATHS%%`/`%%TEST_PATH%%` from these values, defaulting to `usereq/docs`, `src`, and `tests` when unset.
 - Defaults when the configuration stores no value: `usereq` (docs), `src` (sources), `tests` (tests).
 - On fresh installation, missing configured directories (including parents) are created automatically under `--prj-base`.
 
