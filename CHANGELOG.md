@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.1](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.1) - 2026-11-09
+## [0.75.2](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.2) - 2026-11-10
 ### 🐛  Bug Fixes
 - refresh uv index cache so upgrade installs latest version [useReq] *(run-upgrade)*
 run_upgrade() executed 'uv tool install cli-usereq --force', which re-resolves
@@ -12,6 +12,15 @@ assertions in test_update_check.py and test_cli.py; align README and
 WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- align --ver version output into three aligned columns [useReq] *(core)*
+Rewrite SRS-441: --ver/--version prints exactly three stdout lines
+(installed, PyPI latest, GitHub latest) in fixed order.
+Add SRS-518: each line label is left-justified in an 18-character
+field followed by ': <version>' so version numbers align.
+maybe_print_version now renders 'Current Installed', 'Latest @ PyPI',
+'Latest @ GitHub' labels via VERSION_REPORT_LABEL_WIDTH constant.
+Update tests/test_update_check.py expectations (SRS-444) and sync the
+README --ver flag description (SRS-352).
 - print compact lexical resource report after install [useReq] *(cli)*
 Requirements: add SRS-513..SRS-517 and retarget SRS-049 to the new resource report.
 cli.py: print Guidelines and Templates directory paths each followed by one line of bare file names after installation; every reported path, including HOME, is lexical and never resolves symbolic links.
@@ -1503,7 +1512,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.1\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.1
+- \[0.75.2\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.2
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1579,4 +1588,4 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.1]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.1
+[0.75.2]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.2

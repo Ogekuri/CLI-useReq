@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -*- coding: utf-8 -*-
-# VERSION: 0.75.1
+# VERSION: 0.75.2
 # AUTHORS: Ogekuri
 ##
 # @file scripts/pre-release-check.sh
