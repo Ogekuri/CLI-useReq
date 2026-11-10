@@ -1,6 +1,9 @@
 # Changelog
 
-## [0.75.2](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.2) - 2026-11-10
+## [0.75.3](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.3) - 2026-11-10
+### ⛰️  Features
+- Update prompts.
+
 ### 🐛  Bug Fixes
 - refresh uv index cache so upgrade installs latest version [useReq] *(run-upgrade)*
 run_upgrade() executed 'uv tool install cli-usereq --force', which re-resolves
@@ -1512,7 +1515,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.2\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.2
+- \[0.75.3\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.3
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1588,4 +1591,4 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.2]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.2
+[0.75.3]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.3
