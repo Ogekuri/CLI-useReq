@@ -294,7 +294,7 @@ Notes:
 ### Other flags
 
 - `--verbose` / `--debug` — detailed and diagnostic output.
-- `--ver` / `--version` — print the installed package version, query PyPI and GitHub, and print `PyPI latest: <version>` and `GitHub latest: <version>` lines (`unknown` when a repository cannot be reached).
+- `--ver` / `--version` — print the installed package version and query PyPI and GitHub, printing three aligned lines: `Current Installed : <version>`, `Latest @ PyPI : <version>`, and `Latest @ GitHub : <version>` (`unknown` when a repository cannot be reached).
 - `--develop` / `--dev` — with `--upgrade`: install the latest tagged GitHub release from `git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`, with `<TAG>` resolved through the GitHub releases API regardless of branch, instead of PyPI; `--dev` is an equivalent alias of `--develop`.
 - `--force` — with `--upgrade`: force full package download and complete reinstallation (`uv tool install ... --force --reinstall --refresh`); without `--force` the standard install/update process runs without any forcing option.
 - `-h` / `--help` — print command help and exit.

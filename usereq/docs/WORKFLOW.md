@@ -75,7 +75,7 @@
         - `load_persisted_providers(...)`: load persisted provider names, dropping invalid or legacy persisted entries with one English stderr warning each [`src/usereq/cli.py`]
         - `parse_args(...)`: parse the upgrade invocation arguments for the install flow [`src/usereq/cli.py`]
         - `run_install(...)`: execute the config-driven installation flow (SRS-418) [`src/usereq/cli.py`]
-    - `maybe_print_version(...)`: for `--ver`/`--version`, print the installed version followed by `PyPI latest: <version>` and `GitHub latest: <version>` lines, reusing the PyPI version fetched by the startup release-check and degrading unfetchable versions to `unknown` (SRS-441, SRS-442) [`src/usereq/cli.py`]
+    - `maybe_print_version(...)`: for `--ver`/`--version`, print exactly three aligned lines `Current Installed : <version>`, `Latest @ PyPI : <version>`, and `Latest @ GitHub : <version>` with labels left-justified in an 18-character field so version numbers align (SRS-441, SRS-518), reusing the PyPI version fetched by the startup release-check and degrading unfetchable versions to `unknown` (SRS-442) [`src/usereq/cli.py`]
       - `load_package_version(...)`: resolve the installed version printed on the first output line [`src/usereq/cli.py`]
       - `fetch_pypi_latest_version(...)`: fetch the PyPI latest version when no startup-check value is available [`src/usereq/cli.py`]
       - `fetch_github_latest_version(...)`: GET `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` and normalize `tag_name` for the GitHub latest line [`src/usereq/cli.py`]

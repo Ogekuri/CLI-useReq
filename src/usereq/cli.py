@@ -359,6 +359,9 @@ endpoint; PyPI is the sole source for version verification and default self-upgr
 UNKNOWN_VERSION_LABEL = "unknown"
 """! @brief Label printed by `--ver`/`--version` when a remote latest version cannot be fetched (SRS-442)."""
 
+VERSION_REPORT_LABEL_WIDTH = 18
+"""! @brief Left-justified label-field width aligning the `: <version>` column of every `--ver`/`--version` line (SRS-518)."""
+
 FORCE_ONLINE_RELEASE_CHECK = False
 """! @brief Startup-scoped override that bypasses release-check idle-state gating when enabled."""
 
@@ -871,19 +874,21 @@ def load_package_version() -> str:
 
 def maybe_print_version(argv: list[str], pypi_latest: Optional[str] = None) -> bool:
     """!
-    @brief Handles --ver/--version by printing installed, PyPI latest, and GitHub latest versions.
+    @brief Handles --ver/--version by printing installed, PyPI latest, and GitHub latest versions in aligned columns.
         @param argv Command line arguments to check.
         @param pypi_latest {Optional[str]} PyPI latest version already fetched by the startup
         release-check; when None, a direct PyPI JSON API fetch is attempted (SRS-441, SRS-442).
-    @details When `--ver`/`--version` is present, prints the installed package version as the
-    first stdout line, then queries (or reuses) the PyPI JSON API `info.version` and the GitHub
-    latest-release `tag_name`, printing `PyPI latest: <version>` and `GitHub latest: <version>`
-    lines; fetch failures degrade to the `unknown` label without raising (SRS-441, SRS-442).
+    @details When `--ver`/`--version` is present, prints exactly three stdout lines in order:
+    installed version, PyPI latest version, GitHub latest version. Each line renders
+    `<LABEL>` left-justified in :data:`VERSION_REPORT_LABEL_WIDTH` characters followed by
+    `: <version>` so the version numbers align in one column (SRS-441, SRS-518); the labels
+    are `Current Installed`, `Latest @ PyPI`, and `Latest @ GitHub`; fetch failures degrade
+    to the `unknown` label without raising (SRS-442).
     @return {bool} True if version output was printed, False otherwise.
-    @satisfies SRS-441, SRS-442
+    @satisfies SRS-441, SRS-442, SRS-518
     """
     if "--ver" in argv or "--version" in argv:
-        print(load_package_version())
+        installed_version = load_package_version()
         if pypi_latest is None:
             try:
                 pypi_latest = fetch_pypi_latest_version(RELEASE_CHECK_TIMEOUT_SECONDS)
@@ -907,10 +912,11 @@ def maybe_print_version(argv: list[str], pypi_latest: Optional[str] = None) -> b
             ValueError,
         ):
             github_latest = None
-        print(f"PyPI latest: {pypi_latest if pypi_latest else UNKNOWN_VERSION_LABEL}")
-        print(
-            f"GitHub latest: {github_latest if github_latest else UNKNOWN_VERSION_LABEL}"
-        )
+        pypi_value = pypi_latest if pypi_latest else UNKNOWN_VERSION_LABEL
+        github_value = github_latest if github_latest else UNKNOWN_VERSION_LABEL
+        print(f"{'Current Installed':<{VERSION_REPORT_LABEL_WIDTH}}: {installed_version}")
+        print(f"{'Latest @ PyPI':<{VERSION_REPORT_LABEL_WIDTH}}: {pypi_value}")
+        print(f"{'Latest @ GitHub':<{VERSION_REPORT_LABEL_WIDTH}}: {github_value}")
         return True
     return False
 

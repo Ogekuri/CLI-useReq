@@ -817,9 +817,9 @@ class TestVersionOutput(unittest.TestCase):
         self.assertEqual(
             output_lines,
             [
-                "1.2.3",
-                "PyPI latest: 2.3.4",
-                "GitHub latest: 3.4.5",
+                "Current Installed : 1.2.3",
+                "Latest @ PyPI     : 2.3.4",
+                "Latest @ GitHub   : 3.4.5",
             ],
         )
 
@@ -839,9 +839,9 @@ class TestVersionOutput(unittest.TestCase):
         self.assertEqual(
             output_lines,
             [
-                "1.2.3",
-                "PyPI latest: unknown",
-                "GitHub latest: unknown",
+                "Current Installed : 1.2.3",
+                "Latest @ PyPI     : unknown",
+                "Latest @ GitHub   : unknown",
             ],
         )
 
@@ -863,9 +863,9 @@ class TestVersionOutput(unittest.TestCase):
         self.assertEqual(
             output_lines,
             [
-                "1.2.3",
-                "PyPI latest: 2.3.4",
-                "GitHub latest: 3.4.5",
+                "Current Installed : 1.2.3",
+                "Latest @ PyPI     : 2.3.4",
+                "Latest @ GitHub   : 3.4.5",
             ],
         )
         urlopen_mock.assert_called_once()

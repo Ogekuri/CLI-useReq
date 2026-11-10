@@ -150,8 +150,9 @@ No explicit performance optimizations identified.
 - **SRS-422**: MUST implement the following behavior: `--disable-static-check` and `--disable` with unknown language or provider tokens MUST print an English error and exit with code 1.
 - **SRS-440**: MUST implement the following behavior: `--upgrade --develop` MUST install the latest tagged GitHub release resolved per SRS-451; without `--develop`/`--dev`, `--upgrade` MUST install from the PyPI index.
 - **SRS-445**: MUST implement the following behavior: `--dev` MUST be accepted as an equivalent command-line alias of `--develop` when selecting the GitHub upgrade source for `--upgrade`.
-- **SRS-441**: MUST implement the following behavior: `--ver`/`--version` MUST print the installed version as the first line followed by `PyPI latest: <version>` and `GitHub latest: <version>` lines.
+- **SRS-441**: MUST implement the following behavior: `--ver`/`--version` MUST print exactly three stdout lines in order: installed version, PyPI latest version, and GitHub latest version.
 - **SRS-442**: MUST implement the following behavior: `--ver`/`--version` MUST query the PyPI JSON API and the GitHub latest-release API bypassing idle gating; unfetchable versions MUST print `unknown`.
+- **SRS-518**: MUST implement the following behavior: Each `--ver`/`--version` line MUST render `<LABEL>` left-justified in an 18-character field followed by `: <version>`; labels MUST be `Current Installed`, `Latest @ PyPI`, and `Latest @ GitHub`.
 - **SRS-443**: MUST implement the following behavior: `README.md` MUST present PyPI as the primary install/upgrade channel and a dedicated non-primary GitHub section covering GitHub installation and `--develop`/`--dev` upgrades.
 - **SRS-446**: MUST implement the following behavior: The CLI help output MUST NOT reference `~/.config/usereq/config.json` or configuration-file persistence and removal operations.
 - **SRS-447**: MUST accept the `install` subcommand without `--prj-base`; the `install` subparser MUST NOT define or consume `--prj-base`.
