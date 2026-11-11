@@ -267,6 +267,17 @@ No explicit performance optimizations identified.
 - **SRS-495**: MUST resolve the packaged document-template directory as `src/usereq/resources/templates` and MUST raise an English error when it is absent or contains no non-hidden files.
 - **SRS-497**: MUST bundle the guideline documents as package data under `src/usereq/resources/guidelines`, and the directory MUST contain at least one non-hidden guideline file.
 
+### 3.5.2 Release Build Script and Repository Ignore Policy
+- **SRS-546**: MUST implement the following behavior: `scripts/build.sh` MUST resolve the repository root from its own filesystem location and MUST execute every build stage from that root independently of the caller working directory.
+- **SRS-547**: MUST implement the following behavior: `scripts/build.sh` MUST verify that the `uv` command is executable and MUST print an English error and exit with code 1 when it is absent.
+- **SRS-548**: MUST implement the following behavior: `scripts/build.sh` MUST remove from `dist/` only gitignored entries and MUST preserve every git-tracked or non-ignored file under `dist/`.
+- **SRS-549**: MUST implement the following behavior: `scripts/build.sh` MUST build the sdist and wheel into `dist/` via `uv run --project <root> --frozen --with build python -m build --outdir <root>/dist` and MUST exit with a non-zero code when the build fails.
+- **SRS-550**: MUST implement the following behavior: `scripts/build.sh` MUST verify after the build that `dist/` contains at least one `.tar.gz` and one `.whl` file and MUST exit with a non-zero code otherwise.
+- **SRS-551**: MUST implement the following behavior: `scripts/build.sh` MUST print a summary listing every artifact in `dist/` and MUST exit with code 0 only when every stage succeeds.
+- **SRS-552**: MUST implement the following behavior: The `.gitignore` file MUST preserve the inverse exclusion strategy of default exclusions followed by `!` re-inclusion rules.
+- **SRS-553**: MUST implement the following behavior: The `.gitignore` file MUST NOT ignore the `dist/` directory itself and MUST ignore `dist/` contents through a targeted rule so build artifacts stay excluded while the directory remains traversable.
+- **SRS-554**: MUST implement the following behavior: Git-tracked files inside `dist/` MUST remain versionable and MUST NOT be excluded by the `.gitignore` rules.
+
 ### 3.6 Source Analysis Core
 - **SRS-131**: MUST implement the following behavior: The `usereq.source_analyzer` module MUST support 20 programming languages: C (`.c`), C++ (`.cpp`), C# (`.cs`), Elixir (`.ex`), Go (`.go`), Haskell (`.hs`), Java (`.java`), JavaScript (`.js`, `.mjs`), Kotlin (`.kt`), Lua (`.lua`), Perl (`.pl`), PHP (`.php`), Python (`.py`), Ruby (`.rb`), Rust (`.rs`), Scala (`.scala`), Shell (`.sh`), Swift (`.swift`), TypeScript (`.ts`), and Zig (`.zig`).
 - **SRS-133**: MUST implement the following behavior: Each recognized element MUST contain: element type, initial row, final row, source code extract (maximum 5 rows), optional name, optional signature, optional visibility, optional parent name, optional inheritance, hierarchical depth.
@@ -302,7 +313,7 @@ No explicit performance optimizations identified.
 - **SRS-473**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST verify that the `uv` command is executable and MUST print an English error and exit with code 1 when it is absent.
 - **SRS-474**: MUST implement the following behavior: Without `--allow-dirty`, `scripts/pre-release-check.sh` MUST print an English error and exit with a non-zero code when `git status --porcelain` output is non-empty.
 - **SRS-475**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST run `uv sync --frozen` to synchronize the SRS-055 lockfile environment and MUST exit with a non-zero code when synchronization fails.
-- **SRS-476**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST build the sdist and wheel into `dist/` via `uv run --with build python -m build` and MUST exit with a non-zero code when the build fails.
+- **SRS-476**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST generate the sdist and wheel into `dist/` by executing `scripts/build.sh` and MUST exit with a non-zero code when the build fails.
 - **SRS-477**: MUST implement the following behavior: After a successful build, `scripts/pre-release-check.sh` MUST verify that `dist/` contains at least one `.tar.gz` and one `.whl` file and MUST exit with a non-zero code otherwise.
 - **SRS-478**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST execute the project `static-check` command with `--prj-base` set to the repository root and MUST exit with a non-zero code when static analysis fails.
 - **SRS-479**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST execute the unit-test suite through `uv run pytest` and MUST exit with a non-zero code when any test fails.

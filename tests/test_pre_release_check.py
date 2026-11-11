@@ -45,6 +45,11 @@ def test_pre_release_cleanup_preserves_only_tracked_cache(
         Path(__file__).resolve().parents[1] / "scripts/pre-release-check.sh",
         script,
     )
+    shutil.copyfile(
+        Path(__file__).resolve().parents[1] / "scripts/build.sh",
+        scripts / "build.sh",
+    )
+    (scripts / "build.sh").chmod(0o755)
     for directory in ("src", "tests", ".venv", ".ruff_cache"):
         (repository / directory).mkdir()
     cache_file = repository / ".ruff_cache" / "sentinel"
@@ -148,6 +153,11 @@ def test_pre_release_check_stale_venv_pytest_entry_point(
         Path(__file__).resolve().parents[1] / "scripts/pre-release-check.sh",
         script,
     )
+    shutil.copyfile(
+        Path(__file__).resolve().parents[1] / "scripts/build.sh",
+        scripts / "build.sh",
+    )
+    (scripts / "build.sh").chmod(0o755)
     for directory in ("src", "tests", ".venv"):
         (repository / directory).mkdir()
     venv_bin = repository / ".venv" / "bin"

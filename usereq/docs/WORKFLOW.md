@@ -23,9 +23,16 @@
 - `PROC:pre-release-check-sh`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `Pre-release verification pipeline that gates official releases through uv availability, worktree cleanliness, frozen-lock environment sync with stale venv entry-point repair, sdist/wheel build with artifact verification, project static analysis, the full unit-test suite, and EXIT-trap removal of every generated build and test intermediate artifact`
+  - `role`: `Pre-release verification pipeline that gates official releases through uv availability, worktree cleanliness, frozen-lock environment sync with stale venv entry-point repair, sdist/wheel build delegated to scripts/build.sh with independent artifact verification, project static analysis, the full unit-test suite, and EXIT-trap removal of every generated build and test intermediate artifact`
   - `entrypoints`: `scripts/pre-release-check.sh`
   - `defining_files`: `scripts/pre-release-check.sh`
+  - `threads`: `no explicit threads detected`
+- `PROC:build-sh`
+  - `type`: `Process`
+  - `parent_process`: `-`
+  - `role`: `Reproducible release build that prunes stale gitignored dist/ entries, compiles the sdist and wheel through the canonical frozen-lock build command, verifies both artifact families, and prints the artifact summary while leaving the artifacts in dist/`
+  - `entrypoints`: `scripts/build.sh`
+  - `defining_files`: `scripts/build.sh`
   - `threads`: `no explicit threads detected`
 - `PROC:prompts-update-sh`
   - `type`: `Process`
@@ -288,7 +295,7 @@
 - **Type**: Process
 - **Parent Process**: `-`
 - **Entrypoint(s)**: `scripts/pre-release-check.sh` [`scripts/pre-release-check.sh`]
-- **Lifecycle/Trigger**: starts on shell invocation (optionally with `--allow-dirty`), resolves the repository root from its own location, validates arguments, and executes the ordered stages `environment`, `worktree-cleanliness` (skipped with `--allow-dirty`), `dependency-sync` (`uv sync --frozen` plus stale `.venv/bin/pytest` entry-point repair), `build` (untracked `dist/` reset plus `uv run --frozen --with build python -m build` with `.tar.gz`/`.whl` artifact verification), `static-analysis` (`static-check` with `--prj-base`), and `unit-tests` (`uv run pytest`); stops at the first failing stage with `Pre-release check failed at stage <stage>.` and exit code 1, or prints `Pre-release check passed.` with exit code 0; an `EXIT` trap then removes `dist/`, `build/`, `.pytest_cache/`, `.ruff_cache/`, `src/*.egg-info`, and `src/`/`tests`-scoped `__pycache__` directories on every termination path, skipping tracked targets with an English warning, so the repository keeps only git-tracked files plus the uv-managed `.venv` (SRS-471..SRS-484).
+- **Lifecycle/Trigger**: starts on shell invocation (optionally with `--allow-dirty`), resolves the repository root from its own location, validates arguments, and executes the ordered stages `environment`, `worktree-cleanliness` (skipped with `--allow-dirty`), `dependency-sync` (`uv sync --frozen` plus stale `.venv/bin/pytest` entry-point repair), `build` (sdist/wheel generation delegated to `scripts/build.sh` plus independent `.tar.gz`/`.whl` artifact verification), `static-analysis` (`static-check` with `--prj-base`), and `unit-tests` (`uv run pytest`); stops at the first failing stage with `Pre-release check failed at stage <stage>.` and exit code 1, or prints `Pre-release check passed.` with exit code 0; an `EXIT` trap then removes `dist/`, `build/`, `.pytest_cache/`, `.ruff_cache/`, `src/*.egg-info`, and `src/`/`tests`-scoped `__pycache__` directories on every termination path, skipping tracked targets with an English warning, so the repository keeps only git-tracked files plus the uv-managed `.venv` (SRS-471..SRS-484).
 - **Internal Call-Trace Tree**
   - `pre-release-check.sh(...)`: pre-release stage orchestrator with first-failure abort and EXIT-trap cleanup semantics [`scripts/pre-release-check.sh`]
     - `run_stage(...)`: assign the stage name, print progress, execute the stage command, and abort on first failure [`scripts/pre-release-check.sh`]
@@ -298,11 +305,26 @@
         - `ensure_venv_pytest_entry_point_local(...)`: detect a stale `.venv/bin/pytest` shebang targeting a foreign interpreter, repair it through `uv sync --frozen --reinstall-package pytest`, and fail the stage with actionable English guidance when repair cannot localize the interpreter (SRS-475, SRS-479, SRS-480) [`scripts/pre-release-check.sh`]
           - `venv_entry_point_targets_project(...)`: classify one console-script shebang as project-local by comparing its interpreter path against `<BASE_DIR>/.venv/bin/` (SRS-475, SRS-479) [`scripts/pre-release-check.sh`]
         - external boundaries: `uv sync --project <root> --frozen`, `uv sync --project <root> --frozen --reinstall-package pytest`, `head -n 1` shebang read
-      - `build_distribution_artifacts(...)`: reset untracked `dist/`, build sdist and wheel, and verify artifact presence (SRS-476, SRS-477, SRS-481) [`scripts/pre-release-check.sh`]
+      - `build_distribution_artifacts(...)`: generate sdist and wheel by executing `scripts/build.sh` and independently verify that at least one `.tar.gz` and one `.whl` artifact exist (SRS-476, SRS-477, SRS-481) [`scripts/pre-release-check.sh`]
       - `run_static_analysis(...)`: execute the project `static-check` command with `--prj-base` on the repository root (SRS-478) [`scripts/pre-release-check.sh`]
       - `run_unit_tests(...)`: execute `uv run pytest` for the full unit-test suite (SRS-479) [`scripts/pre-release-check.sh`]
     - `cleanup_repository_artifacts(...)`: EXIT-trap removal of `dist/`, `build/`, `.pytest_cache/`, `.ruff_cache/`, `src/*.egg-info`, and `__pycache__` intermediate directories on every exit path, with git-tracked-file skip warnings (SRS-481..SRS-484) [`scripts/pre-release-check.sh`]
-    - external boundaries: `readlink -f`/`dirname` path resolution, `git status --porcelain`, `uv sync --frozen`, `uv sync --frozen --reinstall-package pytest` stale entry-point repair, `uv run --frozen --with build python -m build`, `find`/`wc` artifact counting, `git ls-files` tracked-target guards and `rm -rf` artifact removal inside the EXIT trap, child-process invocations of `uv run python -m usereq.cli --prj-base <root> static-check` and `uv run pytest`, stdout/stderr stage diagnostics
+    - external boundaries: `readlink -f`/`dirname` path resolution, `git status --porcelain`, `uv sync --frozen`, `uv sync --frozen --reinstall-package pytest` stale entry-point repair, child-process invocation of `scripts/build.sh`, `find`/`wc` artifact counting, `git ls-files` tracked-target guards and `rm -rf` artifact removal inside the EXIT trap, child-process invocations of `uv run python -m usereq.cli --prj-base <root> static-check` and `uv run pytest`, stdout/stderr stage diagnostics
+
+### `PROC:build-sh`
+- **Type**: Process
+- **Parent Process**: `-`
+- **Entrypoint(s)**: `scripts/build.sh` [`scripts/build.sh`]
+- **Lifecycle/Trigger**: starts on direct shell invocation or as the `build` stage child process of `scripts/pre-release-check.sh`, resolves the repository root from its own location, and executes the ordered stages `environment`, `dist-preparation`, `compile`, `artifact-verification`, and `summary`; stops at the first failing stage with `Release build failed at stage <stage>.` and exit code 1, or exits 0 leaving the release artifacts available in `dist/` (SRS-546..SRS-551).
+- **Internal Call-Trace Tree**
+  - `build.sh(...)`: release build stage orchestrator with first-failure abort semantics [`scripts/build.sh`]
+    - `run_stage(...)`: assign the stage name, print progress, execute the stage command, and abort on first failure [`scripts/build.sh`]
+      - `check_uv_available(...)`: verify `uv` executable availability (SRS-547) [`scripts/build.sh`]
+      - `clean_stale_dist_artifacts(...)`: remove only gitignored entries under `dist/`, preserving git-tracked and non-ignored files (SRS-548) [`scripts/build.sh`]
+      - `compile_distribution_artifacts(...)`: execute the canonical frozen-lock `uv run --frozen --with build python -m build` command with an explicit `dist/` outdir (SRS-549) [`scripts/build.sh`]
+      - `verify_distribution_artifacts(...)`: verify that at least one `.tar.gz` sdist and one `.whl` wheel exist (SRS-550) [`scripts/build.sh`]
+      - `print_artifact_summary(...)`: print every artifact currently stored in `dist/` (SRS-551) [`scripts/build.sh`]
+    - external boundaries: `readlink -f`/`dirname` path resolution, `git check-ignore -q` ignored-entry classification, `find`/`rm -rf` targeted dist pruning, child-process invocation of `uv run --project <root> --frozen --with build python -m build`, stdout/stderr stage diagnostics
 
 ### `PROC:prompts-update-sh`
 - **Type**: Process
@@ -327,6 +349,10 @@
       - external boundaries: GitHub Actions artifact storage, PyPI trusted-publisher OIDC exchange and upload endpoint
 
 ## Communication Edges
+- `PROC:pre-release-check-sh -> PROC:build-sh`
+  - `mechanism`: `child-process spawn`
+  - `endpoint/channel`: `scripts/build.sh`
+  - `payload`: `build stage handoff with no arguments; the spawned process generates the sdist and wheel in `dist/` and its exit code 0 continues the pipeline while non-zero aborts at stage `build``
 - `PROC:req-sh -> PROC:main`
   - `mechanism`: `OS exec handoff`
   - `endpoint/channel`: ``uv run --project <repo-root> python -m usereq.cli``
