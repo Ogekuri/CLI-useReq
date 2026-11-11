@@ -1,8 +1,8 @@
 ---
 title: "useReq Requirements"
 description: "Software Requirements Specification"
-date: "2026-11-08"
-version: 1.20
+date: "2026-11-11"
+version: 1.21
 author: "Ogekuri"
 scope:
   paths:
@@ -154,7 +154,7 @@ No explicit performance optimizations identified.
 - **SRS-442**: MUST implement the following behavior: `--ver`/`--version` MUST query the PyPI JSON API and the GitHub latest-release API bypassing idle gating; unfetchable versions MUST print `unknown`.
 - **SRS-518**: MUST implement the following behavior: Each `--ver`/`--version` line MUST render `<LABEL>` left-justified in an 18-character field followed by `: <version>`; labels MUST be `Current Installed`, `Latest @ PyPI`, and `Latest @ GitHub`.
 - **SRS-443**: MUST implement the following behavior: `README.md` MUST present PyPI as the primary install/upgrade channel and a dedicated non-primary GitHub section covering GitHub installation and `--develop`/`--dev` upgrades.
-- **SRS-446**: MUST implement the following behavior: The CLI help output MUST NOT reference `~/.config/usereq/config.json` or configuration-file persistence and removal operations.
+- **SRS-446**: MUST implement the following behavior: The CLI help output MUST NOT document removed legacy project-directory persistence and removal flags.
 - **SRS-447**: MUST accept the `install` subcommand without `--prj-base`; the `install` subparser MUST NOT define or consume `--prj-base`.
 - **SRS-448**: MUST implement the following behavior: The `install` subcommand MUST NOT create project directories, validate project-path containment, or persist `docs-dir`/`tests-dir`/`src-dir` values.
 - **SRS-449**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
@@ -175,6 +175,32 @@ No explicit performance optimizations identified.
 - **SRS-514**: MUST implement the following behavior: Immediately after SRS-513, the CLI MUST print the home-relative packaged templates directory path ending with `/` on one line, then bare template file names on the next line.
 - **SRS-515**: MUST implement the following behavior: Every path printed by the installation completion report MUST be composed lexically and MUST NOT resolve symbolic links.
 - **SRS-516**: MUST implement the following behavior: Guideline and template file-name lists MUST enumerate only non-hidden, non-symbolic-link regular files in deterministic sorted order.
+
+### 3.2.1 Configuration Schema, CLI Access, and Tree Rendering
+- **SRS-519**: MUST expose configuration display and mutation exclusively through `--print [Path]`, `--info [Path]`, `--print-raw`, `--get Path`, `--set Path Value`, and `--unset Path`.
+- **SRS-520**: MUST resolve canonical configuration paths as colon-separated case-sensitive schema tokens and MUST NOT accept the virtual root label `Application_Configuration` inside any CLI path.
+- **SRS-521**: MUST define one canonical schema for the `Configuration` section containing `docs-dir`, `tests-dir`, `src-dir`, `providers`, `static-check`, and `auto-install` that drives parsing, validation, defaults, display, and help.
+- **SRS-522**: MUST display every configuration node identifier as its exact canonical schema token, byte for byte, with descriptions and statuses appended after the token.
+- **SRS-523**: MUST render every section heading in `--print` and `--info` output as `Token - [Path: <full canonical path>]`.
+- **SRS-524**: MUST render `--print` and `--info` through one recursive renderer whose `├──`, `└──`, `│   `, and four-space prefixes derive only from real configuration node topology.
+- **SRS-525**: MUST render attached detail lines with the owning node continuation prefix and MUST NOT start any detail line with `├── ` or `└── `.
+- **SRS-526**: MUST render a requested subtree as its unconnected node heading followed only by that node's details and descendants.
+- **SRS-527**: MUST emit `--get` output as JSON only on stdout without labels, tree decoration, or prompts.
+- **SRS-528**: MUST emit `--print-raw` as the unmodified bytes of `~/.config/usereq/config.json` without tree formatting, headings, or reformatting.
+- **SRS-529**: MUST create missing `~/.config/usereq/config.json` parent directories and initialize the file from schema defaults before running a configuration command when the file is absent.
+- **SRS-530**: MUST validate the complete resulting configuration against the schema before any `--set` or `--unset` write and MUST NOT mutate stored values when validation fails.
+- **SRS-531**: MUST persist `--set` and `--unset` atomically through a same-directory temporary file using flush, fsync, and atomic replacement while preserving the file mode.
+- **SRS-532**: MUST write valid `--get`, `--print`, `--print-raw`, and `--info` payloads to stdout and every diagnostic to stderr with exit code 1 on failure and 0 on success.
+- **SRS-533**: MUST accept `:<Idx>` array tokens as non-negative 0-based indices and MUST reject negative or out-of-range indices without mutation.
+- **SRS-534**: MUST support `append`, `+`, and `insert:<Idx>` array operations that insert exactly one validated item and keep indices contiguous after deletion.
+- **SRS-535**: MUST accept exactly one JSON item for `:<Idx>`, `:append`, `:+`, and `:insert:<Idx>` array writes and a JSON array only for whole-array writes.
+- **SRS-536**: MUST reject `--unset` on a required dictionary field without a schema default with an English error and no mutation.
+- **SRS-537**: MUST render `--print` parameters as `Token = <JSON value>` followed by `(default)` or `(custom | default: <default>)`, and collections as summaries with attached rectangular tables.
+- **SRS-538**: MUST render `--info` parameters as `Token - [Type: constraints] Description` followed by `Default`, `Set cmd`, `Reset cmd`, schema tables, and complete canonical-path command examples.
+- **SRS-539**: MUST build every table from measured Unicode display widths with aligned borders and MUST omit tables for empty collections in favor of complete-path action hints.
+- **SRS-540**: MUST document `static-check` entry fields through an `Item Schema` table and expose field-level `Configuration:static-check:<Language>:<Idx>:<Field>` write paths.
+- **SRS-541**: MUST render every published command example with shell quoting, a complete canonical path, and a value valid under the active schema.
+- **SRS-542**: MUST update the shared schema, CLI behavior, `--info` documentation, and tests together whenever configurable options, defaults, constraints, or storage change.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
@@ -322,6 +348,9 @@ No explicit performance optimizations identified.
 - **SRS-506**: MUST render the `%%DOC_PATH%%`, `%%SRC_PATHS%%`, and `%%TEST_PATH%%` substitutions from configured values without filesystem resolution.
 - **SRS-507**: MUST include unit tests in `tests/test_cli.py` verifying substitution sources exclude or do not resolve symbolic links.
 - **SRS-517**: MUST include unit tests in `tests/test_cli.py` verifying that the installation completion report prints guidelines and templates directory paths followed by bare file-name lists without symbolic-link resolution.
+- **SRS-543**: MUST include unit tests in `tests/test_config_cli.py` verifying exact renderer output for single child, root siblings, nested siblings, detail-bearing leaves, branch details, empty collections, and requested subtrees.
+- **SRS-544**: MUST include unit tests in `tests/test_config_cli.py` verifying tree topology invariants, section path badges, and rectangular table alignment.
+- **SRS-545**: MUST include unit tests in `tests/test_config_cli.py` verifying `--get`, `--set`, `--unset`, `--print`, `--info`, and `--print-raw` behavior, exit codes, stdout/stderr separation, and no mutation on rejection.
 
 ## 5. Static Code Analysis Requirements
 

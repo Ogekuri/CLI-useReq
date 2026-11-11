@@ -28,6 +28,16 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+from . import config_cli
+from .config_schema import (
+    DEFAULT_AUTO_INSTALL,
+    DEFAULT_DOCS_DIR,
+    DEFAULT_SRC_DIRS,
+    DEFAULT_STATIC_CHECK,
+    DEFAULT_TESTS_DIR,
+    VALID_PROVIDER_NAMES,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 """! @brief The absolute path to the repository root."""
 
@@ -56,55 +66,7 @@ PERSISTED_CONFIG_KEYS = (
 AUTO_INSTALL_CONFIG_KEY = "auto-install"
 """! @brief Configuration key storing the auto-install enabled flag (SRS-420)."""
 
-DEFAULT_AUTO_INSTALL = True
-"""! @brief Default auto-install state when the configuration stores no entry (SRS-420)."""
-
-DEFAULT_DOCS_DIR = "usereq/docs"
-"""! @brief Default docs-dir value stored when the configuration has no docs-dir (SRS-359)."""
-
-DEFAULT_TESTS_DIR = "tests"
-"""! @brief Default tests-dir value stored when the configuration has no tests-dir (SRS-361)."""
-
-DEFAULT_SRC_DIRS = ("src",)
-"""! @brief Default src-dir list stored when the configuration has no src-dir (SRS-362)."""
-
-DEFAULT_STATIC_CHECK: dict = {
-    "C": [
-        {
-            "module": "Command",
-            "cmd": "cppcheck",
-            "params": [
-                "--error-exitcode=1",
-                "--enable=warning,style,performance,portability",
-                "--std=c11",
-            ],
-        },
-        {"module": "Command", "cmd": "clang-format", "params": ["--dry-run", "--Werror"]},
-    ],
-    "C++": [
-        {
-            "module": "Command",
-            "cmd": "cppcheck",
-            "params": [
-                "--error-exitcode=1",
-                "--enable=warning,style,performance,portability",
-                "--std=c++20",
-            ],
-        },
-        {"module": "Command", "cmd": "clang-format", "params": ["--dry-run", "--Werror"]},
-    ],
-    "JavaScript": [{"module": "Command", "cmd": "node", "params": ["--check"]}],
-    "Python": [{"module": "Pylance"}, {"module": "Ruff"}],
-    "TypeScript": [{"module": "Command", "cmd": "eslint"}],
-}
-"""! @brief Default static-check configuration applied when the configuration stores no
-`"static-check"` entry; a present entry, including an empty object, suppresses these
-defaults (SRS-424, SRS-425, SRS-426). The `pyright` and `ruff` checkers from the external
-configuration trace map to the native `Pylance` and `Ruff` modules (SRS-338, SRS-339)."""
-
-VALID_PROVIDERS = frozenset(
-    {"antigravity", "claude", "codex", "copilot", "openclaw", "opencode", "pi"}
-)
+VALID_PROVIDERS = frozenset(VALID_PROVIDER_NAMES)
 """! @brief Valid provider names accepted by ``--enable PROVIDER`` and ``--disable PROVIDER`` (SRS-275, SRS-364)."""
 
 GLOBAL_CONFIG_DIRNAME = ".config"
@@ -434,6 +396,7 @@ def build_parser() -> argparse.ArgumentParser:
     usage = (
         "req [-h] [--upgrade] [--develop] [--dev] [--force] [--uninstall] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
+        "[--print [PATH]] [--info [PATH]] [--print-raw] [--get PATH] [--set PATH VALUE] [--unset PATH] "
         "[--enable PROVIDER] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
         "[--enable-static-check SPEC] [--disable-static-check SPEC] "
@@ -467,6 +430,69 @@ def build_parser() -> argparse.ArgumentParser:
             "Absolute git repository base directory used as working directory "
             "for every git operation. Required by --git-check, --git-wt-name, "
             "--git-wt-create, and --git-wt-delete."
+        ),
+    )
+    parser.add_argument(
+        "--print",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        dest="config_print",
+        help=(
+            "Print the current configuration tree; with PATH, print only that "
+            "canonical subtree or parameter."
+        ),
+    )
+    parser.add_argument(
+        "--info",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        dest="config_info",
+        help=(
+            "Print the configuration schema documentation with defaults and "
+            "copyable commands; with PATH, document only that subtree."
+        ),
+    )
+    parser.add_argument(
+        "--print-raw",
+        action="store_true",
+        default=False,
+        dest="config_print_raw",
+        help=(
+            "Print the raw bytes of ~/.config/usereq/config.json without tree "
+            "formatting or headings."
+        ),
+    )
+    parser.add_argument(
+        "--get",
+        metavar="PATH",
+        default=None,
+        dest="config_get",
+        help=(
+            "Print the JSON value stored at the canonical configuration PATH."
+        ),
+    )
+    parser.add_argument(
+        "--set",
+        nargs=2,
+        metavar=("PATH", "VALUE"),
+        default=None,
+        dest="config_set",
+        help=(
+            "Validate and store VALUE at the canonical configuration PATH."
+        ),
+    )
+    parser.add_argument(
+        "--unset",
+        metavar="PATH",
+        default=None,
+        dest="config_unset",
+        help=(
+            "Restore the schema default at the canonical configuration PATH or "
+            "remove the addressed collection element."
         ),
     )
     parser.add_argument(
@@ -4299,6 +4325,85 @@ def _resolve_project_src_dirs(args: Namespace) -> tuple[Path, list[str]]:
     return project_base, src_dirs
 
 
+def _is_config_schema_command(args: Namespace) -> bool:
+    """!
+    @brief Detect the canonical configuration CLI command path.
+    @param args {Namespace} Parsed CLI namespace.
+    @return {bool} True when any configuration schema command flag is present.
+    @details Configuration schema commands are `--print`, `--info`, `--print-raw`,
+    `--get`, `--set`, and `--unset` (SRS-519); they never trigger provider installation.
+    """
+    return (
+        getattr(args, "config_print", None) is not None
+        or getattr(args, "config_info", None) is not None
+        or bool(getattr(args, "config_print_raw", False))
+        or getattr(args, "config_get", None) is not None
+        or getattr(args, "config_set", None) is not None
+        or getattr(args, "config_unset", None) is not None
+    )
+
+
+def run_config_schema_command(args: Namespace) -> int:
+    """!
+    @brief Execute one configuration schema command.
+    @param args {Namespace} Parsed CLI namespace carrying the configuration flag values.
+    @return {int} Process exit code: 0 on success, 1 on any configuration failure.
+    @details Dispatches `--print`, `--info`, `--print-raw`, `--get`, `--set`, and
+    `--unset` against the user-global configuration file, writes payloads to stdout,
+    and reports every diagnostic on stderr (SRS-519, SRS-532).
+    @satisfies SRS-519, SRS-527, SRS-528, SRS-529, SRS-530, SRS-531, SRS-532
+    """
+    enabled = [
+        getattr(args, "config_print", None) is not None,
+        getattr(args, "config_info", None) is not None,
+        bool(getattr(args, "config_print_raw", False)),
+        getattr(args, "config_get", None) is not None,
+        getattr(args, "config_set", None) is not None,
+        getattr(args, "config_unset", None) is not None,
+    ]
+    if sum(1 for flag in enabled if flag) > 1:
+        print(
+            "Error: use exactly one of --print, --info, --print-raw, --get, "
+            "--set, or --unset.",
+            file=sys.stderr,
+        )
+        return 1
+    config_path = get_global_config_path()
+    try:
+        if getattr(args, "config_print_raw", False):
+            payload = config_cli.handle_print_raw(config_path)
+            raw_stream = getattr(sys.stdout, "buffer", None)
+            if raw_stream is not None:
+                raw_stream.write(payload)
+                raw_stream.flush()
+            else:
+                sys.stdout.write(payload.decode("utf-8"))
+            return 0
+        get_path = getattr(args, "config_get", None)
+        if get_path is not None:
+            print(config_cli.handle_get(config_path, get_path))
+            return 0
+        set_arguments = getattr(args, "config_set", None)
+        if set_arguments is not None:
+            config_cli.handle_set(config_path, set_arguments[0], set_arguments[1])
+            return 0
+        unset_path = getattr(args, "config_unset", None)
+        if unset_path is not None:
+            config_cli.handle_unset(config_path, unset_path)
+            return 0
+        info = getattr(args, "config_info", None) is not None
+        requested = args.config_info if info else args.config_print
+        print(
+            config_cli.handle_display(
+                config_path, requested if requested else None, info
+            )
+        )
+        return 0
+    except config_cli.ConfigError as exc:
+        print(exc.message, file=sys.stderr)
+        return exc.code
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     """!
     @brief CLI entry point for console_scripts and `-m` execution.
@@ -4339,6 +4444,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         args = parse_args(argv_list)
         VERBOSE = getattr(args, "verbose", False)
         DEBUG = getattr(args, "debug", False)
+        # Configuration schema commands are the canonical configuration interface and
+        # never trigger provider installation (SRS-519).
+        if _is_config_schema_command(args):
+            return run_config_schema_command(args)
         # Directory configuration commands require --prj-base only (SRS-396, SRS-398..SRS-401).
         if _is_directory_config_command(args):
             run_set_directories(args)

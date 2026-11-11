@@ -2,7 +2,7 @@
 - `PROC:main`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `CLI orchestration for user-level provider skills installation, global configuration persistence, command-line project/git base resolution, source analysis, compression, token counting, static-check dispatch, git integration, and worktree management`
+  - `role`: `CLI orchestration for user-level provider skills installation, global configuration persistence and schema CLI tree rendering, command-line project/git base resolution, source analysis, compression, token counting, static-check dispatch, git integration, and worktree management`
   - `entrypoints`: `main(argv: Optional[list[str]] = None) -> int`
   - `defining_files`: `src/usereq/cli.py`
   - `threads`: `no explicit threads detected`
@@ -80,6 +80,42 @@
       - `fetch_pypi_latest_version(...)`: fetch the PyPI latest version when no startup-check value is available [`src/usereq/cli.py`]
       - `fetch_github_latest_version(...)`: GET `https://api.github.com/repos/Ogekuri/CLI-useReq/releases/latest` and normalize `tag_name` for the GitHub latest line [`src/usereq/cli.py`]
     - `parse_args(...)`: parse argv into `Namespace` [`src/usereq/cli.py`]
+    - `_is_config_schema_command(...)`: detect the canonical configuration command path (`--print`, `--info`, `--print-raw`, `--get`, `--set`, `--unset`) (SRS-519) [`src/usereq/cli.py`]
+      - `run_config_schema_command(...)`: execute one configuration command against the user-global configuration file, writing payloads to stdout and diagnostics to stderr with exit code 1 on failure (SRS-519, SRS-532) [`src/usereq/cli.py`]
+        - `get_global_config_path(...)`: resolve the user-global configuration file path [`src/usereq/cli.py`]
+        - `handle_display(...)`: bootstrap, load, validate, and render the full configuration tree or requested subtree for `--print`/`--info` (SRS-519, SRS-526) [`src/usereq/config_cli.py`]
+          - `ensure_config_file(...)`: initialize the configuration file from schema defaults when absent (SRS-529) [`src/usereq/config_cli.py`]
+            - `write_config(...)`: atomically persist the canonical payload through a temporary file with flush, fsync, mode preservation, atomic replacement, and directory fsync (SRS-531) [`src/usereq/config_cli.py`]
+              - `default_config(...)`: build the complete schema default payload [`src/usereq/config_cli.py`]
+          - `load_effective_config(...)`: merge the stored payload over schema defaults [`src/usereq/config_cli.py`]
+            - `read_raw_payload(...)`: parse the stored JSON object without defaults (SRS-528) [`src/usereq/config_cli.py`]
+            - `normalize_config(...)`: validate stored canonical values and apply defaults (SRS-530) [`src/usereq/config_cli.py`]
+              - `validate_node(...)`: validate primitives, enums, arrays, map keys, fixed dictionary fields, and required fields (SRS-530, SRS-536) [`src/usereq/config_cli.py`]
+          - `build_full_tree(...)`: build the virtual root and canonical `Configuration` section nodes (SRS-522, SRS-523) [`src/usereq/config_cli.py`]
+          - `build_subtree(...)`: resolve the requested path and build its unconnected node (SRS-526) [`src/usereq/config_cli.py`]
+            - `resolve_target(...)`: resolve canonical path tokens, indices, and array operations against the schema (SRS-520, SRS-533, SRS-534) [`src/usereq/config_cli.py`]
+            - `_build_node(...)`: build one real configuration node with attached details and real children (SRS-522, SRS-525) [`src/usereq/config_cli.py`]
+              - `_print_parameter_heading(...)`: format `Token = value` print headings [`src/usereq/config_cli.py`]
+              - `_info_parameter_heading(...)`: format `Token - [Type: constraints] Description` info headings [`src/usereq/config_cli.py`]
+              - `_print_parameter_details(...)`: attach collection tables and value summaries (SRS-537) [`src/usereq/config_cli.py`]
+              - `_info_parameter_details(...)`: attach defaults, reset commands, allowed values, schema tables, and command examples (SRS-538, SRS-540) [`src/usereq/config_cli.py`]
+                - `_item_schema_table(...)`: render the fixed dictionary field schema table (SRS-540) [`src/usereq/config_cli.py`]
+                - `_array_examples(...)`: render complete-path array write commands with item-versus-array argument shapes (SRS-535, SRS-541) [`src/usereq/config_cli.py`]
+                - `format_table(...)`: render measured rectangular Unicode tables with aligned borders (SRS-539) [`src/usereq/config_cli.py`]
+          - `render_text(...)`: join the rendered tree lines (SRS-524) [`src/usereq/config_cli.py`]
+            - `render_tree(...)`: render the display root and delegate real children [`src/usereq/config_cli.py`]
+              - `_emit_node(...)`: apply the deterministic ancestor-prefix and detail-prefix algorithm recursively (SRS-524, SRS-525) [`src/usereq/config_cli.py`]
+        - `handle_get(...)`: emit the addressed configuration value as JSON (SRS-527) [`src/usereq/config_cli.py`]
+          - `get_value(...)`: read the resolved value or schema default [`src/usereq/config_cli.py`]
+        - `handle_set(...)`: validate and persist one `--set` mutation (SRS-530, SRS-535) [`src/usereq/config_cli.py`]
+          - `apply_set(...)`: apply the typed mutation to a validated copy [`src/usereq/config_cli.py`]
+            - `parse_cli_value(...)`: parse CLI text into the schema type [`src/usereq/config_cli.py`]
+            - `validate_node(...)`: validate the complete resulting configuration before any write (SRS-530) [`src/usereq/config_cli.py`]
+          - `write_config(...)`: atomically persist the payload (SRS-531) [`src/usereq/config_cli.py`]
+        - `handle_unset(...)`: restore schema defaults or remove addressed collection elements (SRS-536) [`src/usereq/config_cli.py`]
+          - `apply_unset(...)`: apply the reset to a validated copy and compact array indices (SRS-530, SRS-533) [`src/usereq/config_cli.py`]
+          - `write_config(...)`: atomically persist the payload (SRS-531) [`src/usereq/config_cli.py`]
+        - `handle_print_raw(...)`: emit the unmodified configuration file bytes (SRS-528) [`src/usereq/config_cli.py`]
     - `_is_directory_config_command(...)`: detect `--set-docs-dir`/`--set-src-dir`/`--set-tests-dir` command path [`src/usereq/cli.py`]
       - `run_set_directories(...)`: persist project-relative directory values into the user-global configuration while preserving unrelated keys [`src/usereq/cli.py`]
         - `_require_prj_base(...)`: resolve the mandatory `--prj-base` project base [`src/usereq/cli.py`]
@@ -227,7 +263,7 @@
       - `_colorize_table_border(...)`: apply bright-red ANSI styling to Unicode border glyphs before stdout emission [`src/usereq/cli.py`]
 - **External Boundaries**
   - `subprocess.run(...)` / `subprocess.check_output(...)`: invokes OS-level commands and static-check tools (e.g., git queries, checker executables) [`src/usereq/cli.py`, `src/usereq/static_check.py`]
-  - Filesystem read/write boundaries: `~/.config/usereq/config.json`, user-level provider skills directories under the user HOME (`~/.gemini/config/skills`, `~/.claude/skills`, `~/.codex/skills`, `~/.copilot/skills`, `~/.openclaw/workspace/skills`, `~/.config/opencode/skills`, `~/.pi/agent/skills`), read-only packaged guidelines and templates directories under the running installation's resources root, project docs directories, selected source files [`src/usereq/cli.py`, `src/usereq/token_counter.py`, `src/usereq/compress_files.py`]
+  - Filesystem read/write boundaries: `~/.config/usereq/config.json` (read, atomic write, and raw byte emission by the configuration schema CLI), user-level provider skills directories under the user HOME (`~/.gemini/config/skills`, `~/.claude/skills`, `~/.codex/skills`, `~/.copilot/skills`, `~/.openclaw/workspace/skills`, `~/.config/opencode/skills`, `~/.pi/agent/skills`), read-only packaged guidelines and templates directories under the running installation's resources root, project docs directories, selected source files [`src/usereq/cli.py`, `src/usereq/config_cli.py`, `src/usereq/token_counter.py`, `src/usereq/compress_files.py`]
   - Standard stream I/O boundaries: stdout/stderr reporting for command outputs and status [`src/usereq/cli.py`, `src/usereq/static_check.py`, `src/usereq/token_counter.py`]
 
 ### `PROC:req-sh`
