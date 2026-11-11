@@ -42,7 +42,13 @@ cli-usereq = "usereq.cli:main"
 dev = ["pytest"]
 
 [tool.setuptools]
-packages = ["usereq"]
+packages = [
+  "usereq",
+  "usereq.resources",
+  "usereq.resources.guidelines",
+  "usereq.resources.prompts",
+  "usereq.resources.templates",
+]
 package-dir = {"" = "src"}
 include-package-data = true
 

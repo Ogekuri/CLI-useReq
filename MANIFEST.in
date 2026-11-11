@@ -1,2 +1,6 @@
 # Exclude the generated setuptools build intermediate from the source distribution.
 prune src/*.egg-info
+# Exclude the non-runtime test suite from the source distribution (SRS-274 scope is src/usereq/resources only).
+prune tests
+# Ship the canonical lockfile so the source distribution can be rebuilt reproducibly (SRS-055).
+include uv.lock
