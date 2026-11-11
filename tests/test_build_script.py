@@ -136,6 +136,9 @@ def test_build_stage_failure_aborts_before_compile(tmp_path: Path) -> None:
     dist.mkdir()
     (dist / "stale-one.tar.gz").write_text("stale", encoding="utf-8")
     (dist / "stale-two.whl").write_text("stale", encoding="utf-8")
+    # @brief Re-ignore the stale entries so dist-preparation classifies them as gitignored.
+    with (repository / ".gitignore").open("a", encoding="utf-8") as handle:
+        handle.write("\ndist/stale-*\n")
     binary_dir = _create_fake_tools(tmp_path, inject_rm_failure=True)
 
     # @brief Act through the public shell interface from a foreign directory.

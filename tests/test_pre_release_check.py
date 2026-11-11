@@ -5,7 +5,7 @@ plus dependency-sync entry-point guarding for the unit-tests stage. Uses tempora
 repositories and a fake uv executable; no network or user paths. Covers successful
 termination, stage failure, tracked-target preservation, and repair or rejection of
 stale virtual-environment pytest entry points.
-@satisfies SRS-475, SRS-479, SRS-480, SRS-481, SRS-483, SRS-484
+@satisfies SRS-475, SRS-479, SRS-480, SRS-481, SRS-483, SRS-484, SRS-556, SRS-558
 """
 
 import os
@@ -116,6 +116,87 @@ def test_pre_release_cleanup_preserves_only_tracked_cache(
         assert "Pre-release check passed." not in result.stdout
     else:
         assert "Pre-release check passed." in result.stdout
+
+
+def test_pre_release_cleanup_preserves_tracked_dist_entries(tmp_path: Path) -> None:
+    """@brief Preserve git-tracked dist/ entries and remove untracked artifacts on exit.
+    @details Arrange an isolated repository whose dist/ holds one staged release artifact, run
+    the copied script with a fake uv that writes untracked sdist and wheel fixtures, and assert
+    that only untracked entries are removed while the tracked entry keeps its content and the
+    dist/ directory survives. O(n) work over fixture files; all writes remain under tmp_path.
+    @param tmp_path {Path} Pytest-owned disposable filesystem root.
+    @return {None} Assertions complete on matching observable behavior.
+    @throws {AssertionError} Tracked dist entry is removed or untracked artifacts survive.
+    @satisfies SRS-556, SRS-558, SRS-483
+    """
+    # @brief Arrange repository, staged tracked dist artifact, and deterministic uv stub.
+    repository = tmp_path / "repository with spaces"
+    scripts = repository / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copyfile(
+        Path(__file__).resolve().parents[1] / "scripts/pre-release-check.sh",
+        scripts / "pre-release-check.sh",
+    )
+    shutil.copyfile(
+        Path(__file__).resolve().parents[1] / "scripts/build.sh",
+        scripts / "build.sh",
+    )
+    (scripts / "build.sh").chmod(0o755)
+    for directory in ("src", "tests", ".venv"):
+        (repository / directory).mkdir()
+    dist = repository / "dist"
+    dist.mkdir()
+    tracked_artifact = dist / "tracked-release.whl"
+    tracked_artifact.write_text("release payload", encoding="utf-8")
+    subprocess.run(
+        ["git", "init", "--quiet", str(repository)], check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "add", "--", "dist/tracked-release.whl"],
+        check=True, capture_output=True,
+    )
+    # @brief Fake uv creates untracked build artifacts and reports success for every stage.
+    binary_dir = tmp_path / "bin"
+    binary_dir.mkdir()
+    uv = binary_dir / "uv"
+    uv.write_text(
+        "#!/bin/sh\n"
+        "# @brief Emulate uv stage outcomes without network access.\n"
+        "# @details Build writes two untracked fixture files; every other stage succeeds.\n"
+        "# @return Exit status 0.\n"
+        'case "$*" in\n'
+        '  *" -m build "*) mkdir -p dist; '
+        'touch dist/package.tar.gz dist/package.whl ;;\n'
+        "esac\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    uv.chmod(0o755)
+    # @brief Isolate subprocess HOME, Git configuration, and executable lookup.
+    environment = dict(os.environ)
+    environment.update({
+        "HOME": str(tmp_path),
+        "BASH_ENV": os.devnull,
+        "ENV": os.devnull,
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "PATH": str(binary_dir) + os.pathsep + os.defpath,
+    })
+
+    # @brief Act through the public shell interface from a foreign directory.
+    result = subprocess.run(
+        ["bash", str(scripts / "pre-release-check.sh"), "--allow-dirty"], cwd=tmp_path,
+        env=environment, capture_output=True, text=True, check=False,
+    )
+
+    # @brief Assert tracked preservation, untracked removal, and the cleanup warning.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert tracked_artifact.read_text(encoding="utf-8") == "release payload"
+    assert not (dist / "package.tar.gz").exists()
+    assert not (dist / "package.whl").exists()
+    assert dist.is_dir()
+    assert "WARNING: cleanup skipped for 'dist/tracked-release.whl'" in result.stderr
 
 
 @pytest.mark.parametrize(

@@ -21,7 +21,7 @@
 # 5. `static-analysis`: run the project `static-check` command with `--prj-base` on the
 #    repository root (SRS-478).
 # 6. `unit-tests`: run the full unit-test suite through `uv run pytest` (SRS-479).
-# 7. `cleanup` (EXIT trap): on every termination path remove the `dist/`, `build/`,
+# 7. `cleanup` (EXIT trap): on every termination path remove untracked `dist/` entries, `build/`,
 #    `.pytest_cache/`, `.ruff_cache/`, `src/*.egg-info`, and `src/`- or `tests/`-scoped `__pycache__`
 #    directories so the repository is left with only git-tracked files and the uv-managed
 #    `.venv` environment (SRS-482, SRS-484); cleanup targets containing git-tracked files
@@ -266,9 +266,10 @@ run_unit_tests() {
 ##
 # @brief Remove every build and test intermediate artifact from the repository on any exit path.
 # @details Registered as an `EXIT` trap so it executes on success, on stage failure, and on
-# unexpected termination (SRS-482). Collects the fixed targets `dist/`, `build/`, and
-# `.pytest_cache/`, and `.ruff_cache/` plus every existing `*.egg-info` or `__pycache__` directory discovered by
-# `find` under `src/` and `tests/`. For each existing target, the git-tracked file check via
+# unexpected termination (SRS-482). Collects the fixed targets `build/`, `.pytest_cache/`, and
+# `.ruff_cache/` plus every existing `*.egg-info` or `__pycache__` directory discovered by
+# `find` under `src/` and `tests/`, and every direct child of `dist/` (SRS-556). For each
+# existing target, the git-tracked file check via
 # `git ls-files` guards SRS-481: tracked targets are skipped with an English stderr warning
 # identifying the path (SRS-483); untracked targets are removed with `rm -rf`. After this
 # function returns, the repository directory contains only git-tracked files plus the
@@ -276,10 +277,10 @@ run_unit_tests() {
 # @return {None} Function return value.
 # @warning Must stay failure-tolerant: any error raised inside this EXIT trap would override
 #          the original script exit status.
-# @satisfies SRS-481, SRS-482, SRS-483, SRS-484
+# @satisfies SRS-481, SRS-482, SRS-483, SRS-484, SRS-556
 cleanup_repository_artifacts() {
   local cleanup_targets=(
-    "${BASE_DIR}/dist" "${BASE_DIR}/build"
+    "${BASE_DIR}/build"
     "${BASE_DIR}/.pytest_cache" "${BASE_DIR}/.ruff_cache"
   )
   local target
@@ -288,6 +289,9 @@ cleanup_repository_artifacts() {
   while IFS= read -r found_dir; do
     cleanup_targets+=("${found_dir}")
   done < <(find "${BASE_DIR}/src" "${BASE_DIR}/tests" -maxdepth 4 -type d \( -name '*.egg-info' -o -name '__pycache__' \) 2>/dev/null || true)
+  while IFS= read -r dist_entry; do
+    cleanup_targets+=("${dist_entry}")
+  done < <(find "${BASE_DIR}/dist" -mindepth 1 -maxdepth 1 2>/dev/null || true)
   for target in "${cleanup_targets[@]}"; do
     [ -e "${target}" ] || continue
     relative_target="${target#"${BASE_DIR}/"}"
@@ -298,6 +302,7 @@ cleanup_repository_artifacts() {
     fi
     rm -rf "${target}"
   done
+  rmdir "${BASE_DIR}/dist" 2>/dev/null || true
 }
 
 trap cleanup_repository_artifacts EXIT

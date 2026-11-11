@@ -41,6 +41,7 @@
 !images/
 !images/**/*
 !dist/
+!dist/**/*
 !.pi-usereq.json
 !usereq/
 !usereq/docs/
@@ -261,10 +262,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-
-# Release artifacts stored in the canonical dist/ directory
-# (dist/ itself stays traversable so tracked dist/ files remain versionable)
-dist/*
 
 # Temp dir for tests
 temp/

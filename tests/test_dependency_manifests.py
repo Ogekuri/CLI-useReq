@@ -19,6 +19,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS_PATH = REPO_ROOT / "requirements.txt"
@@ -505,3 +507,86 @@ def test_manifest_prunes_generated_egg_info_from_sdist() -> None:
     assert "!MANIFEST.in" in gitignore_lines, (
         ".gitignore must re-include MANIFEST.in so the tracked manifest is versionable"
     )
+
+
+def _gitignore_lines() -> list[str]:
+    """@brief Read every .gitignore line stripped of surrounding whitespace in file order.
+    @details Single read of GITIGNORE_PATH; O(n) over lines; no side effects beyond the read.
+    @return {list[str]} Stripped lines including comments and blank entries.
+    """
+    return [line.strip() for line in GITIGNORE_PATH.read_text(encoding="utf-8").splitlines()]
+
+
+def test_gitignore_default_exclusion_precedes_reinclusion_rules() -> None:
+    """@brief Verify the default `/*` exclusion precedes every `!` re-inclusion rule.
+    @details Validates the SRS-552 inverse exclusion strategy; gitignore uses the last matching
+    pattern, so the default exclusion MUST appear before the first negated rule.
+    @return {None} No return value.
+    @satisfies SRS-552
+    """
+    rules = [line for line in _gitignore_lines() if line and not line.startswith("#")]
+    first_reinclusion = next(index for index, rule in enumerate(rules) if rule.startswith("!"))
+    assert "/*" in rules[:first_reinclusion], (
+        ".gitignore must exclude everything by default before any !-re-inclusion rule"
+    )
+
+
+def test_gitignore_reincludes_dist_directory_and_contents() -> None:
+    """@brief Verify `!dist/` and `!dist/**/*` reside in the Include section.
+    @details Validates SRS-553 and SRS-557; the include section spans the lines between its
+    header and the Exclude-section header.
+    @return {None} No return value.
+    @satisfies SRS-553, SRS-557
+    """
+    lines = _gitignore_lines()
+    include_index = next(
+        index for index, line in enumerate(lines)
+        if "Include specific files and directories" in line
+    )
+    exclude_index = next(
+        index for index, line in enumerate(lines)
+        if "Exlucde specific files and directories" in line
+    )
+    include_section = lines[include_index:exclude_index]
+    assert "!dist/" in include_section, ".gitignore include section must contain !dist/"
+    assert "!dist/**/*" in include_section, (
+        ".gitignore include section must contain !dist/**/*"
+    )
+
+
+def test_gitignore_contains_no_dist_exclusion_rule() -> None:
+    """@brief Verify no non-negated .gitignore rule targets dist/ or its entries.
+    @details Validates SRS-555; a non-negated pattern is offending when its leading `/` removed
+    form starts with `dist`. O(n) over rule lines.
+    @return {None} No return value.
+    @satisfies SRS-555
+    """
+    offending = [
+        line for line in _gitignore_lines()
+        if line and not line.startswith(("#", "!")) and line.lstrip("/").startswith("dist")
+    ]
+    assert offending == [], f".gitignore must not exclude dist/, found rules: {offending!r}"
+
+
+def test_gitignore_leaves_dist_artifacts_unignored_by_git() -> None:
+    """@brief Verify git classifies sample dist/ artifacts as not ignored.
+    @details Runs `git check-ignore --no-index` on sample sdist, wheel, and nested paths beneath
+    dist/ inside REPO_ROOT; exit status 1 means not ignored, 0 means ignored. Skips when the
+    repository root carries no .git entry (for example, an unpacked source distribution).
+    @return {None} No return value.
+    @throws {AssertionError} Raised when any sample artifact path is ignored.
+    @satisfies SRS-554, SRS-555, SRS-557
+    """
+    if not (REPO_ROOT / ".git").exists():
+        pytest.skip("repository root carries no .git entry")
+    sample_paths = [
+        "dist/package-1.0.tar.gz",
+        "dist/package-1.0-py3-none-any.whl",
+        "dist/nested/tracked.whl",
+    ]
+    for sample_path in sample_paths:
+        result = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "check-ignore", "--no-index", "-q", "--", sample_path],
+            capture_output=True, check=False,
+        )
+        assert result.returncode == 1, f"git must not ignore {sample_path}"
