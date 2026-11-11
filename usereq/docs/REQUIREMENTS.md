@@ -279,6 +279,14 @@ No explicit performance optimizations identified.
 - **SRS-554**: MUST implement the following behavior: Every file under `dist/`, git-tracked or newly generated, MUST remain versionable and MUST NOT be excluded by the `.gitignore` rules.
 - **SRS-555**: MUST implement the following behavior: The `.gitignore` file MUST NOT contain any exclusion rule that matches `dist/` or any file beneath it.
 
+### 3.5.3 Build Cleanup Script
+- **SRS-559**: MUST implement the following behavior: `scripts/clean.sh` MUST resolve the repository root from its own filesystem location and MUST execute every cleanup stage from that root independently of the caller working directory.
+- **SRS-560**: MUST implement the following behavior: `scripts/clean.sh` MUST verify that the `git` command is executable and MUST print an English error and exit with code 1 when it is absent.
+- **SRS-561**: MUST implement the following behavior: `scripts/clean.sh` MUST remove from `dist/` every entry that is not git-tracked and MUST remove the `dist/` directory itself when it is empty after the removal.
+- **SRS-562**: MUST implement the following behavior: `scripts/clean.sh` MUST remove the `build/` directory and every `src/*.egg-info` directory created by `scripts/build.sh`.
+- **SRS-563**: MUST implement the following behavior: `scripts/clean.sh` MUST skip every removal target containing git-tracked files, MUST NOT delete git-tracked content, and MUST print an English warning identifying each skipped target.
+- **SRS-564**: MUST implement the following behavior: `scripts/clean.sh` MUST print a summary listing every removed and every skipped path and MUST exit with code 0 only when every stage succeeds.
+
 ### 3.6 Source Analysis Core
 - **SRS-131**: MUST implement the following behavior: The `usereq.source_analyzer` module MUST support 20 programming languages: C (`.c`), C++ (`.cpp`), C# (`.cs`), Elixir (`.ex`), Go (`.go`), Haskell (`.hs`), Java (`.java`), JavaScript (`.js`, `.mjs`), Kotlin (`.kt`), Lua (`.lua`), Perl (`.pl`), PHP (`.php`), Python (`.py`), Ruby (`.rb`), Rust (`.rs`), Scala (`.scala`), Shell (`.sh`), Swift (`.swift`), TypeScript (`.ts`), and Zig (`.zig`).
 - **SRS-133**: MUST implement the following behavior: Each recognized element MUST contain: element type, initial row, final row, source code extract (maximum 5 rows), optional name, optional signature, optional visibility, optional parent name, optional inheritance, hierarchical depth.
@@ -366,6 +374,7 @@ No explicit performance optimizations identified.
 - **SRS-545**: MUST include unit tests in `tests/test_config_cli.py` verifying `--get`, `--set`, `--unset`, `--print`, `--info`, and `--print-raw` behavior, exit codes, stdout/stderr separation, and no mutation on rejection.
 - **SRS-557**: MUST include unit tests in `tests/test_dependency_manifests.py` verifying the SRS-552, SRS-553, SRS-554, and SRS-555 `.gitignore` rules for `dist/`.
 - **SRS-558**: MUST include unit tests in `tests/test_pre_release_check.py` verifying the SRS-556 preservation of git-tracked `dist/` entries during cleanup.
+- **SRS-565**: MUST include unit tests in `tests/test_clean_script.py` verifying SRS-561 dist/ cleanup, SRS-562 intermediate removal, SRS-563 git-tracked preservation warnings, and SRS-564 summary and exit-code semantics.
 
 ## 5. Static Code Analysis Requirements
 
