@@ -413,3 +413,95 @@ def test_pyproject_does_not_define_unsupported_uv_forms_section() -> None:
         "pyproject.toml MUST NOT define [tool.uv.forms.*] because current uv "
         "settings schema rejects `forms` and emits runtime warnings."
     )
+
+
+def test_pyproject_license_uses_spdx_expression_with_license_file() -> None:
+    """@brief Verify pyproject.toml declares the license as SPDX expression plus license file.
+    @details Enforces PEP 639 metadata so built distributions carry `License-Expression` and
+    `License-File` headers instead of embedding the full license text in the `License` field.
+    @return {None} No return value.
+    """
+
+    pyproject_data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    project = pyproject_data["project"]
+    assert project.get("license") == "GPL-3.0-only", (
+        f"pyproject.toml [project].license must be the SPDX string GPL-3.0-only, found: {project.get('license')!r}"
+    )
+    assert project.get("license-files") == ["LICENSE"], (
+        f"pyproject.toml [project].license-files must be ['LICENSE'], found: {project.get('license-files')!r}"
+    )
+    assert (REPO_ROOT / "LICENSE").is_file(), "LICENSE file must exist at repository root"
+
+
+def test_pyproject_pytest_is_declared_only_as_development_dependency() -> None:
+    """@brief Verify pytest is a development-only dependency while ruff and pyright stay at runtime.
+    @details Runtime `[project].dependencies` MUST keep ruff and pyright and MUST NOT declare the
+    test-only pytest package. The `dev` dependency group MUST declare pytest so `uv sync` and
+    `uv run pytest` keep the unit-test suite runnable.
+    @return {None} No return value.
+    @satisfies SRS-264, SRS-338
+    """
+
+    pyproject_data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    runtime_packages = {
+        _normalize_requirement_name(entry)
+        for entry in pyproject_data["project"]["dependencies"]
+    }
+    dev_entries = pyproject_data.get("dependency-groups", {}).get("dev", [])
+    dev_packages = {
+        _normalize_requirement_name(entry)
+        for entry in dev_entries
+        if isinstance(entry, str)
+    }
+    assert "pytest" not in runtime_packages, (
+        "pytest must not be a runtime dependency in [project].dependencies"
+    )
+    assert {"ruff", "pyright"} <= runtime_packages, (
+        f"ruff and pyright must remain runtime dependencies, found: {sorted(runtime_packages)}"
+    )
+    assert "pytest" in dev_packages, (
+        f"[dependency-groups].dev must declare pytest, found: {sorted(dev_packages)}"
+    )
+
+
+def test_pyproject_build_system_requires_pep639_capable_setuptools() -> None:
+    """@brief Verify the build backend floor supports PEP 639 license fields.
+    @details Setuptools releases before 77.0.0 reject the SPDX `license` string and the
+    `license-files` key. The build-system requirement MUST pin a `setuptools>=77` floor.
+    @return {None} No return value.
+    """
+
+    pyproject_data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    requires = pyproject_data["build-system"]["requires"]
+    floors = [
+        int(match.group(1))
+        for match in (re.match(r"^setuptools\s*>=\s*([0-9]+)", entry) for entry in requires)
+        if match is not None
+    ]
+    assert floors and max(floors) >= 77, (
+        f"[build-system].requires must pin setuptools>=77, found: {requires!r}"
+    )
+
+
+def test_manifest_prunes_generated_egg_info_from_sdist() -> None:
+    """@brief Verify MANIFEST.in excludes the generated setuptools egg-info from sdists.
+    @details The `src/*.egg-info` directory is a generated build intermediate written by
+    setuptools during sdist creation. MANIFEST.in MUST carry the exact `prune src/*.egg-info`
+    directive so the sdist ships no generated metadata.
+    @return {None} No return value.
+    """
+
+    manifest_path = REPO_ROOT / "MANIFEST.in"
+    assert manifest_path.is_file(), "MANIFEST.in must exist at repository root"
+    manifest_lines = [
+        line.strip() for line in manifest_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert "prune src/*.egg-info" in manifest_lines, (
+        f"MANIFEST.in must prune src/*.egg-info, found lines: {manifest_lines!r}"
+    )
+    gitignore_lines = [
+        line.strip() for line in GITIGNORE_PATH.read_text(encoding="utf-8").splitlines()
+    ]
+    assert "!MANIFEST.in" in gitignore_lines, (
+        ".gitignore must re-include MANIFEST.in so the tracked manifest is versionable"
+    )

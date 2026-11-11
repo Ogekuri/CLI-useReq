@@ -30,7 +30,7 @@
 - `PROC:build-sh`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `Reproducible release build that prunes stale gitignored dist/ entries, compiles the sdist and wheel through the canonical frozen-lock build command, verifies both artifact families, and prints the artifact summary while leaving the artifacts in dist/`
+  - `role`: `Reproducible release build that prunes stale gitignored dist/ entries, compiles the sdist and wheel through the canonical frozen-lock build command, removes gitignored untracked src/*.egg-info build intermediates, verifies both artifact families, and prints the artifact summary while leaving the artifacts in dist/; any failing command aborts the build through an EXIT trap`
   - `entrypoints`: `scripts/build.sh`
   - `defining_files`: `scripts/build.sh`
   - `threads`: `no explicit threads detected`
@@ -315,16 +315,18 @@
 - **Type**: Process
 - **Parent Process**: `-`
 - **Entrypoint(s)**: `scripts/build.sh` [`scripts/build.sh`]
-- **Lifecycle/Trigger**: starts on direct shell invocation or as the `build` stage child process of `scripts/pre-release-check.sh`, resolves the repository root from its own location, and executes the ordered stages `environment`, `dist-preparation`, `compile`, `artifact-verification`, and `summary`; stops at the first failing stage with `Release build failed at stage <stage>.` and exit code 1, or exits 0 leaving the release artifacts available in `dist/` (SRS-546..SRS-551).
+- **Lifecycle/Trigger**: starts on direct shell invocation or as the `build` stage child process of `scripts/pre-release-check.sh`, resolves the repository root from its own location, and executes the ordered stages `environment`, `dist-preparation`, `compile`, `intermediate-cleanup`, `artifact-verification`, and `summary` under unconditional `set -e` semantics; the first failing command terminates the script and the `EXIT` trap prints `Release build failed at stage <stage>.` with exit code 1, or the script exits 0 leaving the release artifacts available in `dist/` (SRS-546..SRS-551).
 - **Internal Call-Trace Tree**
   - `build.sh(...)`: release build stage orchestrator with first-failure abort semantics [`scripts/build.sh`]
-    - `run_stage(...)`: assign the stage name, print progress, execute the stage command, and abort on first failure [`scripts/build.sh`]
+    - `run_stage(...)`: execute one stage command unconditionally under `set -e` after printing progress; failures are never placed in an `if`/`||` context [`scripts/build.sh`]
+      - `on_exit(...)`: EXIT trap printing `Release build failed at stage <stage>.` and exiting with code 1 on any non-zero termination (SRS-551) [`scripts/build.sh`]
       - `check_uv_available(...)`: verify `uv` executable availability (SRS-547) [`scripts/build.sh`]
       - `clean_stale_dist_artifacts(...)`: remove only gitignored entries under `dist/`, preserving git-tracked and non-ignored files (SRS-548) [`scripts/build.sh`]
       - `compile_distribution_artifacts(...)`: execute the canonical frozen-lock `uv run --frozen --with build python -m build` command with an explicit `dist/` outdir (SRS-549) [`scripts/build.sh`]
+      - `clean_build_intermediates(...)`: remove `src/*.egg-info` directories only when gitignored and untracked (SRS-548) [`scripts/build.sh`]
       - `verify_distribution_artifacts(...)`: verify that at least one `.tar.gz` sdist and one `.whl` wheel exist (SRS-550) [`scripts/build.sh`]
       - `print_artifact_summary(...)`: print every artifact currently stored in `dist/` (SRS-551) [`scripts/build.sh`]
-    - external boundaries: `readlink -f`/`dirname` path resolution, `git check-ignore -q` ignored-entry classification, `find`/`rm -rf` targeted dist pruning, child-process invocation of `uv run --project <root> --frozen --with build python -m build`, stdout/stderr stage diagnostics
+    - external boundaries: `readlink -f`/`dirname` path resolution, `git check-ignore -q` and `git ls-files` classification of dist/ and egg-info entries, `find`/`rm -rf` targeted pruning, child-process invocation of `uv run --project <root> --frozen --with build python -m build` (the sdist build executes the `setup.py` sdist command override), EXIT-trap diagnostics, stdout/stderr stage diagnostics
 
 ### `PROC:prompts-update-sh`
 - **Type**: Process

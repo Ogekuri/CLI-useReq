@@ -1,0 +1,2 @@
+# Exclude the generated setuptools build intermediate from the source distribution.
+prune src/*.egg-info

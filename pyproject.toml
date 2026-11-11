@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel", "build"]
+requires = ["setuptools>=77.0.0", "wheel", "build"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,11 +8,11 @@ version = "0.75.3"
 description = "Initialize a project with prompts, agents, and templates from the useReq repository."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { file = "LICENSE" }
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 dependencies = [
   "tiktoken",
   "pyyaml",
-  "pytest",
   "ruff",
   "pyright",
 ]
@@ -37,6 +37,9 @@ Repository = "https://github.com/Ogekuri/CLI-useReq"
 req = "usereq.cli:main"
 usereq = "usereq.cli:main"
 cli-usereq = "usereq.cli:main"
+
+[dependency-groups]
+dev = ["pytest"]
 
 [tool.setuptools]
 packages = ["usereq"]
