@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -*- coding: utf-8 -*-
-# VERSION: 0.75.7
+# VERSION: 0.75.8
 # AUTHORS: Ogekuri
 ##
 # @file scripts/build.sh

@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.7](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.7) - 2026-11-12
+## [0.75.8](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.8) - 2026-11-12
 ### ⛰️  Features
 - Update prompts.
 - Update gitalias config.
@@ -18,6 +18,14 @@
 - Update prompts.
 
 ### 🐛  Bug Fixes
+- request latest PyPI version during --upgrade [useReq] *(upgrade)*
+  append --upgrade to 'uv tool install cli-usereq' so an existing tool
+  environment stops reusing the already-installed version
+  keep the SRS-509/SRS-510 forced reinstall command and the develop
+  git-source command unchanged, since both already re-resolve the target
+  add reproducer test asserting the upgrade command requests a newer
+  version; align related command assertions in test_cli.py
+  document the --upgrade flag in README and refresh WORKFLOW/REFERENCES
 - propagate stage failures and fix packaging metadata [useReq] *(build)*
   scripts/build.sh: run stages unconditionally under set -e; EXIT trap reports the failing stage (SRS-551).; scripts/build.sh: failed dist/ pruning now aborts before compile instead of being masked (SRS-548).; scripts/build.sh: add intermediate-cleanup stage removing untracked gitignored src/*.egg-info (SRS-548).; scripts/build.sh: artifact-verification fails with a diagnostic when dist/ is absent (SRS-550).; pyproject.toml: PEP 639 license "GPL-3.0-only" with license-files; setuptools>=77.0.0 floor.; pyproject.toml: pytest moved to [dependency-groups].dev; ruff and pyright stay runtime (SRS-264, SRS-338).; uv.lock regenerated; MANIFEST.in and setup.py exclude generated egg-info from the sdist.; .gitignore re-includes MANIFEST.in; tests/test_build_script.py adds reproducers; manifest tests extended.; Requirements SRS-546..SRS-551, SRS-272..SRS-274, SRS-435..SRS-437, SRS-454 unchanged and satisfied.
 - refresh uv index cache so upgrade installs latest version [useReq] *(run-upgrade)*
@@ -1582,7 +1590,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.7\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.7
+- \[0.75.8\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.8
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1658,4 +1666,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.7]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.7
+[0.75.8]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.8
