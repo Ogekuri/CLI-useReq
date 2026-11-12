@@ -13,11 +13,12 @@
 # 3. `dependency-sync`: run `uv sync --frozen` against the canonical SRS-055 lockfile and
 #    repair stale `.venv/bin/pytest` entry points that target foreign interpreters left
 #    behind by a copied or relocated virtual environment (SRS-475, SRS-479).
-# 4. `build`: generate the sdist and wheel by executing `scripts/build.sh`, which prunes
-#    stale gitignored `dist/` entries and runs the canonical frozen-lock
+# 4. `build`: generate the sdist and wheel by executing `scripts/build.sh`, which removes
+#    every non-git-tracked `dist/` entry, prunes the `build/` and `src/*.egg-info`
+#    intermediates before and after the build, and runs the canonical frozen-lock
 #    `uv run --frozen --with build python -m build` command mirroring
-#    `.github/workflows/release-pypi.yml` (SRS-476, SRS-546..SRS-551), then verify that
-#    at least one `.tar.gz` and one `.whl` artifact exist (SRS-477).
+#    `.github/workflows/release-pypi.yml` (SRS-476, SRS-546..SRS-551, SRS-566..SRS-570), then
+#    verify that at least one `.tar.gz` and one `.whl` artifact exist (SRS-477).
 # 5. `static-analysis`: run the project `static-check` command with `--prj-base` on the
 #    repository root (SRS-478).
 # 6. `unit-tests`: run the full unit-test suite through `uv run pytest` (SRS-479).
@@ -220,9 +221,10 @@ sync_dependencies() {
 
 ##
 # @brief Stage `build`: generate the release artifacts through scripts/build.sh and verify their presence.
-# @details Delegates artifact generation to `scripts/build.sh` (SRS-546..SRS-551), which
-# prunes stale gitignored `dist/` entries, runs the canonical frozen-lock
-# `uv run --frozen --with build python -m build` command mirroring
+# @details Delegates artifact generation to `scripts/build.sh` (SRS-546..SRS-551,
+# SRS-566..SRS-570), which removes every non-git-tracked `dist/` entry, prunes the
+# `build/` and `src/*.egg-info` intermediates before and after the build, runs the
+# canonical frozen-lock `uv run --frozen --with build python -m build` command mirroring
 # `.github/workflows/release-pypi.yml` with an explicit `dist/` outdir (SRS-476), and
 # verifies its own artifact families. This stage then independently re-verifies that
 # `dist/` contains at least one `.tar.gz` sdist and one `.whl` wheel (SRS-477).

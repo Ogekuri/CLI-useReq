@@ -30,16 +30,9 @@
 - `PROC:build-sh`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `Reproducible release build that prunes stale gitignored dist/ entries, compiles the sdist and wheel through the canonical frozen-lock build command, removes gitignored untracked src/*.egg-info build intermediates, verifies both artifact families, and prints the artifact summary while leaving the artifacts in dist/; any failing command aborts the build through an EXIT trap`
+  - `role`: `Reproducible clean release build that verifies uv and git availability, removes every non-git-tracked dist/ entry of every previously built version, prunes build/ and src/*.egg-info before and after compiling the sdist and wheel through the canonical frozen-lock build command, verifies both artifact families, and prints the artifact plus cleanup summary while leaving the repository with only git-tracked files and the built dist/ artifacts; any failing command aborts the build through an EXIT trap`
   - `entrypoints`: `scripts/build.sh`
   - `defining_files`: `scripts/build.sh`
-  - `threads`: `no explicit threads detected`
-- `PROC:clean-sh`
-  - `type`: `Process`
-  - `parent_process`: `-`
-  - `role`: `Build cleanup orchestrator that removes every artifact created by scripts/build.sh (untracked dist/ entries plus the emptied dist/ directory, build/, and src/*.egg-info intermediates) while preserving git-tracked content with skip warnings and reporting the removed and skipped paths`
-  - `entrypoints`: `scripts/clean.sh`
-  - `defining_files`: `scripts/clean.sh`
   - `threads`: `no explicit threads detected`
 - `PROC:prompts-update-sh`
   - `type`: `Process`
@@ -322,35 +315,21 @@
 - **Type**: Process
 - **Parent Process**: `-`
 - **Entrypoint(s)**: `scripts/build.sh` [`scripts/build.sh`]
-- **Lifecycle/Trigger**: starts on direct shell invocation or as the `build` stage child process of `scripts/pre-release-check.sh`, resolves the repository root from its own location, and executes the ordered stages `environment`, `dist-preparation`, `compile`, `intermediate-cleanup`, `artifact-verification`, and `summary` under unconditional `set -e` semantics; the first failing command terminates the script and the `EXIT` trap prints `Release build failed at stage <stage>.` with exit code 1, or the script exits 0 leaving the release artifacts available in `dist/` (SRS-546..SRS-551).
+- **Lifecycle/Trigger**: starts on direct shell invocation or as the `build` stage child process of `scripts/pre-release-check.sh`, resolves the repository root from its own location, and executes the ordered stages `environment` (uv and git availability), `dist-preparation` (removal of every non-git-tracked `dist/` entry of every previously built version and of an emptied `dist/` directory), `intermediate-preparation` (removal of `build/` and every `src/*.egg-info`), `compile` (canonical frozen-lock `uv run --frozen --with build python -m build`), `intermediate-cleanup` (post-build removal of `build/` and every `src/*.egg-info`), `artifact-verification`, and `summary` under unconditional `set -e` semantics; removal targets containing git-tracked files are preserved with an English warning; the first failing command terminates the script and the `EXIT` trap prints `Release build failed at stage <stage>.` with exit code 1, or the script exits 0 leaving only git-tracked files plus the release artifacts in `dist/` (SRS-546..SRS-551, SRS-566..SRS-570).
 - **Internal Call-Trace Tree**
-  - `build.sh(...)`: release build stage orchestrator with first-failure abort semantics [`scripts/build.sh`]
+  - `build.sh(...)`: clean release build stage orchestrator with first-failure abort semantics [`scripts/build.sh`]
     - `run_stage(...)`: execute one stage command unconditionally under `set -e` after printing progress; failures are never placed in an `if`/`||` context [`scripts/build.sh`]
       - `on_exit(...)`: EXIT trap printing `Release build failed at stage <stage>.` and exiting with code 1 on any non-zero termination (SRS-551) [`scripts/build.sh`]
       - `check_uv_available(...)`: verify `uv` executable availability (SRS-547) [`scripts/build.sh`]
-      - `clean_stale_dist_artifacts(...)`: remove only gitignored entries under `dist/`, preserving git-tracked and non-ignored files (SRS-548) [`scripts/build.sh`]
+      - `check_git_available(...)`: verify `git` executable availability (SRS-566) [`scripts/build.sh`]
+      - `clean_dist_artifacts(...)`: remove every non-git-tracked direct child of `dist/` covering every previously built version, then remove the emptied `dist/` directory itself (SRS-548) [`scripts/build.sh`]
+        - `remove_untracked_target(...)`: delete one target only when `git ls-files` reports no tracked entry beneath it, otherwise skip it with an English warning (SRS-568) [`scripts/build.sh`]
+      - `clean_build_intermediates(...)`: remove the `build/` directory and every `src/*.egg-info` directory before and after the compile stage through the tracked-file guard (SRS-567, SRS-568, SRS-569) [`scripts/build.sh`]
+        - `remove_untracked_target(...)`: delete one target only when `git ls-files` reports no tracked entry beneath it, otherwise skip it with an English warning (SRS-568) [`scripts/build.sh`]
       - `compile_distribution_artifacts(...)`: execute the canonical frozen-lock `uv run --frozen --with build python -m build` command with an explicit `dist/` outdir (SRS-549) [`scripts/build.sh`]
-      - `clean_build_intermediates(...)`: remove `src/*.egg-info` directories only when gitignored and untracked (SRS-548) [`scripts/build.sh`]
       - `verify_distribution_artifacts(...)`: verify that at least one `.tar.gz` sdist and one `.whl` wheel exist (SRS-550) [`scripts/build.sh`]
-      - `print_artifact_summary(...)`: print every artifact currently stored in `dist/` (SRS-551) [`scripts/build.sh`]
-    - external boundaries: `readlink -f`/`dirname` path resolution, `git check-ignore -q` and `git ls-files` classification of dist/ and egg-info entries, `find`/`rm -rf` targeted pruning, child-process invocation of `uv run --project <root> --frozen --with build python -m build` (the sdist build executes the `setup.py` sdist command override), EXIT-trap diagnostics, stdout/stderr stage diagnostics
-
-### `PROC:clean-sh`
-- **Type**: Process
-- **Parent Process**: `-`
-- **Entrypoint(s)**: `scripts/clean.sh` [`scripts/clean.sh`]
-- **Lifecycle/Trigger**: starts on direct shell invocation, resolves the repository root from its own location, and executes the ordered stages `environment`, `dist-cleanup`, `intermediate-cleanup`, and `summary` under unconditional `set -e` semantics; the first failing command terminates the script and the `EXIT` trap prints `Repository clean failed at stage <stage>.` with exit code 1, or the script exits 0 having removed every untracked artifact created by `scripts/build.sh` and preserved every git-tracked target with an English warning (SRS-559..SRS-564).
-- **Internal Call-Trace Tree**
-  - `clean.sh(...)`: build-artifact cleanup stage orchestrator with first-failure abort semantics [`scripts/clean.sh`]
-    - `run_stage(...)`: execute one stage command unconditionally under `set -e` after printing progress; failures are never placed in an `if`/`||` context [`scripts/clean.sh`]
-      - `on_exit(...)`: EXIT trap printing `Repository clean failed at stage <stage>.` and exiting with code 1 on any non-zero termination (SRS-564) [`scripts/clean.sh`]
-      - `check_git_available(...)`: verify `git` executable availability (SRS-560) [`scripts/clean.sh`]
-      - `clean_dist_artifacts(...)`: remove every non-git-tracked direct child of `dist/` and remove the emptied `dist/` directory itself (SRS-561) [`scripts/clean.sh`]
-        - `remove_untracked_target(...)`: delete one target only when `git ls-files` reports no tracked entry beneath it, otherwise skip it with an English warning (SRS-563) [`scripts/clean.sh`]
-      - `clean_build_intermediates(...)`: remove the `build/` directory and every `src/*.egg-info` directory through the tracked-file guard (SRS-562, SRS-563) [`scripts/clean.sh`]
-        - `remove_untracked_target(...)`: delete one target only when `git ls-files` reports no tracked entry beneath it, otherwise skip it with an English warning (SRS-563) [`scripts/clean.sh`]
-      - `print_clean_summary(...)`: print the accumulated removed and skipped repository-relative path lists (SRS-564) [`scripts/clean.sh`]
-    - external boundaries: `readlink -f`/`dirname` path resolution, `git ls-files` tracked-file classification of every removal target, `find` enumeration of `dist/` and `src/*.egg-info` entries, `rm -rf`/`rmdir` removal of untracked targets, EXIT-trap diagnostics, stdout/stderr stage and summary diagnostics
+      - `print_build_summary(...)`: print every artifact currently stored in `dist/` plus the accumulated removed and skipped cleanup path lists (SRS-551, SRS-570) [`scripts/build.sh`]
+    - external boundaries: `readlink -f`/`dirname` path resolution, `git ls-files` tracked-file classification of every removal target, `find` enumeration of `dist/` and `src/*.egg-info` entries, `rm -rf`/`rmdir` removal of untracked targets, child-process invocation of `uv run --project <root> --frozen --with build python -m build` (the sdist build executes the `setup.py` sdist command override), EXIT-trap diagnostics, stdout/stderr stage and summary diagnostics
 
 ### `PROC:prompts-update-sh`
 - **Type**: Process

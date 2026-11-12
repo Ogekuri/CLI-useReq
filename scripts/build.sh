@@ -4,31 +4,36 @@
 # AUTHORS: Ogekuri
 ##
 # @file scripts/build.sh
-# @brief Reproducible release build producing every distributable artifact into dist/.
+# @brief Reproducible clean release build producing every distributable artifact into dist/.
 # @details Executes the following ordered stages from the repository root resolved from
 # this script location (SRS-546):
-# 1. `environment`: verify the `uv` command is executable (SRS-547).
-# 2. `dist-preparation`: remove from `dist/` only gitignored entries left by previous
-#    builds, preserving every git-tracked or non-ignored file (SRS-548).
-# 3. `compile`: build the sdist and wheel into `dist/` through the canonical frozen-lock
+# 1. `environment`: verify the `uv` and `git` commands are executable (SRS-547, SRS-566).
+# 2. `dist-preparation`: remove from `dist/` every entry that is not git-tracked, covering
+#    every artifact version left by previous builds, remove the `dist/` directory when it
+#    becomes empty, and preserve every git-tracked file under `dist/` (SRS-548).
+# 3. `intermediate-preparation`: remove the `build/` directory and every `src/*.egg-info`
+#    directory left by previous builds (SRS-567).
+# 4. `compile`: build the sdist and wheel into `dist/` through the canonical frozen-lock
 #    command `uv run --project <root> --frozen --with build python -m build --outdir
 #    <root>/dist`, mirroring `.github/workflows/release-pypi.yml` (SRS-549).
-# 4. `intermediate-cleanup`: remove the setuptools `src/*.egg-info` build intermediates
-#    only when they are gitignored and untracked (SRS-548).
-# 5. `artifact-verification`: verify that `dist/` contains at least one `.tar.gz` sdist
+# 5. `intermediate-cleanup`: remove the `build/` directory and every `src/*.egg-info`
+#    directory created by the compile stage so the repository retains only git-tracked
+#    files plus the built artifacts in `dist/` (SRS-569).
+# 6. `artifact-verification`: verify that `dist/` contains at least one `.tar.gz` sdist
 #    and one `.whl` wheel (SRS-550).
-# 6. `summary`: print every artifact currently stored in `dist/` (SRS-551).
-# Every stage runs unconditionally under `set -e`, so the first failing command aborts
-# the script; the EXIT trap then prints `Release build failed at stage <stage>.` and exits
-# with code 1. Exit code 0 is returned only when every stage succeeds (SRS-551). On success
-# the artifacts remain available in `dist/`; cleanup of the remaining build and test
-# intermediates is the responsibility of `scripts/pre-release-check.sh` (SRS-482).
+# 7. `summary`: print every artifact currently stored in `dist/` plus every removed and
+#    every skipped cleanup path (SRS-551, SRS-570).
+# Every removal target containing git-tracked files is preserved and reported with an
+# English warning identifying the skipped path (SRS-568). Every stage runs unconditionally
+# under `set -e`, so the first failing command aborts the script; the EXIT trap then prints
+# `Release build failed at stage <stage>.` and exits with code 1. Exit code 0 is returned
+# only when every stage succeeds (SRS-551).
 # @retval 0 Every stage succeeded and the artifacts are available in `dist/`.
-# @retval 1 A stage failed, `uv` is unavailable, or an expected artifact is missing.
+# @retval 1 A stage failed, `uv` or `git` is unavailable, or an expected artifact is missing.
 # @warning Requires `bash`, `git`, and the Astral `uv` tool; network access is required
 #          by the build isolation and dependency resolution steps.
 # @see scripts/pre-release-check.sh
-# @satisfies SRS-546, SRS-547, SRS-548, SRS-549, SRS-550, SRS-551
+# @satisfies SRS-546, SRS-547, SRS-548, SRS-549, SRS-550, SRS-551, SRS-566, SRS-567, SRS-568, SRS-569, SRS-570
 ##
 
 set -euo pipefail
@@ -46,6 +51,21 @@ BUILD_ERROR_EXIT_CODE=1
 # to print the canonical `Release build failed at stage <stage>.` message (SRS-551).
 # @satisfies SRS-551
 CURRENT_STAGE=""
+
+##
+# @brief Repository-relative paths removed during the current execution.
+# @details Populated by `remove_untracked_target` and consumed by `print_build_summary`;
+# declared before any stage runs so `set -u` never observes an unset array (SRS-570).
+# @satisfies SRS-570
+REMOVED_TARGETS=()
+
+##
+# @brief Repository-relative paths skipped because they contain git-tracked files.
+# @details Populated by `remove_untracked_target` and consumed by `print_build_summary`;
+# declared before any stage runs so `set -u` never observes an unset array (SRS-568,
+# SRS-570).
+# @satisfies SRS-568, SRS-570
+SKIPPED_TARGETS=()
 
 ##
 # @brief Terminate the build with the canonical stage-failure diagnostic on any failing exit.
@@ -114,72 +134,108 @@ check_uv_available() {
 }
 
 ##
-# @brief Stage `dist-preparation`: remove only gitignored entries from a previous dist/.
+# @brief Stage `environment`: verify that the `git` command is executable (SRS-566).
+# @details Emits an English error on stderr and returns non-zero when `git` is absent,
+# because every cleanup decision depends on `git ls-files` tracked-file classification
+# (SRS-568).
+# @return Returns 0 when `git` is available; returns 1 otherwise.
+# @satisfies SRS-566
+check_git_available() {
+  if ! command -v git >/dev/null 2>&1; then
+    echo "ERROR: git command not found in PATH" >&2
+    return "${BUILD_ERROR_EXIT_CODE}"
+  fi
+}
+
+##
+# @brief Remove one cleanup target unless it contains git-tracked files.
+# @details An absent target is a no-op, keeping every stage idempotent. The target is
+# classified through `git ls-files`: when any tracked entry exists beneath it, the target
+# is preserved, an English warning identifying the repository-relative path is printed on
+# stderr, and the path is recorded in `SKIPPED_TARGETS` (SRS-568); otherwise the target is
+# deleted with `rm -rf` and recorded in `REMOVED_TARGETS` (SRS-570). Complexity O(T) over
+# the tracked entries beneath the target; side effects: deletes untracked filesystem
+# entries, mutates the summary arrays.
+# @param[in] $1 Absolute path of the cleanup target inside the repository.
+# @return Returns 0 after removal, preservation, or no-op; non-zero when a removal fails.
+# @satisfies SRS-568, SRS-570
+remove_untracked_target() {
+  local target="$1"
+  [ -e "${target}" ] || return 0
+  local relative_target="${target#"${BASE_DIR}/"}"
+  local tracked_files
+  tracked_files="$(git -C "${BASE_DIR}" ls-files -- "${relative_target}")"
+  if [ -n "${tracked_files}" ]; then
+    echo "WARNING: cleanup skipped for '${relative_target}' because it contains git-tracked files" >&2
+    SKIPPED_TARGETS+=("${relative_target}")
+    return 0
+  fi
+  rm -rf -- "${target}"
+  REMOVED_TARGETS+=("${relative_target}")
+}
+
+##
+# @brief Stage `dist-preparation`: remove every non-git-tracked entry from dist/.
 # @details Enumerates the direct children of `dist/` into a variable through command
 # substitution so a failing `find` terminates the stage under `set -e` instead of being
-# silently discarded by a process substitution. Each entry is removed only when
-# `git check-ignore -q` classifies it as gitignored, which covers the generated artifacts of
-# previous builds (SRS-553). Git-tracked files are never reported as ignored and untracked
-# non-ignored files are preserved, so both survive the pruning (SRS-548). A failing `rm`
-# inside the loop aborts the stage under `set -e`. An absent `dist/` directory is a no-op,
-# making the stage idempotent for first builds. Complexity O(N) over the direct children of
-# `dist/`; side effects: deletes gitignored entries under `dist/`.
-# @return Returns 0 after pruning or when `dist/` is absent; non-zero when a removal fails.
-# @satisfies SRS-548
-clean_stale_dist_artifacts() {
+# silently discarded by a process substitution. Every entry is delegated to
+# `remove_untracked_target`, so all previously built artifact versions are deleted while
+# git-tracked content is preserved with a warning (SRS-548, SRS-568). After the loop,
+# `rmdir` removes the `dist/` directory itself only when it is empty; a non-empty
+# survivor (git-tracked entries) is tolerated. An absent `dist/` directory is a no-op,
+# making the stage idempotent for first builds. Complexity O(N) over the direct children
+# of `dist/`; side effects: deletes untracked entries under `dist/`.
+# @return Returns 0 after cleaning or when `dist/` is absent; non-zero when a removal fails.
+# @satisfies SRS-548, SRS-568
+clean_dist_artifacts() {
   [ -d "${BASE_DIR}/dist" ] || return 0
   local entries
   local entry
-  local relative_entry
   entries="$(find "${BASE_DIR}/dist" -mindepth 1 -maxdepth 1 -print)"
-  if [ -z "${entries}" ]; then
+  if [ -n "${entries}" ]; then
+    while IFS= read -r entry; do
+      remove_untracked_target "${entry}"
+    done <<< "${entries}"
+  fi
+  rmdir "${BASE_DIR}/dist" 2>/dev/null || true
+}
+
+##
+# @brief Remove the `build/` directory and every `src/*.egg-info` directory.
+# @details Enumerates the `src/*.egg-info` directories produced by the setuptools metadata
+# generation into a variable through command substitution so a failing `find` terminates
+# the owning stage under `set -e`. The `build/` directory and every egg-info directory are
+# delegated to `remove_untracked_target`, so targets containing git-tracked files are
+# preserved with a warning (SRS-568) and everything else is deleted (SRS-570). The stage is
+# idempotent: absent targets are a no-op. Complexity O(K) over K egg-info directories;
+# side effects: deletes untracked build intermediates.
+# @return Returns 0 after cleaning or when no candidate exists; non-zero when a removal fails.
+# @satisfies SRS-567, SRS-568, SRS-569, SRS-570
+clean_build_intermediates() {
+  remove_untracked_target "${BASE_DIR}/build"
+  [ -d "${BASE_DIR}/src" ] || return 0
+  local egg_dirs
+  local egg_dir
+  egg_dirs="$(find "${BASE_DIR}/src" -mindepth 1 -maxdepth 1 -type d -name '*.egg-info' -print)"
+  if [ -z "${egg_dirs}" ]; then
     return 0
   fi
-  while IFS= read -r entry; do
-    relative_entry="${entry#"${BASE_DIR}/"}"
-    if git -C "${BASE_DIR}" check-ignore -q -- "${relative_entry}"; then
-      rm -rf -- "${entry}"
-    fi
-  done <<< "${entries}"
+  while IFS= read -r egg_dir; do
+    remove_untracked_target "${egg_dir}"
+  done <<< "${egg_dirs}"
 }
 
 ##
 # @brief Stage `compile`: produce the release sdist and wheel into dist/.
 # @details Executes the canonical frozen-lock build command mirroring
 # `.github/workflows/release-pypi.yml` (SRS-549); the build tool writes both artifact
-# families into `dist/`. A non-zero build exit status terminates the script through `set -e`.
+# families into `dist/` and regenerates the `build/` and `src/*.egg-info` intermediates
+# removed after the build (SRS-569). A non-zero build exit status terminates the script
+# through `set -e`.
 # @return Returns the build exit status (0 success, non-zero failure).
-# @satisfies SRS-549
+# @satisfies SRS-549, SRS-569
 compile_distribution_artifacts() {
   uv run --project "${BASE_DIR}" --frozen --with build python -m build --outdir "${BASE_DIR}/dist"
-}
-
-##
-# @brief Stage `intermediate-cleanup`: remove generated egg-info directories that are disposable.
-# @details Enumerates the `src/*.egg-info` directories produced by the setuptools build into a
-# variable through command substitution. A directory is removed only when `git check-ignore -q`
-# classifies it as gitignored AND `git ls-files` reports no tracked entry beneath it, so
-# git-tracked metadata and any non-ignored content are preserved (SRS-548). An absent match
-# set is a no-op. Complexity O(K) over K egg-info directories; side effects: deletes untracked
-# gitignored egg-info directories under `src/`.
-# @return Returns 0 after pruning or when no candidate exists; non-zero when a removal fails.
-# @satisfies SRS-548
-clean_build_intermediates() {
-  [ -d "${BASE_DIR}/src" ] || return 0
-  local egg_dirs
-  local egg_dir
-  local relative_dir
-  egg_dirs="$(find "${BASE_DIR}/src" -mindepth 1 -maxdepth 1 -type d -name '*.egg-info' -print)"
-  if [ -z "${egg_dirs}" ]; then
-    return 0
-  fi
-  while IFS= read -r egg_dir; do
-    relative_dir="${egg_dir#"${BASE_DIR}/"}"
-    if git -C "${BASE_DIR}" check-ignore -q -- "${relative_dir}" \
-      && [ -z "$(git -C "${BASE_DIR}" ls-files -- "${relative_dir}")" ]; then
-      rm -rf -- "${egg_dir}"
-    fi
-  done <<< "${egg_dirs}"
 }
 
 ##
@@ -205,31 +261,48 @@ verify_distribution_artifacts() {
 }
 
 ##
-# @brief Stage `summary`: print every artifact currently stored in dist/.
+# @brief Stage `summary`: print the artifact inventory and the cleanup report.
 # @details Enumerates the direct children of `dist/` in lexicographic order into a variable
 # through command substitution so a failing `find` or `sort` terminates the stage under
-# `set -e`; lists each entry so the caller can record exactly which distributable artifacts
-# the build produced (SRS-551). Complexity O(N log N) over the children of `dist/`.
+# `set -e`; lists each artifact so the caller can record exactly which distributable
+# artifacts the build produced (SRS-551). Then prints the `REMOVED_TARGETS` and
+# `SKIPPED_TARGETS` arrays accumulated by the cleanup stages as two labeled
+# repository-relative path lists (SRS-570). Complexity O(N log N) over the children of
+# `dist/`; side effects: stdout lines only.
 # @return Returns 0 after printing the summary; non-zero when enumeration fails.
-# @satisfies SRS-551
-print_artifact_summary() {
+# @satisfies SRS-551, SRS-570
+print_build_summary() {
   local entries
   local entry
+  local target
   entries="$(find "${BASE_DIR}/dist" -mindepth 1 -maxdepth 1 -print | sort)"
   printf '[build] artifacts in dist/:\n'
-  if [ -z "${entries}" ]; then
-    return 0
+  if [ -n "${entries}" ]; then
+    while IFS= read -r entry; do
+      printf '  %s\n' "${entry#"${BASE_DIR}/dist/"}"
+    done <<< "${entries}"
   fi
-  while IFS= read -r entry; do
-    printf '  %s\n' "${entry#"${BASE_DIR}/dist/"}"
-  done <<< "${entries}"
+  printf '[build] removed %d path(s):\n' "${#REMOVED_TARGETS[@]}"
+  if [ "${#REMOVED_TARGETS[@]}" -gt 0 ]; then
+    for target in "${REMOVED_TARGETS[@]}"; do
+      printf '  %s\n' "${target}"
+    done
+  fi
+  printf '[build] skipped %d git-tracked path(s):\n' "${#SKIPPED_TARGETS[@]}"
+  if [ "${#SKIPPED_TARGETS[@]}" -gt 0 ]; then
+    for target in "${SKIPPED_TARGETS[@]}"; do
+      printf '  %s\n' "${target}"
+    done
+  fi
 }
 
 cd "${BASE_DIR}"
 
 run_stage "environment" check_uv_available
-run_stage "dist-preparation" clean_stale_dist_artifacts
+run_stage "environment" check_git_available
+run_stage "dist-preparation" clean_dist_artifacts
+run_stage "intermediate-preparation" clean_build_intermediates
 run_stage "compile" compile_distribution_artifacts
 run_stage "intermediate-cleanup" clean_build_intermediates
 run_stage "artifact-verification" verify_distribution_artifacts
-run_stage "summary" print_artifact_summary
+run_stage "summary" print_build_summary
