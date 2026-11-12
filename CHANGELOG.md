@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.6](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.6) - 2026-11-12
+## [0.75.7](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.7) - 2026-11-12
 ### ⛰️  Features
 - Update prompts.
 - Update gitalias config.
@@ -1582,7 +1582,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.6\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.6
+- \[0.75.7\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.7
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1658,4 +1658,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.6]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.6
+[0.75.7]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.7
