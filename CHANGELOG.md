@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.4](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.4) - 2026-11-12
+## [0.75.5](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.5) - 2026-11-12
 ### ⛰️  Features
 - Update prompts.
 - Update gitalias config.
@@ -30,6 +30,12 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- clean old-version dist artifacts before build [useReq] *(build-script)*
+  update SRS-548 and SRS-568 to remove git-tracked old-version dist/ artifacts; add SRS-578/579/580 for pyproject.toml project name/version resolution,
+  pre-compile dist/ removal ordering, and the no-version fallback
+  resolve project name/version from pyproject.toml and classify dist/ entries
+  in scripts/build.sh before the compile stage
+  keep current-version tracked dist/ content and warn on each preserved target; refresh WORKFLOW.md build-sh role, lifecycle, and call-trace nodes
 - build in temp dir and stop touching dist [useReq] *(pre-release-check)*
   SRS-476/SRS-574: build sdist+wheel in a mktemp directory via frozen-lock build; SRS-477: verify artifacts inside the temporary build directory only; SRS-556: never create, read, delete, modify, or verify any dist/ entry; SRS-481/482/483/484: confine intermediates to temp dir and clean them on exit; SRS-558: refactor pre-release tests to assert dist/ independence; docs: update REQUIREMENTS.md and WORKFLOW.md for the new contract
 - remove pre-existing dist artifacts before build [useReq] *(pre-release-check)*
@@ -1576,7 +1582,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.4\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.4
+- \[0.75.5\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.5
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1652,4 +1658,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.4]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.4
+[0.75.5]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.5
