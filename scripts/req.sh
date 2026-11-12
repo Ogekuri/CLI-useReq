@@ -1,6 +1,6 @@
 #!/bin/bash
 # -*- coding: utf-8 -*-
-# VERSION: 0.75.3
+# VERSION: 0.75.4
 # AUTHORS: Ogekuri
 
 set -euo pipefail
