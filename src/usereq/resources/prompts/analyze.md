@@ -186,14 +186,15 @@ After successful pre-flight resolution, create internally a *check-list* for the
    - Read %%GUIDELINES_FILES%% files and ensure any suggested follow-up changes would conform to those **guidelines**. Do not check unrelated **guidelines**.
 3. Follow-up-dispatch: generate the exact follow-up request text
    - From the Step 2 analysis outcome, select one follow-up workflow only when actionable work remains; otherwise set `Next Workflow` to `None.`. For prerequisite analysis, assess the parent's pending task explicitly and retain its task identity.
-     - Select the bug-fix workflow when the analysis detects implementation behavior conflicting with `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`.
-     - Select the change workflow when the analysis requires modifications to existing requirements and corresponding code.
-     - Select the additive-feature workflow when the analysis identifies strictly additive, backward-compatible requirements and corresponding implementation work.
-     - Select the refactoring workflow when the analysis requires exclusively source-level modifications with improvement intent and requirements unchanged.
+     - Select the bug-fix workflow when the analysis detects implementation behavior conflicting with `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`; map it to skill `req-fix`.
+     - Select the change workflow when the analysis requires modifications to existing requirements and corresponding code; map it to skill `req-change`.
+     - Select the additive-feature workflow when the analysis identifies strictly additive, backward-compatible requirements and corresponding implementation work; map it to skill `req-cover`.
+     - Select the refactoring workflow when the analysis requires exclusively source-level modifications with improvement intent and requirements unchanged; map it to skill `req-refactor`.
    - When a follow-up exists, generate its exact ready-to-submit request text, with requirement IDs, evidence, scope, and completion criteria. Preserve explicit read-only user restrictions by marking any proposed mutation as blocked; a prerequisite analysis delegated for already-authorized work remains eligible to return that work as ready.
+   - Emit each actionable entry with `Workflow:` (role name), `Request:` (beginning with an instruction to use the mapped skill as the primary action, followed by the exact ready-to-submit request), `Command:` (the exact matching slash-command in a `~~~text` fence, as reinforcing CLI-specific form only), and `State:` (`ready` or `blocked`). Do not rely on slash-command availability to identify or invoke the skill.
    - Reference follow-up workflows by role name only; do not name follow-up prompt files.
    - Generating this request text is a read-only output action; do not apply any fix, patch, or repository modification.
-   - Include the generated request text verbatim under `## **Next Workflow**` using the Executive Skill Contract. A no-work result requires evidence that the analyzed request is satisfied; never invent work to fill the section.
+   - Include the generated handoff under `## **Next Workflow**` using the Executive Skill Contract, preserving the parser-readable fields, command fence, and ready-to-submit request text. A no-work result requires evidence that the analyzed request is satisfied; never invent work to fill the section.
 4. Present the analysis report
    - PRINT, in the response, the final analysis report for a human reader using clear, easily understandable sentences and readable Markdown formatting that highlight key findings, file paths, and concise evidence. PRINT first a ## **Summary** section containing a synthetic summary (at most 1010 UTF-8 characters) of the entire final output, then the verbose report using the fixed report schema: ## **Outcome**, ## **Requirement Delta**, ## **Design Delta**, ## **Implementation Delta**, ## **Verification Delta**, ## **Evidence**, ## **Assumptions**, ## **Next Workflow**. Final line MUST be exactly: STATUS: OK or STATUS: ERROR.
 
