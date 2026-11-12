@@ -13,16 +13,22 @@
 # 3. `dependency-sync`: run `uv sync --frozen` against the canonical SRS-055 lockfile and
 #    repair stale `.venv/bin/pytest` entry points that target foreign interpreters left
 #    behind by a copied or relocated virtual environment (SRS-475, SRS-479).
-# 4. `build`: generate the sdist and wheel by executing `scripts/build.sh`, which removes
+# 4. `dist-preparation`: remove from `dist/` every entry that is not git-tracked, covering
+#    every pre-existing release artifact version, and remove an emptied `dist/` directory
+#    while preserving every git-tracked file under `dist/`; the removal logic replicates the
+#    `scripts/build.sh` bootstrap cleanup (SRS-548, SRS-574).
+# 5. `dist-verification`: verify after the removal that `dist/` holds no non-git-tracked entry
+#    and abort when a pre-existing release artifact survived (SRS-575).
+# 6. `build`: generate the sdist and wheel by executing `scripts/build.sh`, which removes
 #    every non-git-tracked `dist/` entry, prunes the `build/` and `src/*.egg-info`
 #    intermediates before and after the build, and runs the canonical frozen-lock
 #    `uv run --frozen --with build python -m build` command mirroring
-#    `.github/workflows/release-pypi.yml` (SRS-476, SRS-546..SRS-551, SRS-566..SRS-570), then
-#    verify that at least one `.tar.gz` and one `.whl` artifact exist (SRS-477).
-# 5. `static-analysis`: run the project `static-check` command with `--prj-base` on the
+#    `.github/workflows/release-pypi.yml` (SRS-476, SRS-546..SRS-551, SRS-566..SRS-570, SRS-577),
+#    then verify that at least one `.tar.gz` and one `.whl` artifact exist (SRS-477).
+# 7. `static-analysis`: run the project `static-check` command with `--prj-base` on the
 #    repository root (SRS-478).
-# 6. `unit-tests`: run the full unit-test suite through `uv run pytest` (SRS-479).
-# 7. `cleanup` (EXIT trap): on every termination path remove untracked `dist/` entries, `build/`,
+# 8. `unit-tests`: run the full unit-test suite through `uv run pytest` (SRS-479).
+# 9. `cleanup` (EXIT trap): on every termination path remove untracked `dist/` entries, `build/`,
 #    `.pytest_cache/`, `.ruff_cache/`, `src/*.egg-info`, and `src/`- or `tests/`-scoped `__pycache__`
 #    directories so the repository is left with only git-tracked files and the uv-managed
 #    `.venv` environment (SRS-482, SRS-484); cleanup targets containing git-tracked files
@@ -37,7 +43,7 @@
 # @warning Requires `bash`, `git`, and the Astral `uv` tool; network access is required by the
 #          build isolation and dependency resolution steps.
 # @see scripts/req.sh
-# @satisfies SRS-471, SRS-472, SRS-473, SRS-474, SRS-475, SRS-476, SRS-477, SRS-478, SRS-479, SRS-480, SRS-481, SRS-482, SRS-483, SRS-484
+# @satisfies SRS-471, SRS-472, SRS-473, SRS-474, SRS-475, SRS-476, SRS-477, SRS-478, SRS-479, SRS-480, SRS-481, SRS-482, SRS-483, SRS-484, SRS-556, SRS-574, SRS-575
 ##
 
 set -euo pipefail
@@ -220,6 +226,91 @@ sync_dependencies() {
 }
 
 ##
+# @brief Stage `dist-preparation`: remove every pre-existing non-git-tracked entry from dist/.
+# @details Replicates the `scripts/build.sh` bootstrap removal (SRS-548) so no release artifact
+# produced by a previous build version can survive into the current verification run. Enumerates
+# the direct children of `dist/` into a variable through command substitution so a failing
+# `find` aborts the stage instead of being silently discarded by a process substitution. Every
+# child is delegated to `remove_untracked_dist_entry`, so previously built artifact versions are
+# deleted while git-tracked content is preserved with an English warning (SRS-483, SRS-574).
+# After the loop, `rmdir` removes the `dist/` directory itself only when it is empty; a
+# non-empty survivor (git-tracked entries) is tolerated. An absent `dist/` directory is a no-op,
+# making the stage idempotent for first runs. Complexity O(N) over the direct children of
+# `dist/`; side effects: deletes untracked entries under `dist/`.
+# @return Returns 0 after cleaning or when `dist/` is absent; non-zero when a removal fails.
+# @satisfies SRS-481, SRS-483, SRS-574
+remove_preexisting_dist_artifacts() {
+  [ -d "${BASE_DIR}/dist" ] || return 0
+  local entries
+  local entry
+  entries="$(find "${BASE_DIR}/dist" -mindepth 1 -maxdepth 1 -print)"
+  if [ -n "${entries}" ]; then
+    while IFS= read -r entry; do
+      remove_untracked_dist_entry "${entry}"
+    done <<< "${entries}"
+  fi
+  rmdir "${BASE_DIR}/dist" 2>/dev/null || true
+}
+
+##
+# @brief Remove one dist/ child unless it contains git-tracked files.
+# @details An absent target is a no-op. The target is classified through `git ls-files`: when
+# any tracked entry exists beneath it, the target is preserved and an English warning
+# identifying the repository-relative path is printed on stderr (SRS-483); otherwise the target
+# is deleted with `rm -rf`. Complexity O(T) over the tracked entries beneath the target; side
+# effects: deletes untracked filesystem entries.
+# @param[in] $1 Absolute path of the dist/ entry to classify.
+# @return Returns 0 after removal, preservation, or no-op; non-zero when a removal fails.
+# @satisfies SRS-481, SRS-483, SRS-574
+remove_untracked_dist_entry() {
+  local target="$1"
+  [ -e "${target}" ] || return 0
+  local relative_target="${target#"${BASE_DIR}/"}"
+  local tracked_files
+  tracked_files="$(git -C "${BASE_DIR}" ls-files -- "${relative_target}")"
+  if [ -n "${tracked_files}" ]; then
+    echo "WARNING: cleanup skipped for '${relative_target}' because it contains git-tracked files" >&2
+    return 0
+  fi
+  rm -rf -- "${target}"
+}
+
+##
+# @brief Stage `dist-verification`: prove that every pre-existing release artifact was removed.
+# @details Enumerates the direct children of `dist/` after the SRS-574 removal and classifies
+# each one through `git ls-files`: a tracked child is a legitimate release payload and passes,
+# while any non-git-tracked child proves that a pre-existing artifact survived. Every surviving
+# path is reported with an English diagnostic and the stage returns non-zero so `run_stage`
+# aborts the pipeline at `dist-verification` (SRS-575). An absent or empty `dist/` directory
+# passes because nothing can survive. Complexity O(N) over the direct children of `dist/`; side
+# effects: stderr diagnostics only.
+# @return Returns 0 when no non-git-tracked entry remains; non-zero when at least one remains.
+# @satisfies SRS-480, SRS-575
+verify_preexisting_dist_artifacts_removed() {
+  [ -d "${BASE_DIR}/dist" ] || return 0
+  local entries
+  local entry
+  local relative_entry
+  local tracked_files
+  local residual_count=0
+  entries="$(find "${BASE_DIR}/dist" -mindepth 1 -maxdepth 1 -print)"
+  if [ -z "${entries}" ]; then
+    return 0
+  fi
+  while IFS= read -r entry; do
+    relative_entry="${entry#"${BASE_DIR}/"}"
+    tracked_files="$(git -C "${BASE_DIR}" ls-files -- "${relative_entry}")"
+    if [ -z "${tracked_files}" ]; then
+      echo "ERROR: pre-existing release artifact '${relative_entry}' was not removed from dist/" >&2
+      residual_count=$((residual_count + 1))
+    fi
+  done <<< "${entries}"
+  if [ "${residual_count}" -ne 0 ]; then
+    return "${PRERELEASE_CHECK_ERROR_EXIT_CODE}"
+  fi
+}
+
+##
 # @brief Stage `build`: generate the release artifacts through scripts/build.sh and verify their presence.
 # @details Delegates artifact generation to `scripts/build.sh` (SRS-546..SRS-551,
 # SRS-566..SRS-570), which removes every non-git-tracked `dist/` entry, prunes the
@@ -314,6 +405,8 @@ cd "${BASE_DIR}"
 run_stage "environment" check_uv_available
 run_stage "worktree-cleanliness" check_worktree_clean
 run_stage "dependency-sync" sync_dependencies
+run_stage "dist-preparation" remove_preexisting_dist_artifacts
+run_stage "dist-verification" verify_preexisting_dist_artifacts_removed
 run_stage "build" build_distribution_artifacts
 run_stage "static-analysis" run_static_analysis
 run_stage "unit-tests" run_unit_tests

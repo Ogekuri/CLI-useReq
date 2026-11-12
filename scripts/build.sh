@@ -8,9 +8,10 @@
 # @details Executes the following ordered stages from the repository root resolved from
 # this script location (SRS-546):
 # 1. `environment`: verify the `uv` and `git` commands are executable (SRS-547, SRS-566).
-# 2. `dist-preparation`: remove from `dist/` every entry that is not git-tracked, covering
-#    every artifact version left by previous builds, remove the `dist/` directory when it
-#    becomes empty, and preserve every git-tracked file under `dist/` (SRS-548).
+# 2. `dist-preparation`: at bootstrap, before the compile stage, remove from `dist/` every
+#    entry that is not git-tracked, covering every artifact version left by previous builds,
+#    remove the `dist/` directory when it becomes empty, and preserve every git-tracked file
+#    under `dist/` (SRS-548, SRS-577).
 # 3. `intermediate-preparation`: remove the `build/` directory and every `src/*.egg-info`
 #    directory left by previous builds (SRS-567).
 # 4. `compile`: build the sdist and wheel into `dist/` through the canonical frozen-lock
@@ -33,7 +34,7 @@
 # @warning Requires `bash`, `git`, and the Astral `uv` tool; network access is required
 #          by the build isolation and dependency resolution steps.
 # @see scripts/pre-release-check.sh
-# @satisfies SRS-546, SRS-547, SRS-548, SRS-549, SRS-550, SRS-551, SRS-566, SRS-567, SRS-568, SRS-569, SRS-570
+# @satisfies SRS-546, SRS-547, SRS-548, SRS-549, SRS-550, SRS-551, SRS-566, SRS-567, SRS-568, SRS-569, SRS-570, SRS-577
 ##
 
 set -euo pipefail
@@ -175,18 +176,18 @@ remove_untracked_target() {
 }
 
 ##
-# @brief Stage `dist-preparation`: remove every non-git-tracked entry from dist/.
-# @details Enumerates the direct children of `dist/` into a variable through command
-# substitution so a failing `find` terminates the stage under `set -e` instead of being
-# silently discarded by a process substitution. Every entry is delegated to
-# `remove_untracked_target`, so all previously built artifact versions are deleted while
-# git-tracked content is preserved with a warning (SRS-548, SRS-568). After the loop,
-# `rmdir` removes the `dist/` directory itself only when it is empty; a non-empty
+# @brief Stage `dist-preparation`: remove every non-git-tracked entry from dist/ as bootstrap.
+# @details Executes at bootstrap, before the compile stage, enumerates the direct children of
+# `dist/` into a variable through command substitution so a failing `find` terminates the stage
+# under `set -e` instead of being silently discarded by a process substitution. Every entry is
+# delegated to `remove_untracked_target`, so all previously built artifact versions are deleted
+# while git-tracked content is preserved with a warning (SRS-548, SRS-568, SRS-577). After the
+# loop, `rmdir` removes the `dist/` directory itself only when it is empty; a non-empty
 # survivor (git-tracked entries) is tolerated. An absent `dist/` directory is a no-op,
 # making the stage idempotent for first builds. Complexity O(N) over the direct children
 # of `dist/`; side effects: deletes untracked entries under `dist/`.
 # @return Returns 0 after cleaning or when `dist/` is absent; non-zero when a removal fails.
-# @satisfies SRS-548, SRS-568
+# @satisfies SRS-548, SRS-568, SRS-577
 clean_dist_artifacts() {
   [ -d "${BASE_DIR}/dist" ] || return 0
   local entries

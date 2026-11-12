@@ -279,6 +279,7 @@ No explicit performance optimizations identified.
 - **SRS-568**: MUST implement the following behavior: `scripts/build.sh` MUST skip every removal target containing git-tracked files, MUST NOT delete git-tracked content, and MUST print an English warning identifying each skipped target.
 - **SRS-569**: MUST implement the following behavior: `scripts/build.sh` MUST remove the `build/` directory and every `src/*.egg-info` directory after the build, leaving only git-tracked files and the built artifacts in `dist/`.
 - **SRS-570**: MUST implement the following behavior: `scripts/build.sh` MUST print a summary listing every removed and every skipped cleanup path.
+- **SRS-577**: MUST implement the following behavior: `scripts/build.sh` MUST execute the SRS-548 `dist/` removal at its bootstrap before the SRS-549 compile stage.
 - **SRS-552**: MUST implement the following behavior: The `.gitignore` file MUST preserve the inverse exclusion strategy of default exclusions followed by `!` re-inclusion rules.
 - **SRS-553**: MUST implement the following behavior: The `.gitignore` file MUST NOT ignore the `dist/` directory or any entry beneath it, and MUST re-include `dist/` and `dist/**/*` in the `Include specific files and directories` section.
 - **SRS-554**: MUST implement the following behavior: Every file under `dist/`, git-tracked or newly generated, MUST remain versionable and MUST NOT be excluded by the `.gitignore` rules.
@@ -329,6 +330,8 @@ No explicit performance optimizations identified.
 - **SRS-483**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST skip removing any cleanup target containing git-tracked files, including each git-tracked entry under `dist/`, and MUST print an English warning identifying it.
 - **SRS-484**: MUST implement the following behavior: After termination, `scripts/pre-release-check.sh` MUST leave the repository directory containing only git-tracked files and the uv-managed `.venv` environment.
 - **SRS-556**: MUST implement the following behavior: On every termination path, `scripts/pre-release-check.sh` MUST remove from `dist/` only entries that are not git-tracked.
+- **SRS-574**: MUST implement the following behavior: Before the build stage, `scripts/pre-release-check.sh` MUST remove from `dist/` every non-git-tracked entry, remove an emptied `dist/` directory, and preserve every git-tracked file under `dist/`.
+- **SRS-575**: MUST implement the following behavior: After the SRS-574 removal, `scripts/pre-release-check.sh` MUST verify that `dist/` holds no non-git-tracked entry and MUST exit with a non-zero code when any remains.
 
 ## 4. Test Requirements
 
@@ -372,6 +375,7 @@ No explicit performance optimizations identified.
 - **SRS-557**: MUST include unit tests in `tests/test_dependency_manifests.py` verifying the SRS-552, SRS-553, SRS-554, and SRS-555 `.gitignore` rules for `dist/`.
 - **SRS-558**: MUST include unit tests in `tests/test_pre_release_check.py` verifying the SRS-556 preservation of git-tracked `dist/` entries during cleanup.
 - **SRS-565**: MUST include unit tests in `tests/test_build_script.py` verifying SRS-548 dist/ cleanup, SRS-566 git availability, SRS-567 and SRS-569 intermediate removal, SRS-568 git-tracked preservation warnings, and SRS-570 summary and exit-code semantics.
+- **SRS-576**: MUST include unit tests in `tests/test_pre_release_check.py` verifying the SRS-574 pre-build `dist/` removal and the SRS-575 failure when a non-git-tracked entry survives removal.
 - **SRS-573**: MUST include unit tests in `tests/test_release_workflow.py` verifying SRS-572 optional pre-built `dist/` consumption and absence of build, dependency-sync, test, and pre-release verification stages.
 
 ## 5. Static Code Analysis Requirements
