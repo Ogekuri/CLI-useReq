@@ -1,7 +1,8 @@
 """@brief Tests for GitHub release workflow trigger, gating, and PyPI publication configuration.
 @details Validates the release-pypi.yml workflow: manual dispatch and tag-push triggers,
-uv-based build step, master-independent build/release execution (SRS-432), artifact
-hand-off, master-only OIDC trusted publishing to PyPI (SRS-433, SRS-434), Node24-or-later
+pre-built `dist/` artifact consumption without any build stage, master-independent
+attestation and release execution (SRS-432), pre-built artifact presence verification
+(SRS-571), master-only OIDC trusted publishing to PyPI (SRS-433, SRS-434), Node24-or-later
 runtime execution of every JavaScript action (SRS-455, SRS-456, SRS-457), and absence of
 transitional Node20 opt-out overrides (SRS-458).
 @satisfies SRS-268
@@ -15,6 +16,9 @@ transitional Node20 opt-out overrides (SRS-458).
 @satisfies SRS-457
 @satisfies SRS-458
 @satisfies SRS-459
+@satisfies SRS-571
+@satisfies SRS-572
+@satisfies SRS-573
 """
 
 from __future__ import annotations
@@ -48,10 +52,6 @@ def _load_workflow() -> dict:
 # `pypa/gh-action-pypi-publish`) do not execute on a Node runtime and are excluded.
 NODE24_MINIMUM_ACTION_MAJORS: dict[str, int] = {
     "actions/checkout": 5,
-    "actions/setup-python": 6,
-    "astral-sh/setup-uv": 7,
-    "actions/upload-artifact": 6,
-    "actions/download-artifact": 7,
     "actions/attest-build-provenance": 3,
     "softprops/action-gh-release": 3,
     "mikepenz/release-changelog-builder-action": 6,
@@ -125,41 +125,76 @@ class TestReleaseWorkflowTriggers(unittest.TestCase):
             "Release workflow must retain tag push trigger",
         )
 
-    def test_release_workflow_build_step_installs_build_module(self) -> None:
-        """@brief Release workflow build step must include build module in uv execution.
+    def test_release_workflow_verifies_pre_built_distributions(self) -> None:
+        """@brief Release job must verify the tagged commit contains pre-built distributions.
+        @details The verification step must count `.tar.gz` and `.whl` files in `dist/`
+        and fail when either family is absent (SRS-571).
         @return {None} No return value.
+        @satisfies SRS-571
+        """
+
+        workflow = _load_workflow()
+        verify_step = next(
+            step
+            for step in workflow["jobs"]["release"]["steps"]
+            if step.get("name") == "Verify pre-built distributions"
+        )
+        run_body = verify_step["run"]
+        self.assertIn("dist", run_body)
+        self.assertIn("*.tar.gz", run_body)
+        self.assertIn("*.whl", run_body)
+        self.assertIn("exit 1", run_body)
+
+    def test_release_workflow_never_builds_or_pre_checks(self) -> None:
+        """@brief Workflow must source artifacts from dist/ without any build stage.
+        @details No build command, build script, pre-release verification script, build
+        toolchain setup, or artifact upload/download step may appear (SRS-572).
+        @return {None} No return value.
+        @satisfies SRS-572
+        @satisfies SRS-573
         """
 
         content = WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn(
-            "uv run --frozen --with build python -m build",
-            content,
-            "Release workflow build step must ensure `build` module availability",
+        forbidden_fragments = (
+            "python -m build",
+            "uv run",
+            "scripts/build.sh",
+            "scripts/pre-release-check.sh",
+            "astral-sh/setup-uv",
+            "actions/setup-python",
+            "actions/upload-artifact",
+            "actions/download-artifact",
         )
+        for fragment in forbidden_fragments:
+            self.assertNotIn(
+                fragment,
+                content,
+                f"Release workflow must not contain '{fragment}' (SRS-572)",
+            )
 
 
 class TestReleaseWorkflowBranchGating(unittest.TestCase):
-    """SRS-432/SRS-434: build/release independence and master-only publication."""
+    """SRS-432/SRS-434: release independence and master-only publication."""
 
-    def test_build_release_job_runs_independently_of_master_reachability(self) -> None:
-        """@brief build-release must not gate on the is_master output.
-        @details Develop-only tags must still produce build, attestation, and GitHub
-        Release steps (SRS-432).
+    def test_release_job_runs_independently_of_master_reachability(self) -> None:
+        """@brief release must not gate on the is_master output.
+        @details Develop-only tags must still produce attestation and GitHub Release
+        steps from the pre-built dist/ artifacts (SRS-432).
         @return {None} No return value.
         @satisfies SRS-432
         """
 
         workflow = _load_workflow()
-        build_release = workflow["jobs"]["build-release"]
+        release_job = workflow["jobs"]["release"]
         self.assertNotIn(
             "if",
-            build_release,
-            "build-release job must execute for master and develop tags",
+            release_job,
+            "release job must execute for master and develop tags",
         )
-        build_steps = {step.get("name", "") for step in build_release["steps"]}
-        self.assertIn("Build distributions", build_steps)
-        self.assertIn("Attest build provenance", build_steps)
-        self.assertIn("Create GitHub Release and upload assets", build_steps)
+        release_steps = {step.get("name", "") for step in release_job["steps"]}
+        self.assertIn("Verify pre-built distributions", release_steps)
+        self.assertIn("Attest build provenance", release_steps)
+        self.assertIn("Create GitHub Release and upload assets", release_steps)
 
     def test_check_branch_job_reports_is_master_output(self) -> None:
         """@brief check-branch must publish the is_master output for downstream gating.
@@ -190,28 +225,32 @@ class TestReleaseWorkflowBranchGating(unittest.TestCase):
             "publish-pypi job must be gated on master reachability",
         )
         self.assertIn("check-branch", publish_job["needs"])
-        self.assertIn("build-release", publish_job["needs"])
+        self.assertIn("release", publish_job["needs"])
 
-    def test_build_release_uploads_dist_artifact_for_publish_job(self) -> None:
-        """@brief build-release must upload dist artifacts consumed by publish-pypi.
+    def test_publish_job_checks_out_tagged_dist_for_publication(self) -> None:
+        """@brief publish-pypi must publish the dist/ files of the tagged commit.
+        @details No artifact upload/download hand-off may exist; the publish job checks
+        out the tagged commit and passes its `dist/` directory to the PyPI action
+        (SRS-433, SRS-572).
         @return {None} No return value.
+        @satisfies SRS-433
+        @satisfies SRS-572
         """
 
         workflow = _load_workflow()
-        upload_step = next(
+        publish_steps = workflow["jobs"]["publish-pypi"]["steps"]
+        checkout_step = next(
             step
-            for step in workflow["jobs"]["build-release"]["steps"]
-            if step.get("uses", "").startswith("actions/upload-artifact@")
+            for step in publish_steps
+            if step.get("uses", "").startswith("actions/checkout@")
         )
-        self.assertEqual(upload_step["with"]["name"], "dist")
-        self.assertEqual(upload_step["with"]["path"], "dist/*")
-        download_step = next(
+        self.assertEqual(checkout_step["uses"], "actions/checkout@v5")
+        publish_step = next(
             step
-            for step in workflow["jobs"]["publish-pypi"]["steps"]
-            if step.get("uses", "").startswith("actions/download-artifact@")
+            for step in publish_steps
+            if step.get("uses") == "pypa/gh-action-pypi-publish@release/v1"
         )
-        self.assertEqual(download_step["with"]["name"], "dist")
-        self.assertEqual(download_step["with"]["path"], "dist/")
+        self.assertEqual(publish_step["with"]["packages-dir"], "dist")
 
 
 class TestReleaseWorkflowPyPITrustedPublishing(unittest.TestCase):

@@ -35,8 +35,8 @@ jobs:
             echo "is_master=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # 2. Build the package and create the GitHub Release (master and develop tags)
-  build-release:
+  # 2. Attest and publish the pre-built distributions of the tagged commit (master and develop tags)
+  release:
     needs: check-branch
     runs-on: ubuntu-latest
 
@@ -46,28 +46,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v6 # node24
-        with:
-          python-version: "3.11"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7 # node24
-
-      - name: Build distributions
-        run: uv run --frozen --with build python -m build
+      - name: Verify pre-built distributions
+        run: |
+          sdist_count=$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)
+          wheel_count=$(find dist -maxdepth 1 -name '*.whl' | wc -l)
+          if [ "${sdist_count}" -lt 1 ] || [ "${wheel_count}" -lt 1 ]; then
+            echo "ERROR: pre-built distributions missing in dist/ (expected at least one .tar.gz and one .whl)" >&2
+            exit 1
+          fi
+          echo "Found ${sdist_count} sdist and ${wheel_count} wheel pre-built artifacts in dist/."
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v3 # node24 composite runtime
         with:
           subject-path: dist/*
-
-      - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v6 # node24
-        with:
-          name: dist
-          path: dist/*
-          if-no-files-found: error
 
       - name: Build Changelog
         id: build_changelog
@@ -131,9 +123,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # 3. Publish the built distributions to PyPI via OIDC trusted publishing (master tags only)
+  # 3. Publish the pre-built distributions to PyPI via OIDC trusted publishing (master tags only)
   publish-pypi:
-    needs: [check-branch, build-release]
+    needs: [check-branch, release]
     # Publish to PyPI only when the tagged commit is reachable from origin/master;
     # develop-only tags create the GitHub Release without publishing to PyPI.
     if: needs.check-branch.outputs.is_master == 'true'
@@ -142,13 +134,11 @@ jobs:
       id-token: write # OIDC trusted publishing for PyPI project cli-usereq
 
     steps:
-      - name: Download distribution artifacts
-        uses: actions/download-artifact@v7 # node24
-        with:
-          name: dist
-          path: dist/
+      - name: Checkout tagged commit
+        uses: actions/checkout@v5 # node24
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          packages-dir: dist
           print-hash: true
