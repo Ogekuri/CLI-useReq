@@ -533,6 +533,24 @@ class TestOnlineUpdateCheck(unittest.TestCase):
             now_timestamp + cli.RELEASE_CHECK_RATE_LIMIT_IDLE_DELAY_SECONDS,
         )
 
+    def test_upgrade_command_requests_latest_pypi_version(self) -> None:
+        """Default --upgrade must request the latest PyPI version (SRS-343).
+
+        UUT: run_upgrade. Level 1: depends only on mocked subprocess.run.
+        `uv tool install <pkg>` keeps the already-installed version when the tool
+        environment exists, so the command must carry --upgrade to upgrade the tool.
+        """
+        # Arrange
+        result_mock = MagicMock(returncode=0)
+
+        # Act
+        with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
+            cli.run_upgrade()
+
+        # Assert
+        command = run_mock.call_args.args[0]
+        self.assertIn("--upgrade", command)
+
     def test_upgrade_command_installs_from_pypi_by_default(self) -> None:
         """Default upgrade command must run the standard install without forcing (SRS-343)."""
         result_mock = MagicMock(returncode=0)
@@ -546,6 +564,7 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 "tool",
                 "install",
                 cli.TOOL_PROGRAM_NAME,
+                "--upgrade",
             ],
             check=False,
         )

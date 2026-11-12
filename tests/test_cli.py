@@ -1649,7 +1649,7 @@ class TestUpgradeUninstall(unittest.TestCase):
         command = mock_run.call_args[0][0]
         self.assertEqual(
             command,
-            ["uv", "tool", "install", "cli-usereq"],
+            ["uv", "tool", "install", "cli-usereq", "--upgrade"],
         )
 
     def test_upgrade_with_github_on_linux_executes_uv_install_from_git(self) -> None:

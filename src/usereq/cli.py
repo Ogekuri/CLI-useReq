@@ -987,12 +987,16 @@ def run_upgrade(use_github: bool = False, force: bool = False) -> None:
         the package and fully reinstalls it (`--upgrade --force`, SRS-508, SRS-509, SRS-510).
     @details Builds the standard `uv tool install cli-usereq` command against the PyPI index
     by default (SRS-343); without `force` no forcing option is passed so the standard
-    install/update process runs unchanged. When `force` is True the command becomes
-    `uv tool install cli-usereq --force --reinstall --refresh` (SRS-509). When `use_github`
-    is True, resolves the latest GitHub release tag through `_resolve_github_upgrade_tag()`
-    (SRS-451) and appends `--from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>`
-    regardless of the branch holding that tag (SRS-440, SRS-452, SRS-510). Executes the
-    command only on Linux; on non-Linux platforms prints the manual command and skips uv
+    install/update process runs unchanged, and `--upgrade` is appended so uv resolves and
+    installs the latest PyPI version instead of reusing the already-installed tool version.
+    When `force` is True the command becomes the forced reinstallation form
+    `uv tool install cli-usereq --force --reinstall --refresh` (SRS-509).
+    When `use_github` is True, resolves the latest GitHub release tag through
+    `_resolve_github_upgrade_tag()` (SRS-451) and appends
+    `--from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` regardless of the branch
+    holding that tag (SRS-440, SRS-452, SRS-510); the git source spec re-resolves the
+    requested tag on every invocation, so no additional upgrade option is needed. Executes
+    the command only on Linux; on non-Linux platforms prints the manual command and skips uv
     execution.
     @throws {ReqError} When the SRS-451 GitHub tag resolution fails (exit code 1, SRS-453) or
     when the uv process fails.
@@ -1012,6 +1016,8 @@ def run_upgrade(use_github: bool = False, force: bool = False) -> None:
     ]
     if force:
         command += ["--force", "--reinstall", "--refresh"]
+    elif not use_github:
+        command += ["--upgrade"]
     if use_github:
         resolved_tag = _resolve_github_upgrade_tag()
         command += ["--from", f"{GITHUB_UPGRADE_SOURCE}@{resolved_tag}"]
