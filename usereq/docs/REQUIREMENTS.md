@@ -2,7 +2,7 @@
 title: "useReq Requirements"
 description: "Software Requirements Specification"
 date: "2026-11-12"
-version: 1.25
+version: 1.26
 author: "Ogekuri"
 scope:
   paths:
@@ -270,15 +270,18 @@ No explicit performance optimizations identified.
 ### 3.5.2 Release Build Script and Repository Ignore Policy
 - **SRS-546**: MUST implement the following behavior: `scripts/build.sh` MUST resolve the repository root from its own filesystem location and MUST execute every build stage from that root independently of the caller working directory.
 - **SRS-547**: MUST implement the following behavior: `scripts/build.sh` MUST verify that the `uv` command is executable and MUST print an English error and exit with code 1 when it is absent.
-- **SRS-548**: MUST implement the following behavior: `scripts/build.sh` MUST remove from `dist/` every non-git-tracked entry, covering every previously built version, MUST remove an emptied `dist/` directory, and MUST preserve every git-tracked file under `dist/`.
+- **SRS-548**: MUST implement the following behavior: `scripts/build.sh` MUST remove from `dist/` every non-git-tracked entry and every git-tracked release artifact whose embedded version differs from the project version, and MUST remove an emptied `dist/` directory.
 - **SRS-549**: MUST implement the following behavior: `scripts/build.sh` MUST build the sdist and wheel into `dist/` via `uv run --project <root> --frozen --with build python -m build --outdir <root>/dist` and MUST exit with a non-zero code when the build fails.
 - **SRS-550**: MUST implement the following behavior: `scripts/build.sh` MUST verify after the build that `dist/` contains at least one `.tar.gz` and one `.whl` file and MUST exit with a non-zero code otherwise.
 - **SRS-551**: MUST implement the following behavior: `scripts/build.sh` MUST print a summary listing every artifact in `dist/` and MUST exit with code 0 only when every stage succeeds.
 - **SRS-566**: MUST implement the following behavior: `scripts/build.sh` MUST verify that the `git` command is executable and MUST print an English error and exit with code 1 when it is absent.
 - **SRS-567**: MUST implement the following behavior: `scripts/build.sh` MUST remove the `build/` directory and every `src/*.egg-info` directory before the compile stage.
-- **SRS-568**: MUST implement the following behavior: `scripts/build.sh` MUST skip every removal target containing git-tracked files, MUST NOT delete git-tracked content, and MUST print an English warning identifying each skipped target.
+- **SRS-568**: MUST implement the following behavior: `scripts/build.sh` MUST preserve every removal target containing git-tracked files except old-version `dist/` artifacts, and MUST print an English warning identifying each preserved target.
 - **SRS-569**: MUST implement the following behavior: `scripts/build.sh` MUST remove the `build/` directory and every `src/*.egg-info` directory after the build, leaving only git-tracked files and the built artifacts in `dist/`.
 - **SRS-570**: MUST implement the following behavior: `scripts/build.sh` MUST print a summary listing every removed and every skipped cleanup path.
+- **SRS-578**: MUST implement the following behavior: `scripts/build.sh` MUST resolve the project name and the project version from the `name` and `version` fields of the `[project]` section of the repository `pyproject.toml`.
+- **SRS-579**: MUST execute the SRS-548 `dist/` removal before the SRS-549 compile stage.
+- **SRS-580**: MUST implement the following behavior: When `pyproject.toml` declares no project name or version, `scripts/build.sh` MUST skip only the git-tracked old-version `dist/` removal and MUST continue the build.
 - **SRS-552**: MUST implement the following behavior: The `.gitignore` file MUST preserve the inverse exclusion strategy of default exclusions followed by `!` re-inclusion rules.
 - **SRS-553**: MUST implement the following behavior: The `.gitignore` file MUST NOT ignore the `dist/` directory or any entry beneath it, and MUST re-include `dist/` and `dist/**/*` in the `Include specific files and directories` section.
 - **SRS-554**: MUST implement the following behavior: Every file under `dist/`, git-tracked or newly generated, MUST remain versionable and MUST NOT be excluded by the `.gitignore` rules.

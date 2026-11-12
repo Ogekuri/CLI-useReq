@@ -8,9 +8,11 @@
 # @details Executes the following ordered stages from the repository root resolved from
 # this script location (SRS-546):
 # 1. `environment`: verify the `uv` and `git` commands are executable (SRS-547, SRS-566).
-# 2. `dist-preparation`: remove from `dist/` every entry that is not git-tracked, covering
-#    every artifact version left by previous builds, remove the `dist/` directory when it
-#    becomes empty, and preserve every git-tracked file under `dist/` (SRS-548).
+# 2. `dist-preparation`: before the compile stage, remove from `dist/` every entry that is not
+#    git-tracked plus every git-tracked release artifact whose embedded version differs from
+#    the project name/version declared in `pyproject.toml`, covering every previously built
+#    version, and remove the `dist/` directory when it becomes empty (SRS-548, SRS-578,
+#    SRS-579).
 # 3. `intermediate-preparation`: remove the `build/` directory and every `src/*.egg-info`
 #    directory left by previous builds (SRS-567).
 # 4. `compile`: build the sdist and wheel into `dist/` through the canonical frozen-lock
@@ -23,8 +25,10 @@
 #    and one `.whl` wheel (SRS-550).
 # 7. `summary`: print every artifact currently stored in `dist/` plus every removed and
 #    every skipped cleanup path (SRS-551, SRS-570).
-# Every removal target containing git-tracked files is preserved and reported with an
-# English warning identifying the skipped path (SRS-568). Every stage runs unconditionally
+# Every remaining removal target containing git-tracked files is preserved and reported with
+# an English warning identifying the skipped path (SRS-568). A repository `pyproject.toml`
+# without a project name or version skips only the git-tracked old-version removal and never
+# aborts the build (SRS-580). Every stage runs unconditionally
 # under `set -e`, so the first failing command aborts the script; the EXIT trap then prints
 # `Release build failed at stage <stage>.` and exits with code 1. Exit code 0 is returned
 # only when every stage succeeds (SRS-551).
@@ -33,7 +37,7 @@
 # @warning Requires `bash`, `git`, and the Astral `uv` tool; network access is required
 #          by the build isolation and dependency resolution steps.
 # @see scripts/pre-release-check.sh
-# @satisfies SRS-546, SRS-547, SRS-548, SRS-549, SRS-550, SRS-551, SRS-566, SRS-567, SRS-568, SRS-569, SRS-570
+# @satisfies SRS-546, SRS-547, SRS-548, SRS-549, SRS-550, SRS-551, SRS-566, SRS-567, SRS-568, SRS-569, SRS-570, SRS-578, SRS-579, SRS-580
 ##
 
 set -euo pipefail
@@ -148,6 +152,104 @@ check_git_available() {
 }
 
 ##
+# @brief Read one field of the `[project]` section of the repository `pyproject.toml`.
+# @details Parses the file with `awk`, tracks the current INI-style section header, and prints
+# the value of the first `key = "value"` assignment found inside the `[project]` section only.
+# An absent file, an absent section, and an absent key all yield empty output instead of an
+# error, so callers apply the SRS-580 fallback without branching on failure modes. Complexity
+# O(F) over the file lines; side effects: none (read-only).
+# @param[in] $1 Field name declared inside the `[project]` section, typically `name` or `version`.
+# @return Prints the raw field value; prints nothing when it cannot be resolved.
+# @satisfies SRS-578
+read_project_field() {
+  local field="$1"
+  local pyproject="${BASE_DIR}/pyproject.toml"
+  [ -f "${pyproject}" ] || return 0
+  awk -v field="${field}" '
+    /^[[:space:]]*\[/ { section = $0 }
+    section == "[project]" {
+      pattern = "^[[:space:]]*" field "[[:space:]]*="
+      if ($0 ~ pattern) {
+        value = $0
+        sub(/^[^=]*=[[:space:]]*"/, "", value)
+        sub(/".*$/, "", value)
+        print value
+        exit
+      }
+    }
+  ' "${pyproject}"
+}
+
+##
+# @brief Decide whether one `dist/` entry is a release artifact of a non-current version.
+# @details Normalizes the project name to its wheel form (`-` replaced by `_`), strips the
+# `<normalized_name>-` prefix from the entry file name, reduces the remainder to its embedded
+# version token by cutting at the first `-` and dropping `.tar.gz`, `.whl`, and `.zip` archive
+# suffixes, and compares that token with the current project version. Entries that do not
+# embed the project name, and entries carrying the current version, are not old-version
+# artifacts. Complexity O(1); side effects: none (pure classification).
+# @param[in] $1 Bare entry file name stored directly under `dist/`.
+# @param[in] $2 Project name read from `pyproject.toml`; empty disables classification.
+# @param[in] $3 Project version read from `pyproject.toml`; empty disables classification.
+# @return Returns 0 when the entry embeds a different version; returns 1 otherwise.
+# @satisfies SRS-548, SRS-578, SRS-580
+is_old_version_dist_artifact() {
+  local entry_name="$1"
+  local project_name="$2"
+  local project_version="$3"
+  if [ -z "${project_name}" ] || [ -z "${project_version}" ]; then
+    return 1
+  fi
+  local normalized_name="${project_name//-/_}"
+  local remainder="${entry_name#"${normalized_name}"-}"
+  if [ "${remainder}" = "${entry_name}" ]; then
+    return 1
+  fi
+  local embedded_version="${remainder%%-*}"
+  embedded_version="${embedded_version%.tar.gz}"
+  embedded_version="${embedded_version%.whl}"
+  embedded_version="${embedded_version%.zip}"
+  if [ "${embedded_version}" = "${project_version}" ]; then
+    return 1
+  fi
+  return 0
+}
+
+##
+# @brief Remove one `dist/` entry unless it is git-tracked and not an old-version artifact.
+# @details An absent target is a no-op, keeping the stage idempotent. The target is classified
+# through `git ls-files`: an untracked target is deleted and recorded in `REMOVED_TARGETS`
+# (SRS-570); a git-tracked target whose embedded version differs from the project version is a
+# stale release artifact of a previous version and is also deleted (SRS-548); every other
+# git-tracked target is preserved with an English warning identifying the repository-relative
+# path and recorded in `SKIPPED_TARGETS` (SRS-568). An unresolvable project name or version
+# disables only the old-version branch, so git-tracked content stays preserved (SRS-580).
+# Complexity O(T) over the tracked entries beneath the target; side effects: deletes
+# filesystem entries, mutates the summary arrays.
+# @param[in] $1 Absolute path of the `dist/` entry to classify.
+# @param[in] $2 Project name read from `pyproject.toml`; empty disables old-version removal.
+# @param[in] $3 Project version read from `pyproject.toml`; empty disables old-version removal.
+# @return Returns 0 after removal, preservation, or no-op; non-zero when a removal fails.
+# @satisfies SRS-548, SRS-568, SRS-570, SRS-580
+remove_dist_target() {
+  local target="$1"
+  local project_name="$2"
+  local project_version="$3"
+  [ -e "${target}" ] || return 0
+  local relative_target="${target#"${BASE_DIR}/"}"
+  local entry_name="${target##*/}"
+  local tracked_files
+  tracked_files="$(git -C "${BASE_DIR}" ls-files -- "${relative_target}")"
+  if [ -n "${tracked_files}" ] && ! is_old_version_dist_artifact "${entry_name}" "${project_name}" "${project_version}"; then
+    echo "WARNING: cleanup skipped for '${relative_target}' because it contains git-tracked files" >&2
+    SKIPPED_TARGETS+=("${relative_target}")
+    return 0
+  fi
+  rm -rf -- "${target}"
+  REMOVED_TARGETS+=("${relative_target}")
+}
+
+##
 # @brief Remove one cleanup target unless it contains git-tracked files.
 # @details An absent target is a no-op, keeping every stage idempotent. The target is
 # classified through `git ls-files`: when any tracked entry exists beneath it, the target
@@ -175,26 +277,31 @@ remove_untracked_target() {
 }
 
 ##
-# @brief Stage `dist-preparation`: remove every non-git-tracked entry from dist/.
-# @details Enumerates the direct children of `dist/` into a variable through command
-# substitution so a failing `find` terminates the stage under `set -e` instead of being
-# silently discarded by a process substitution. Every entry is delegated to
-# `remove_untracked_target`, so all previously built artifact versions are deleted while
-# git-tracked content is preserved with a warning (SRS-548, SRS-568). After the loop,
-# `rmdir` removes the `dist/` directory itself only when it is empty; a non-empty
-# survivor (git-tracked entries) is tolerated. An absent `dist/` directory is a no-op,
-# making the stage idempotent for first builds. Complexity O(N) over the direct children
-# of `dist/`; side effects: deletes untracked entries under `dist/`.
+# @brief Stage `dist-preparation`: remove stale `dist/` entries before the compile stage.
+# @details Runs before the compile stage (SRS-579), resolves the project name and version from
+# `pyproject.toml` (SRS-578), and enumerates the direct children of `dist/` into a variable
+# through command substitution so a failing `find` terminates the stage under `set -e`
+# instead of being silently discarded by a process substitution. Every entry is delegated to
+# `remove_dist_target`, so untracked entries and git-tracked artifacts of every previously
+# built version are deleted while git-tracked content of the current version is preserved with
+# a warning (SRS-548, SRS-568). After the loop, `rmdir` removes the `dist/` directory itself
+# only when it is empty; a non-empty survivor (git-tracked entries) is tolerated. An absent
+# `dist/` directory is a no-op, making the stage idempotent for first builds. Complexity O(N)
+# over the direct children of `dist/`; side effects: deletes stale entries under `dist/`.
 # @return Returns 0 after cleaning or when `dist/` is absent; non-zero when a removal fails.
-# @satisfies SRS-548, SRS-568
+# @satisfies SRS-548, SRS-568, SRS-578, SRS-579, SRS-580
 clean_dist_artifacts() {
   [ -d "${BASE_DIR}/dist" ] || return 0
+  local project_name
+  local project_version
+  project_name="$(read_project_field "name")"
+  project_version="$(read_project_field "version")"
   local entries
   local entry
   entries="$(find "${BASE_DIR}/dist" -mindepth 1 -maxdepth 1 -print)"
   if [ -n "${entries}" ]; then
     while IFS= read -r entry; do
-      remove_untracked_target "${entry}"
+      remove_dist_target "${entry}" "${project_name}" "${project_version}"
     done <<< "${entries}"
   fi
   rmdir "${BASE_DIR}/dist" 2>/dev/null || true
