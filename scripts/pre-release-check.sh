@@ -13,31 +13,33 @@
 # 3. `dependency-sync`: run `uv sync --frozen` against the canonical SRS-055 lockfile and
 #    repair stale `.venv/bin/pytest` entry points that target foreign interpreters left
 #    behind by a copied or relocated virtual environment (SRS-475, SRS-479).
-# 4. `build`: generate the sdist and wheel by executing `scripts/build.sh`, which removes
-#    every non-git-tracked `dist/` entry, prunes the `build/` and `src/*.egg-info`
-#    intermediates before and after the build, and runs the canonical frozen-lock
-#    `uv run --frozen --with build python -m build` command mirroring
-#    `.github/workflows/release-pypi.yml` (SRS-476, SRS-546..SRS-551, SRS-566..SRS-570), then
-#    verify that at least one `.tar.gz` and one `.whl` artifact exist (SRS-477).
+# 4. `build`: create a script-owned temporary directory outside the repository `dist/`
+#    directory, generate the sdist and wheel into it through the canonical frozen-lock
+#    `uv run --frozen --with build python -m build --outdir <tmpdir>` command mirroring
+#    `.github/workflows/release-pypi.yml` (SRS-476, SRS-574), then verify that at least one
+#    `.tar.gz` and one `.whl` artifact exist inside that temporary directory (SRS-477).
 # 5. `static-analysis`: run the project `static-check` command with `--prj-base` on the
 #    repository root (SRS-478).
 # 6. `unit-tests`: run the full unit-test suite through `uv run pytest` (SRS-479).
-# 7. `cleanup` (EXIT trap): on every termination path remove untracked `dist/` entries, `build/`,
-#    `.pytest_cache/`, `.ruff_cache/`, `src/*.egg-info`, and `src/`- or `tests/`-scoped `__pycache__`
-#    directories so the repository is left with only git-tracked files and the uv-managed
-#    `.venv` environment (SRS-482, SRS-484); cleanup targets containing git-tracked files
-#    are skipped with an English warning (SRS-483).
+# 7. `cleanup` (EXIT trap): on every termination path remove the temporary build directory,
+#    `build/`, `.pytest_cache/`, `.ruff_cache/`, `src/*.egg-info`, and `src/`- or
+#    `tests/`-scoped `__pycache__` directories so the repository is left with only git-tracked
+#    files, the uv-managed `.venv` environment, and the pre-existing `dist/` directory content
+#    (SRS-482, SRS-484); cleanup targets containing git-tracked files are skipped with an
+#    English warning (SRS-483).
 # Execution stops at the first failing stage with the diagnostic
 # `Pre-release check failed at stage <stage>.` and exit code 1; `Pre-release check passed.`
 # is printed only when every stage succeeds (SRS-480). The script never modifies or deletes
-# git-tracked repository files (SRS-481).
+# git-tracked repository files (SRS-481) and never creates, reads, deletes, modifies, or
+# verifies any entry under the repository `dist/` directory, so its behavior is fully
+# independent of the `dist/` content (SRS-556).
 # @param[in] $1 Optional literal `--allow-dirty` flag skipping the `worktree-cleanliness` gate (SRS-472).
 # @retval 0 Every stage succeeded and `Pre-release check passed.` was printed.
 # @retval 1 A stage failed, `uv` is unavailable, or an unknown argument was supplied.
 # @warning Requires `bash`, `git`, and the Astral `uv` tool; network access is required by the
 #          build isolation and dependency resolution steps.
 # @see scripts/req.sh
-# @satisfies SRS-471, SRS-472, SRS-473, SRS-474, SRS-475, SRS-476, SRS-477, SRS-478, SRS-479, SRS-480, SRS-481, SRS-482, SRS-483, SRS-484
+# @satisfies SRS-471, SRS-472, SRS-473, SRS-474, SRS-475, SRS-476, SRS-477, SRS-478, SRS-479, SRS-480, SRS-481, SRS-482, SRS-483, SRS-484, SRS-556, SRS-574
 ##
 
 set -euo pipefail
@@ -66,6 +68,16 @@ PRERELEASE_CHECK_ERROR_EXIT_CODE=1
 # branch to print the canonical `Pre-release check failed at stage <stage>.` message (SRS-480).
 # @satisfies SRS-480
 CURRENT_STAGE=""
+
+##
+# @brief Absolute path of the script-owned temporary build directory, or empty when unset.
+# @details Initially empty so `set -u` never observes an unset global, assigned by
+# `build_distribution_artifacts` through `mktemp -d`, and consumed by
+# `cleanup_repository_artifacts` to remove the temporary artifacts on every termination path
+# (SRS-476, SRS-482). The directory is always created outside the repository and therefore
+# never resolves to `dist/` (SRS-556).
+# @satisfies SRS-476, SRS-482
+PRERELEASE_BUILD_TMP_DIR=""
 
 ##
 # @brief Print the canonical first-failure diagnostic and terminate with exit code 1.
@@ -220,26 +232,38 @@ sync_dependencies() {
 }
 
 ##
-# @brief Stage `build`: generate the release artifacts through scripts/build.sh and verify their presence.
-# @details Delegates artifact generation to `scripts/build.sh` (SRS-546..SRS-551,
-# SRS-566..SRS-570), which removes every non-git-tracked `dist/` entry, prunes the
-# `build/` and `src/*.egg-info` intermediates before and after the build, runs the
-# canonical frozen-lock `uv run --frozen --with build python -m build` command mirroring
-# `.github/workflows/release-pypi.yml` with an explicit `dist/` outdir (SRS-476), and
-# verifies its own artifact families. This stage then independently re-verifies that
-# `dist/` contains at least one `.tar.gz` sdist and one `.whl` wheel (SRS-477).
-# @return Returns 0 when both artifact families exist; returns 1 on build failure or
-#         missing artifacts.
+# @brief Stage `build`: build the release artifacts in a temporary directory and verify them.
+# @details Creates a fresh temporary directory outside the repository through
+# `mktemp -d "${TMPDIR:-/tmp}/usereq-pre-release-build.XXXXXXXX"` so no artifact ever reaches
+# the repository `dist/` directory (SRS-476, SRS-556), then runs the canonical frozen-lock
+# `uv run --project <root> --frozen --with build python -m build --outdir <tmpdir>` command
+# mirroring `.github/workflows/release-pypi.yml` (SRS-574). A failed directory creation or
+# build is reported in English and returns the failure exit code instead of propagating a
+# masked status, because `run_stage` invokes this function in a condition context. After a
+# successful build the temporary directory is re-verified to contain at least one `.tar.gz`
+# sdist and one `.whl` wheel (SRS-477). Complexity O(A) over the produced artifacts; side
+# effects: creates one temporary directory and mutates `PRERELEASE_BUILD_TMP_DIR`.
+# @return Returns 0 when both artifact families exist in the temporary directory; returns 1
+#         on directory-creation failure, build failure, or missing artifacts.
 # @see scripts/build.sh
-# @satisfies SRS-476, SRS-477, SRS-481
+# @satisfies SRS-476, SRS-477, SRS-481, SRS-556, SRS-574
 build_distribution_artifacts() {
-  "${BASE_DIR}/scripts/build.sh"
+  local tmp_dir
+  if ! tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/usereq-pre-release-build.XXXXXXXX")"; then
+    echo "ERROR: cannot create the temporary build directory" >&2
+    return "${PRERELEASE_CHECK_ERROR_EXIT_CODE}"
+  fi
+  PRERELEASE_BUILD_TMP_DIR="${tmp_dir}"
+  if ! uv run --project "${BASE_DIR}" --frozen --with build python -m build --outdir "${PRERELEASE_BUILD_TMP_DIR}"; then
+    echo "ERROR: distribution build failed" >&2
+    return "${PRERELEASE_CHECK_ERROR_EXIT_CODE}"
+  fi
   local sdist_count
   local wheel_count
-  sdist_count="$(find "${BASE_DIR}/dist" -maxdepth 1 -name '*.tar.gz' | wc -l)"
-  wheel_count="$(find "${BASE_DIR}/dist" -maxdepth 1 -name '*.whl' | wc -l)"
+  sdist_count="$(find "${PRERELEASE_BUILD_TMP_DIR}" -maxdepth 1 -name '*.tar.gz' | wc -l)"
+  wheel_count="$(find "${PRERELEASE_BUILD_TMP_DIR}" -maxdepth 1 -name '*.whl' | wc -l)"
   if [ "${sdist_count}" -lt 1 ] || [ "${wheel_count}" -lt 1 ]; then
-    echo "ERROR: build artifacts missing in dist/ (expected at least one .tar.gz and one .whl)" >&2
+    echo "ERROR: build artifacts missing in the temporary build directory (expected at least one .tar.gz and one .whl)" >&2
     return "${PRERELEASE_CHECK_ERROR_EXIT_CODE}"
   fi
 }
@@ -270,12 +294,14 @@ run_unit_tests() {
 # @details Registered as an `EXIT` trap so it executes on success, on stage failure, and on
 # unexpected termination (SRS-482). Collects the fixed targets `build/`, `.pytest_cache/`, and
 # `.ruff_cache/` plus every existing `*.egg-info` or `__pycache__` directory discovered by
-# `find` under `src/` and `tests/`, and every direct child of `dist/` (SRS-556). For each
-# existing target, the git-tracked file check via
-# `git ls-files` guards SRS-481: tracked targets are skipped with an English stderr warning
-# identifying the path (SRS-483); untracked targets are removed with `rm -rf`. After this
-# function returns, the repository directory contains only git-tracked files plus the
-# uv-managed `.venv` environment (SRS-484).
+# `find` under `src/` and `tests/`, and removes the SRS-476 temporary build directory when it
+# was created. The repository `dist/` directory is never enumerated, removed, or otherwise
+# touched, so cleanup is independent of its content (SRS-556). For each existing repository
+# target, the git-tracked file check via `git ls-files` guards SRS-481: tracked targets are
+# skipped with an English stderr warning identifying the path (SRS-483); untracked targets are
+# removed with `rm -rf`. After this function returns, the repository directory contains only
+# git-tracked files, the uv-managed `.venv` environment, and the pre-existing `dist/` content
+# (SRS-484).
 # @return {None} Function return value.
 # @warning Must stay failure-tolerant: any error raised inside this EXIT trap would override
 #          the original script exit status.
@@ -291,9 +317,6 @@ cleanup_repository_artifacts() {
   while IFS= read -r found_dir; do
     cleanup_targets+=("${found_dir}")
   done < <(find "${BASE_DIR}/src" "${BASE_DIR}/tests" -maxdepth 4 -type d \( -name '*.egg-info' -o -name '__pycache__' \) 2>/dev/null || true)
-  while IFS= read -r dist_entry; do
-    cleanup_targets+=("${dist_entry}")
-  done < <(find "${BASE_DIR}/dist" -mindepth 1 -maxdepth 1 2>/dev/null || true)
   for target in "${cleanup_targets[@]}"; do
     [ -e "${target}" ] || continue
     relative_target="${target#"${BASE_DIR}/"}"
@@ -302,9 +325,11 @@ cleanup_repository_artifacts() {
       echo "WARNING: cleanup skipped for '${relative_target}' because it contains git-tracked files" >&2
       continue
     fi
-    rm -rf "${target}"
+    rm -rf -- "${target}"
   done
-  rmdir "${BASE_DIR}/dist" 2>/dev/null || true
+  if [ -n "${PRERELEASE_BUILD_TMP_DIR}" ] && [ -d "${PRERELEASE_BUILD_TMP_DIR}" ]; then
+    rm -rf -- "${PRERELEASE_BUILD_TMP_DIR}" || true
+  fi
 }
 
 trap cleanup_repository_artifacts EXIT

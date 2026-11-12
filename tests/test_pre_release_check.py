@@ -1,10 +1,11 @@
 """@file test_pre_release_check.py
-@brief Verify pre-release cleanup and stale-venv repair without external services.
+@brief Verify pre-release temporary-build staging, dist/ independence, and stale-venv repair.
 @details Level 1: script orchestration -> EXIT cleanup -> Git/filesystem boundaries,
 plus dependency-sync entry-point guarding for the unit-tests stage. Uses temporary
 repositories and a fake uv executable; no network or user paths. Covers successful
-termination, stage failure, tracked-target preservation, and repair or rejection of
-stale virtual-environment pytest entry points.
+termination, stage failure, tracked-target preservation, temporary build-directory
+lifecycle, dist/ independence, and repair or rejection of stale virtual-environment
+pytest entry points.
 @satisfies SRS-475, SRS-479, SRS-480, SRS-481, SRS-483, SRS-484, SRS-556, SRS-558
 """
 
@@ -65,28 +66,39 @@ def test_pre_release_cleanup_preserves_only_tracked_cache(
             ["git", "-C", str(repository), "add", "--", ".ruff_cache"],
             check=True, capture_output=True,
         )
-    # @brief Fake uv creates build artifacts or returns a deterministic sync error.
+    # @brief Fake uv writes temporary artifacts into the requested outdir argument.
     binary_dir = tmp_path / "bin"
     binary_dir.mkdir()
     uv = binary_dir / "uv"
     uv.write_text(
         "#!/bin/sh\n"
         "# @brief Emulate uv stage outcomes without network access.\n"
-        "# @details Build writes two fixture files; sync uses injected status.\n"
+        "# @details Build writes two fixture files into --outdir; sync uses injected status.\n"
         "# @return Exit status 7 for injected sync failure; otherwise 0.\n"
+        "outdir=\"\"\n"
+        "prev=\"\"\n"
+        "for arg in \"$@\"; do\n"
+        "  [ \"$prev\" = \"--outdir\" ] && outdir=\"$arg\"\n"
+        "  prev=\"$arg\"\n"
+        "done\n"
         'case "$*" in\n'
         '  sync*) exit "$FAKE_SYNC_STATUS" ;;\n'
-        '  *" -m build "*) mkdir -p dist; '
-        'touch dist/package.tar.gz dist/package.whl ;;\n'
+        '  *" -m build "*)\n'
+        '    [ -n "$outdir" ] || exit 1\n'
+        '    mkdir -p "$outdir"\n'
+        '    touch "$outdir/package.tar.gz" "$outdir/package.whl" ;;\n'
         "esac\n"
         "exit 0\n",
         encoding="utf-8",
     )
     uv.chmod(0o755)
-    # @brief Isolate subprocess HOME, Git configuration, and executable lookup.
+    # @brief Isolate subprocess HOME, temporary build root, Git config, and PATH lookup.
+    temp_root = tmp_path / "tmp"
+    temp_root.mkdir()
     environment = dict(os.environ)
     environment.update({
         "HOME": str(tmp_path),
+        "TMPDIR": str(temp_root),
         "BASH_ENV": os.devnull,
         "ENV": os.devnull,
         "GIT_CONFIG_GLOBAL": os.devnull,
@@ -102,11 +114,12 @@ def test_pre_release_cleanup_preserves_only_tracked_cache(
         env=environment, capture_output=True, text=True, check=False,
     )
 
-    # @brief Assert cleanup, failure propagation, and protected payload integrity.
+    # @brief Assert cleanup, failure propagation, temporary-dir removal, and payload integrity.
     assert result.returncode == expected_output, result.stdout + result.stderr
     assert cache_file.exists() is tracked_cache
     assert venv_file.read_text(encoding="utf-8") == "environment payload"
     assert not (repository / "dist").exists()
+    assert not any(temp_root.iterdir())
     if tracked_cache:
         assert cache_file.read_text(encoding="utf-8") == "cache payload"
         assert "WARNING: cleanup skipped for '.ruff_cache'" in result.stderr
@@ -118,24 +131,26 @@ def test_pre_release_cleanup_preserves_only_tracked_cache(
         assert "Pre-release check passed." in result.stdout
 
 
-def test_pre_release_cleanup_preserves_tracked_dist_entries(tmp_path: Path) -> None:
-    """@brief Preserve git-tracked dist/ entries and remove untracked artifacts on exit.
-    @details Arrange an isolated repository whose dist/ holds one staged release artifact, run
-    the copied script with a fake uv that writes untracked sdist and wheel fixtures, and assert
-    that only untracked entries are removed while the tracked entry keeps its content and the
-    dist/ directory survives. O(n) work over fixture files; all writes remain under tmp_path.
+def test_pre_release_check_leaves_dist_directory_untouched(tmp_path: Path) -> None:
+    """@brief Leave every dist/ entry unchanged and build artifacts in a temporary directory.
+    @details Level 1 regression for SRS-556: arrange an isolated repository whose dist/ holds
+    one tracked and one untracked release artifact, run the copied script with a fake uv that
+    writes sdist and wheel fixtures into the --outdir temporary directory, and assert that
+    dist/ neither loses nor gains entries, emits no dist/ cleanup warning, and that the
+    temporary build directory is removed on termination.
     @param tmp_path {Path} Pytest-owned disposable filesystem root.
     @return {None} Assertions complete on matching observable behavior.
-    @throws {AssertionError} Tracked dist entry is removed or untracked artifacts survive.
-    @satisfies SRS-556, SRS-558, SRS-483
+    @throws {AssertionError} dist/ is modified or the temporary build directory survives.
+    @satisfies SRS-476, SRS-477, SRS-482, SRS-556, SRS-558
     """
-    # @brief Arrange repository, staged tracked dist artifact, and deterministic uv stub.
+    # @brief Arrange repository, tracked and untracked dist artifacts, and a uv stub.
     repository = tmp_path / "repository with spaces"
     scripts = repository / "scripts"
     scripts.mkdir(parents=True)
+    script = scripts / "pre-release-check.sh"
     shutil.copyfile(
         Path(__file__).resolve().parents[1] / "scripts/pre-release-check.sh",
-        scripts / "pre-release-check.sh",
+        script,
     )
     shutil.copyfile(
         Path(__file__).resolve().parents[1] / "scripts/build.sh",
@@ -148,6 +163,8 @@ def test_pre_release_cleanup_preserves_tracked_dist_entries(tmp_path: Path) -> N
     dist.mkdir()
     tracked_artifact = dist / "tracked-release.whl"
     tracked_artifact.write_text("release payload", encoding="utf-8")
+    untracked_artifact = dist / "previous-release.tar.gz"
+    untracked_artifact.write_text("previous payload", encoding="utf-8")
     subprocess.run(
         ["git", "init", "--quiet", str(repository)], check=True,
         capture_output=True,
@@ -156,27 +173,38 @@ def test_pre_release_cleanup_preserves_tracked_dist_entries(tmp_path: Path) -> N
         ["git", "-C", str(repository), "add", "--", "dist/tracked-release.whl"],
         check=True, capture_output=True,
     )
-    # @brief Fake uv creates untracked build artifacts and reports success for every stage.
+    # @brief Fake uv writes artifacts into the requested outdir and succeeds everywhere.
     binary_dir = tmp_path / "bin"
     binary_dir.mkdir()
     uv = binary_dir / "uv"
     uv.write_text(
         "#!/bin/sh\n"
         "# @brief Emulate uv stage outcomes without network access.\n"
-        "# @details Build writes two untracked fixture files; every other stage succeeds.\n"
+        "# @details Build writes two fixture files into --outdir; every other stage succeeds.\n"
         "# @return Exit status 0.\n"
+        "outdir=\"\"\n"
+        "prev=\"\"\n"
+        "for arg in \"$@\"; do\n"
+        "  [ \"$prev\" = \"--outdir\" ] && outdir=\"$arg\"\n"
+        "  prev=\"$arg\"\n"
+        "done\n"
         'case "$*" in\n'
-        '  *" -m build "*) mkdir -p dist; '
-        'touch dist/package.tar.gz dist/package.whl ;;\n'
+        '  *" -m build "*)\n'
+        '    [ -n "$outdir" ] || exit 1\n'
+        '    mkdir -p "$outdir"\n'
+        '    touch "$outdir/package.tar.gz" "$outdir/package.whl" ;;\n'
         "esac\n"
         "exit 0\n",
         encoding="utf-8",
     )
     uv.chmod(0o755)
-    # @brief Isolate subprocess HOME, Git configuration, and executable lookup.
+    # @brief Isolate subprocess HOME, temporary build root, Git config, and PATH lookup.
+    temp_root = tmp_path / "tmp"
+    temp_root.mkdir()
     environment = dict(os.environ)
     environment.update({
         "HOME": str(tmp_path),
+        "TMPDIR": str(temp_root),
         "BASH_ENV": os.devnull,
         "ENV": os.devnull,
         "GIT_CONFIG_GLOBAL": os.devnull,
@@ -186,17 +214,20 @@ def test_pre_release_cleanup_preserves_tracked_dist_entries(tmp_path: Path) -> N
 
     # @brief Act through the public shell interface from a foreign directory.
     result = subprocess.run(
-        ["bash", str(scripts / "pre-release-check.sh"), "--allow-dirty"], cwd=tmp_path,
+        ["bash", str(script), "--allow-dirty"], cwd=tmp_path,
         env=environment, capture_output=True, text=True, check=False,
     )
 
-    # @brief Assert tracked preservation, untracked removal, and the cleanup warning.
+    # @brief Assert dist/ independence, temporary cleanup, and success reporting.
     assert result.returncode == 0, result.stdout + result.stderr
     assert tracked_artifact.read_text(encoding="utf-8") == "release payload"
-    assert not (dist / "package.tar.gz").exists()
-    assert not (dist / "package.whl").exists()
-    assert dist.is_dir()
-    assert "WARNING: cleanup skipped for 'dist/tracked-release.whl'" in result.stderr
+    assert untracked_artifact.read_text(encoding="utf-8") == "previous payload"
+    assert sorted(entry.name for entry in dist.iterdir()) == [
+        "previous-release.tar.gz", "tracked-release.whl",
+    ]
+    assert not any(temp_root.iterdir())
+    assert "dist/" not in result.stderr
+    assert "Pre-release check passed." in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -225,7 +256,7 @@ def test_pre_release_check_stale_venv_pytest_entry_point(
         documented pre-release behavior.
     @satisfies SRS-475, SRS-479, SRS-480
     """
-    # @brief Arrange repository paths and a deterministic foreign interpreter stub.
+    # @brief Arrange a deterministic foreign interpreter stub and an outdir-aware uv stub.
     repository = tmp_path / "repository"
     scripts = repository / "scripts"
     scripts.mkdir(parents=True)
@@ -268,14 +299,16 @@ def test_pre_release_check_stale_venv_pytest_entry_point(
     uv.write_text(
         "#!/bin/sh\n"
         "# @brief Emulate uv sync, build, run, and entry-point repair flows.\n"
-        "# @details Capture the --project path; rewrite .venv/bin/pytest only when\n"
+        "# @details Capture --project and --outdir paths; rewrite .venv/bin/pytest only when\n"
         "# --reinstall-package is present and FAKE_HEAL_ENTRY_POINT is enabled.\n"
         "# @return Exit status of the emulated uv operation.\n"
         "project=\"\"\n"
+        "outdir=\"\"\n"
         "heal=0\n"
         "prev=\"\"\n"
         "for arg in \"$@\"; do\n"
         "  [ \"$prev\" = \"--project\" ] && project=\"$arg\"\n"
+        "  [ \"$prev\" = \"--outdir\" ] && outdir=\"$arg\"\n"
         "  [ \"$arg\" = \"--reinstall-package\" ] && heal=1\n"
         "  prev=\"$arg\"\n"
         "done\n"
@@ -289,8 +322,9 @@ def test_pre_release_check_stale_venv_pytest_entry_point(
         "    exit 0\n"
         "    ;;\n"
         '  *" -m build "*)\n'
-        "    mkdir -p \"$project/dist\"\n"
-        "    touch \"$project/dist/package.tar.gz\" \"$project/dist/package.whl\"\n"
+        "    [ -n \"$outdir\" ] || exit 1\n"
+        "    mkdir -p \"$outdir\"\n"
+        "    touch \"$outdir/package.tar.gz\" \"$outdir/package.whl\"\n"
         "    exit 0\n"
         "    ;;\n"
         "  run*\" pytest\")\n"
@@ -301,10 +335,13 @@ def test_pre_release_check_stale_venv_pytest_entry_point(
         encoding="utf-8",
     )
     uv.chmod(0o755)
-    # @brief Isolate subprocess HOME, Git configuration, and executable lookup.
+    # @brief Isolate subprocess HOME, temporary build root, Git config, and PATH lookup.
+    temp_root = tmp_path / "tmp"
+    temp_root.mkdir()
     environment = dict(os.environ)
     environment.update({
         "HOME": str(tmp_path),
+        "TMPDIR": str(temp_root),
         "BASH_ENV": os.devnull,
         "ENV": os.devnull,
         "GIT_CONFIG_GLOBAL": os.devnull,
