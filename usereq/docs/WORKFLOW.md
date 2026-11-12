@@ -44,7 +44,7 @@
 - `PROC:gha-release-pypi`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `GitHub Actions release workflow orchestration for tag-based and manual release execution that consumes only the pre-built dist/ artifacts of the tagged release commit, verifies their presence, attests provenance, creates the GitHub Release, and publishes to PyPI through master-only OIDC trusted publishing without any build, dependency-sync, test, or pre-release verification stage; every JavaScript action executes on the Node24 runtime or later`
+  - `role`: `GitHub Actions release workflow orchestration for tag-based and manual release execution that consumes optional pre-built dist/ artifacts of the tagged release commit, detects their presence, conditionally attests provenance and uploads release assets, creates the GitHub Release, and conditionally publishes to PyPI through master-only OIDC trusted publishing without any build, dependency-sync, test, or pre-release verification stage; every JavaScript action executes on the Node24 runtime or later`
   - `entrypoints`: `.github/workflows/release-pypi.yml`
   - `defining_files`: `.github/workflows/release-pypi.yml`
   - `threads`: `no explicit threads detected`
@@ -344,13 +344,13 @@
 - **Type**: Process
 - **Parent Process**: `-`
 - **Entrypoint(s)**: `.github/workflows/release-pypi.yml` [`.github/workflows/release-pypi.yml`]
-- **Lifecycle/Trigger**: starts on GitHub Actions events (`push` on version tags and `workflow_dispatch`), evaluates master reachability of the tagged commit, and executes pre-built artifact verification, provenance attestation, GitHub Release creation, and master-only PyPI publication jobs using exclusively the `dist/` files committed in the tagged release commit; no build, dependency-sync, test, or pre-release verification stage executes; every JavaScript action runs on Node24 or later (SRS-455..SRS-457) with no transitional Node20 opt-out overrides (SRS-458).
+- **Lifecycle/Trigger**: starts on GitHub Actions events (`push` on version tags and `workflow_dispatch`), evaluates master reachability of the tagged commit, detects optional pre-built `dist/` artifacts, and executes conditional provenance attestation, GitHub Release creation, and conditional master-only PyPI publication using exclusively the `dist/` files present in the tagged release commit; absence of artifacts never fails the workflow; no build, dependency-sync, test, or pre-release verification stage executes; every JavaScript action runs on Node24 or later (SRS-455..SRS-457) with no transitional Node20 opt-out overrides (SRS-458).
 - **Internal Call-Trace Tree**
-  - `release-pypi.yml(...)`: workflow coordinator for pre-built artifact release automation and PyPI OIDC trusted publishing [`.github/workflows/release-pypi.yml`]
+  - `release-pypi.yml(...)`: workflow coordinator for optional pre-built artifact release automation and PyPI OIDC trusted publishing [`.github/workflows/release-pypi.yml`]
     - `check-branch(...)`: verify tagged commit reachability from `origin/master` and export the `is_master` output consumed by downstream gating [`.github/workflows/release-pypi.yml`]
-    - `release(...)`: run pre-built distribution verification, provenance attestation, changelog generation, and GitHub release publication for every canonical version tag independently of master reachability [`.github/workflows/release-pypi.yml`]
-      - external boundaries: GitHub-hosted runners, repository checkout of the tagged commit exposing the committed `dist/` artifacts, Node24-runtime JavaScript actions (`actions/checkout@v5`, `actions/attest-build-provenance@v3`, `softprops/action-gh-release@v3`, `mikepenz/release-changelog-builder-action@v6`), GitHub release APIs
-    - `publish-pypi(...)`: check out the tagged commit and publish its `dist/` sdist/wheel to PyPI project `cli-usereq` through `pypa/gh-action-pypi-publish` with GitHub OIDC trusted publishing only when `is_master` is `true`; develop-only tags skip publication [`.github/workflows/release-pypi.yml`]
+    - `release(...)`: detect optional pre-built `dist/` artifacts, conditionally attest provenance, generate the changelog, and publish the GitHub release for every canonical version tag independently of master reachability; expose the `has_artifacts` output [`.github/workflows/release-pypi.yml`]
+      - external boundaries: GitHub-hosted runners, repository checkout of the tagged commit exposing any committed `dist/` artifacts, Node24-runtime JavaScript actions (`actions/checkout@v5`, `actions/attest-build-provenance@v3`, `softprops/action-gh-release@v3`, `mikepenz/release-changelog-builder-action@v6`), GitHub release APIs
+    - `publish-pypi(...)`: check out the tagged commit and publish any `dist/` sdist/wheel to PyPI project `cli-usereq` through `pypa/gh-action-pypi-publish` with GitHub OIDC trusted publishing only when `is_master` is `true` and `has_artifacts` is `true`; develop-only and artifact-free tags skip publication [`.github/workflows/release-pypi.yml`]
       - external boundaries: repository checkout of the tagged commit, PyPI trusted-publisher OIDC exchange and upload endpoint
 
 ## Communication Edges

@@ -35,10 +35,12 @@ jobs:
             echo "is_master=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # 2. Attest and publish the pre-built distributions of the tagged commit (master and develop tags)
+  # 2. Attest and publish the optional pre-built distributions of the tagged commit (master and develop tags)
   release:
     needs: check-branch
     runs-on: ubuntu-latest
+    outputs:
+      has_artifacts: ${{ steps.detect_dist.outputs.has_artifacts }}
 
     steps:
       - name: Checkout
@@ -46,17 +48,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify pre-built distributions
+      - name: Detect pre-built distributions
+        id: detect_dist
         run: |
-          sdist_count=$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)
-          wheel_count=$(find dist -maxdepth 1 -name '*.whl' | wc -l)
-          if [ "${sdist_count}" -lt 1 ] || [ "${wheel_count}" -lt 1 ]; then
-            echo "ERROR: pre-built distributions missing in dist/ (expected at least one .tar.gz and one .whl)" >&2
-            exit 1
+          if find dist -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.whl' \) | grep -q .; then
+            echo "has_artifacts=true" >> "$GITHUB_OUTPUT"
+            echo "Pre-built distributions found in dist/."
+          else
+            echo "has_artifacts=false" >> "$GITHUB_OUTPUT"
+            echo "No pre-built distributions found in dist/; continuing without release assets."
           fi
-          echo "Found ${sdist_count} sdist and ${wheel_count} wheel pre-built artifacts in dist/."
 
       - name: Attest build provenance
+        if: steps.detect_dist.outputs.has_artifacts == 'true'
         uses: actions/attest-build-provenance@v3 # node24 composite runtime
         with:
           subject-path: dist/*
@@ -115,7 +119,7 @@ jobs:
           draft: false
           prerelease: false
           files: dist/**/*
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
           generate_release_notes: false
           tag_name: ${{ github.ref_name }}
           name: ${{github.event.repository.name}} ${{ github.ref_name }}
@@ -126,9 +130,10 @@ jobs:
   # 3. Publish the pre-built distributions to PyPI via OIDC trusted publishing (master tags only)
   publish-pypi:
     needs: [check-branch, release]
-    # Publish to PyPI only when the tagged commit is reachable from origin/master;
-    # develop-only tags create the GitHub Release without publishing to PyPI.
-    if: needs.check-branch.outputs.is_master == 'true'
+    # Publish to PyPI only when the tagged commit is reachable from origin/master and
+    # pre-built distributions are present; develop-only tags and artifact-free tags
+    # create the GitHub Release without publishing to PyPI.
+    if: needs.check-branch.outputs.is_master == 'true' && needs.release.outputs.has_artifacts == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write # OIDC trusted publishing for PyPI project cli-usereq

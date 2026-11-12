@@ -1,8 +1,8 @@
 """@brief Tests for GitHub release workflow trigger, gating, and PyPI publication configuration.
 @details Validates the release-pypi.yml workflow: manual dispatch and tag-push triggers,
-pre-built `dist/` artifact consumption without any build stage, master-independent
-attestation and release execution (SRS-432), pre-built artifact presence verification
-(SRS-571), master-only OIDC trusted publishing to PyPI (SRS-433, SRS-434), Node24-or-later
+optional pre-built `dist/` artifact consumption without any build stage, master-independent
+attestation and release execution (SRS-432), optional artifact detection (SRS-130, SRS-572),
+master-only OIDC trusted publishing to PyPI (SRS-433, SRS-434), Node24-or-later
 runtime execution of every JavaScript action (SRS-455, SRS-456, SRS-457), and absence of
 transitional Node20 opt-out overrides (SRS-458).
 @satisfies SRS-268
@@ -16,7 +16,6 @@ transitional Node20 opt-out overrides (SRS-458).
 @satisfies SRS-457
 @satisfies SRS-458
 @satisfies SRS-459
-@satisfies SRS-571
 @satisfies SRS-572
 @satisfies SRS-573
 """
@@ -125,25 +124,49 @@ class TestReleaseWorkflowTriggers(unittest.TestCase):
             "Release workflow must retain tag push trigger",
         )
 
-    def test_release_workflow_verifies_pre_built_distributions(self) -> None:
-        """@brief Release job must verify the tagged commit contains pre-built distributions.
-        @details The verification step must count `.tar.gz` and `.whl` files in `dist/`
-        and fail when either family is absent (SRS-571).
+    def test_release_workflow_detects_optional_pre_built_distributions(self) -> None:
+        """@brief Release job must detect optional pre-built distributions without failing.
+        @details The detection step must look for `.tar.gz` and `.whl` files in `dist/`,
+        export `has_artifacts`, and never fail when no artifact exists; attestation and
+        release assets stay conditional (SRS-130, SRS-432, SRS-572).
         @return {None} No return value.
-        @satisfies SRS-571
+        @satisfies SRS-130
+        @satisfies SRS-432
+        @satisfies SRS-572
+        @satisfies SRS-573
         """
 
         workflow = _load_workflow()
-        verify_step = next(
+        release_job = workflow["jobs"]["release"]
+        detect_step = next(
             step
-            for step in workflow["jobs"]["release"]["steps"]
-            if step.get("name") == "Verify pre-built distributions"
+            for step in release_job["steps"]
+            if step.get("name") == "Detect pre-built distributions"
         )
-        run_body = verify_step["run"]
-        self.assertIn("dist", run_body)
+        run_body = detect_step["run"]
         self.assertIn("*.tar.gz", run_body)
         self.assertIn("*.whl", run_body)
-        self.assertIn("exit 1", run_body)
+        self.assertIn("has_artifacts", run_body)
+        self.assertNotIn("exit 1", run_body)
+        self.assertEqual(
+            release_job["outputs"]["has_artifacts"],
+            "${{ steps.detect_dist.outputs.has_artifacts }}",
+        )
+        attest_step = next(
+            step
+            for step in release_job["steps"]
+            if step.get("name") == "Attest build provenance"
+        )
+        self.assertEqual(
+            attest_step["if"],
+            "steps.detect_dist.outputs.has_artifacts == 'true'",
+        )
+        release_step = next(
+            step
+            for step in release_job["steps"]
+            if step.get("name") == "Create GitHub Release and upload assets"
+        )
+        self.assertFalse(release_step["with"]["fail_on_unmatched_files"])
 
     def test_release_workflow_never_builds_or_pre_checks(self) -> None:
         """@brief Workflow must source artifacts from dist/ without any build stage.
@@ -192,7 +215,7 @@ class TestReleaseWorkflowBranchGating(unittest.TestCase):
             "release job must execute for master and develop tags",
         )
         release_steps = {step.get("name", "") for step in release_job["steps"]}
-        self.assertIn("Verify pre-built distributions", release_steps)
+        self.assertIn("Detect pre-built distributions", release_steps)
         self.assertIn("Attest build provenance", release_steps)
         self.assertIn("Create GitHub Release and upload assets", release_steps)
 
@@ -221,8 +244,9 @@ class TestReleaseWorkflowBranchGating(unittest.TestCase):
         publish_job = workflow["jobs"]["publish-pypi"]
         self.assertEqual(
             publish_job.get("if"),
-            "needs.check-branch.outputs.is_master == 'true'",
-            "publish-pypi job must be gated on master reachability",
+            "needs.check-branch.outputs.is_master == 'true'"
+            " && needs.release.outputs.has_artifacts == 'true'",
+            "publish-pypi job must be gated on master reachability and artifact presence",
         )
         self.assertIn("check-branch", publish_job["needs"])
         self.assertIn("release", publish_job["needs"])

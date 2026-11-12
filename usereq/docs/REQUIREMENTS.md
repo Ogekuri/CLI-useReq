@@ -2,7 +2,7 @@
 title: "useReq Requirements"
 description: "Software Requirements Specification"
 date: "2026-11-12"
-version: 1.23
+version: 1.24
 author: "Ogekuri"
 scope:
   paths:
@@ -243,19 +243,17 @@ No explicit performance optimizations identified.
 - **SRS-390**: MUST treat this requirement as a removed legacy behavior and keep it unsupported.
 
 ### 3.5 CI/CD Release Workflow
-- **SRS-128**: MUST implement the following behavior: The release workflow MUST consume the sdist and wheel committed under `dist/` in the tagged release commit.
-- **SRS-129**: MUST implement the following behavior: The workflow MUST create GitHub Release for the tag and load assets from `dist/`.
-- **SRS-130**: MUST implement the following behavior: The workflow MUST generate artifact certifications for files in `dist/`.
+- **SRS-129**: MUST implement the following behavior: The workflow MUST create GitHub Release for the tag and load any assets present under `dist/`.
+- **SRS-130**: MUST implement the following behavior: The workflow MUST generate artifact certifications for every file present in `dist/` when any exist.
 - **SRS-268**: MUST implement the following behavior: The `.github/workflows/release-pypi.yml` workflow MUST define `workflow_dispatch` under `on` in addition to tag-push triggers so releases MAY be launched manually without altering automatic tag-trigger behavior.
 - **SRS-431**: MUST implement the following behavior: The release automation workflow MUST be defined at `.github/workflows/release-pypi.yml` and the legacy `.github/workflows/release-uvx.yml` file MUST be absent from the repository.
-- **SRS-432**: MUST implement the following behavior: On canonical version-tag push, the workflow MUST execute provenance attestation and GitHub Release creation from the pre-built `dist/` artifacts independently of `origin/master` reachability.
-- **SRS-433**: MUST implement the following behavior: The workflow MUST publish the pre-built sdist and wheel from the tagged commit `dist/` to PyPI project `cli-usereq` through the official `pypa/gh-action-pypi-publish` GitHub Action authenticated via GitHub OIDC trusted publishing.
+- **SRS-432**: MUST implement the following behavior: On canonical version-tag push, the workflow MUST execute provenance attestation and GitHub Release creation from any pre-built `dist/` artifacts present in the tagged commit independently of `origin/master` reachability.
+- **SRS-433**: MUST implement the following behavior: The workflow MUST publish any sdist and wheel present in the tagged commit `dist/` to PyPI project `cli-usereq` through the official `pypa/gh-action-pypi-publish` GitHub Action authenticated via GitHub OIDC trusted publishing.
 - **SRS-434**: MUST implement the following behavior: The PyPI publish job MUST execute only when the tagged commit is reachable from `origin/master`; tags reachable only from `origin/develop` MUST skip PyPI publication.
 - **SRS-455**: MUST execute every JavaScript-based GitHub Action referenced by `.github/workflows/release-pypi.yml` on Node24 runtime or later.
 - **SRS-456**: MUST reference `actions/checkout@v5` major or later in `.github/workflows/release-pypi.yml`.
 - **SRS-457**: MUST reference `actions/attest-build-provenance@v3`, `softprops/action-gh-release@v3`, and `mikepenz/release-changelog-builder-action@v6` majors or later.
 - **SRS-458**: MUST NOT set `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION` or `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` environment overrides in the workflow.
-- **SRS-571**: MUST implement the following behavior: The release workflow MUST verify the tagged release commit `dist/` contains at least one `.tar.gz` and one `.whl` file and MUST fail otherwise.
 - **SRS-572**: MUST implement the following behavior: The release workflow MUST obtain every release asset exclusively from the tagged commit `dist/` directory and MUST NOT execute any build, dependency-sync, test, or pre-release verification stage.
 
 ### 3.5.1 Package Distribution and Resource Inclusion
@@ -374,7 +372,7 @@ No explicit performance optimizations identified.
 - **SRS-557**: MUST include unit tests in `tests/test_dependency_manifests.py` verifying the SRS-552, SRS-553, SRS-554, and SRS-555 `.gitignore` rules for `dist/`.
 - **SRS-558**: MUST include unit tests in `tests/test_pre_release_check.py` verifying the SRS-556 preservation of git-tracked `dist/` entries during cleanup.
 - **SRS-565**: MUST include unit tests in `tests/test_build_script.py` verifying SRS-548 dist/ cleanup, SRS-566 git availability, SRS-567 and SRS-569 intermediate removal, SRS-568 git-tracked preservation warnings, and SRS-570 summary and exit-code semantics.
-- **SRS-573**: MUST include unit tests in `tests/test_release_workflow.py` verifying SRS-571 artifact verification and SRS-572 absence of build, dependency-sync, test, and pre-release verification stages.
+- **SRS-573**: MUST include unit tests in `tests/test_release_workflow.py` verifying SRS-572 optional pre-built `dist/` consumption and absence of build, dependency-sync, test, and pre-release verification stages.
 
 ## 5. Static Code Analysis Requirements
 
