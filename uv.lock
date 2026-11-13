@@ -86,7 +86,7 @@ wheels = [
 
 [[package]]
 name = "cli-usereq"
-version = "0.75.9"
+version = "0.75.10"
 source = { editable = "." }
 dependencies = [
     { name = "pyright" },

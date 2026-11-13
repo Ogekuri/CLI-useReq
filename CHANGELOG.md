@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.9](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.9) - 2026-11-13
+## [0.75.10](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.10) - 2026-11-13
 ### ⛰️  Features
 - Update prompts.
 - Update gitalias config.
@@ -18,6 +18,12 @@
 - Update prompts.
 
 ### 🐛  Bug Fixes
+- switch non-PyPI install back to PyPI on --upgrade [useReq] *(upgrade)*
+  run_upgrade probes the installed uv tool receipt through 'uv tool dir'
+  and appends --force when the requirement source is git/URL/path
+  plain --upgrade after --upgrade --develop now downgrades to the PyPI
+  production release instead of re-resolving the git source
+  registry-sourced installs keep the unchanged SRS-343 command; add installed-source probe and source-switch regression tests; refresh README upgrade wording, WORKFLOW.md call-trace, REFERENCES.md
 - request latest PyPI version during --upgrade [useReq] *(upgrade)*
   append --upgrade to 'uv tool install cli-usereq' so an existing tool
   environment stops reusing the already-installed version
@@ -1590,7 +1596,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.9\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.9
+- \[0.75.10\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.10
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1666,4 +1672,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.9]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.9
+[0.75.10]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.10
