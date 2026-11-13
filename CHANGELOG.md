@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.10](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.10) - 2026-11-13
+## [0.75.11](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.11) - 2026-11-13
 ### ⛰️  Features
 - Update prompts.
 - Update gitalias config.
@@ -44,6 +44,8 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- emit empty-references directive when no source files [useReq] *(references)*
+  add SRS-581/SRS-582 for the empty-references system-directive payload; add SRS-583 regression coverage in tests/test_files_commands.py; print the canonical directive and exit 0 when no supported source file is selected; document the empty-selection branch in WORKFLOW.md and regenerate REFERENCES.md
 - clean old-version dist artifacts before build [useReq] *(build-script)*
   update SRS-548 and SRS-568 to remove git-tracked old-version dist/ artifacts; add SRS-578/579/580 for pyproject.toml project name/version resolution,
   pre-compile dist/ removal ordering, and the no-version fallback
@@ -1596,7 +1598,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.10\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.10
+- \[0.75.11\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.11
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1672,4 +1674,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.10]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.10
+[0.75.11]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.11
