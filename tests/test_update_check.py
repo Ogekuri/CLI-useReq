@@ -536,7 +536,8 @@ class TestOnlineUpdateCheck(unittest.TestCase):
     def test_upgrade_command_requests_latest_pypi_version(self) -> None:
         """Default --upgrade must request the latest PyPI version (SRS-343).
 
-        UUT: run_upgrade. Level 1: depends only on mocked subprocess.run.
+        UUT: run_upgrade. Level 1: depends only on mocked subprocess.run and the
+        installed-source probe.
         `uv tool install <pkg>` keeps the already-installed version when the tool
         environment exists, so the command must carry --upgrade to upgrade the tool.
         """
@@ -544,7 +545,10 @@ class TestOnlineUpdateCheck(unittest.TestCase):
         result_mock = MagicMock(returncode=0)
 
         # Act
-        with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
+        with (
+            patch("usereq.cli._installed_tool_uses_registry_source", return_value=True),
+            patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock,
+        ):
             cli.run_upgrade()
 
         # Assert
@@ -555,7 +559,10 @@ class TestOnlineUpdateCheck(unittest.TestCase):
         """Default upgrade command must run the standard install without forcing (SRS-343)."""
         result_mock = MagicMock(returncode=0)
 
-        with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
+        with (
+            patch("usereq.cli._installed_tool_uses_registry_source", return_value=True),
+            patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock,
+        ):
             cli.run_upgrade()
 
         run_mock.assert_called_once_with(
@@ -572,14 +579,17 @@ class TestOnlineUpdateCheck(unittest.TestCase):
     def test_upgrade_command_without_force_has_no_forcing_options(self) -> None:
         """Standard --upgrade must run the plain install/update process (SRS-343, SRS-508).
 
-        Without --force no uv forcing option (--force, --reinstall, --refresh)
-        may appear in the executed command.
+        Without --force and with a registry-sourced installation no uv forcing option
+        (--force, --reinstall, --refresh) may appear in the executed command.
         """
         # Arrange
         result_mock = MagicMock(returncode=0)
 
         # Act
-        with patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock:
+        with (
+            patch("usereq.cli._installed_tool_uses_registry_source", return_value=True),
+            patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock,
+        ):
             cli.run_upgrade()
 
         # Assert
@@ -783,6 +793,122 @@ class TestOnlineUpdateCheck(unittest.TestCase):
                 cli.run_upgrade()
         self.assertIn("auto-upgrade failed", context.exception.message)
         self.assertEqual(context.exception.code, 7)
+
+    def test_upgrade_switches_develop_install_back_to_pypi(self) -> None:
+        """Default --upgrade must leave a non-PyPI installation and install from PyPI (SRS-343, SRS-440).
+
+        UUT: run_upgrade. Level 1: installed-source probe and subprocess.run are mocked.
+        A `--develop` installation records a git requirement, so `uv tool install <pkg>
+        --upgrade` re-resolves that git source and never installs (or downgrades to) the
+        production PyPI release; the command must force the PyPI replacement.
+        """
+        # Arrange
+        result_mock = MagicMock(returncode=0)
+
+        # Act
+        with (
+            patch("usereq.cli._installed_tool_uses_registry_source", return_value=False),
+            patch("usereq.cli.subprocess.run", return_value=result_mock) as run_mock,
+        ):
+            cli.run_upgrade()
+
+        # Assert
+        run_mock.assert_called_once_with(
+            [
+                "uv",
+                "tool",
+                "install",
+                cli.TOOL_PROGRAM_NAME,
+                "--upgrade",
+                "--force",
+            ],
+            check=False,
+        )
+
+    def test_upgrade_non_linux_manual_command_embeds_source_switch(self) -> None:
+        """Non-Linux manual command must embed the PyPI source switch (SRS-343, SRS-440, SRS-452)."""
+        # Arrange / Act
+        with (
+            patch("usereq.cli._installed_tool_uses_registry_source", return_value=False),
+            patch("usereq.cli.platform.system", return_value="Windows"),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
+            cli.run_upgrade()
+
+        # Assert
+        manual_command = mock_stdout.getvalue()
+        self.assertIn("--upgrade --force", manual_command)
+
+    def test_installed_tool_uses_registry_source_detects_git_receipt(self) -> None:
+        """Installed-source probe must detect a git requirement recorded by `--develop` (SRS-440)."""
+        # Arrange
+        with tempfile.TemporaryDirectory() as tool_root:
+            receipt_path = (
+                Path(tool_root) / cli.TOOL_PROGRAM_NAME / cli.TOOL_RECEIPT_FILENAME
+            )
+            receipt_path.parent.mkdir(parents=True)
+            receipt_path.write_text(
+                "[tool]\n"
+                'requirements = [{ name = "cli-usereq", git = "https://github.com/Ogekuri/CLI-useReq" }]\n',
+                encoding="utf-8",
+            )
+            probe_result = MagicMock(returncode=0, stdout=f"{tool_root}\n")
+
+            # Act
+            with patch("usereq.cli.subprocess.run", return_value=probe_result) as run_mock:
+                uses_registry = cli._installed_tool_uses_registry_source()
+
+        # Assert
+        self.assertFalse(uses_registry)
+        run_mock.assert_called_once_with(
+            ["uv", "tool", "dir"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_installed_tool_uses_registry_source_accepts_pypi_receipt(self) -> None:
+        """Installed-source probe must accept a PyPI requirement record (SRS-343)."""
+        # Arrange
+        with tempfile.TemporaryDirectory() as tool_root:
+            receipt_path = (
+                Path(tool_root) / cli.TOOL_PROGRAM_NAME / cli.TOOL_RECEIPT_FILENAME
+            )
+            receipt_path.parent.mkdir(parents=True)
+            receipt_path.write_text(
+                "[tool]\n" 'requirements = [{ name = "cli-usereq" }]\n',
+                encoding="utf-8",
+            )
+            probe_result = MagicMock(returncode=0, stdout=f"{tool_root}\n")
+
+            # Act
+            with patch("usereq.cli.subprocess.run", return_value=probe_result):
+                uses_registry = cli._installed_tool_uses_registry_source()
+
+        # Assert
+        self.assertTrue(uses_registry)
+
+    def test_installed_tool_uses_registry_source_defaults_without_receipt(self) -> None:
+        """Installed-source probe must assume the PyPI source when no receipt exists (SRS-343)."""
+        # Arrange
+        with tempfile.TemporaryDirectory() as tool_root:
+            probe_result = MagicMock(returncode=0, stdout=f"{tool_root}\n")
+
+            # Act
+            with patch("usereq.cli.subprocess.run", return_value=probe_result):
+                uses_registry = cli._installed_tool_uses_registry_source()
+
+        # Assert
+        self.assertTrue(uses_registry)
+
+    def test_installed_tool_uses_registry_source_defaults_when_uv_missing(self) -> None:
+        """Installed-source probe must assume the PyPI source when `uv` is unavailable (SRS-343)."""
+        # Arrange / Act
+        with patch("usereq.cli.subprocess.run", side_effect=FileNotFoundError("uv")):
+            uses_registry = cli._installed_tool_uses_registry_source()
+
+        # Assert
+        self.assertTrue(uses_registry)
 
     def test_uninstall_command_uses_tool_program_name(self) -> None:
         """Uninstall command must target configured tool program name."""

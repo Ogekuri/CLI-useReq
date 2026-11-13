@@ -1624,6 +1624,7 @@ class TestUpgradeUninstall(unittest.TestCase):
 
     def test_upgrade_on_non_linux_prints_manual_command(self) -> None:
         with (
+            patch("usereq.cli._installed_tool_uses_registry_source", return_value=True),
             patch("usereq.cli.platform.system", return_value="Windows"),
             patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
         ):
@@ -1640,6 +1641,7 @@ class TestUpgradeUninstall(unittest.TestCase):
 
     def test_upgrade_on_linux_executes_uv_install(self) -> None:
         with (
+            patch("usereq.cli._installed_tool_uses_registry_source", return_value=True),
             patch("usereq.cli.platform.system", return_value="Linux"),
             patch("usereq.cli.subprocess.run") as mock_run,
         ):

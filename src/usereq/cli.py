@@ -20,6 +20,7 @@ import sys
 import subprocess
 import textwrap
 import time
+import tomllib
 import urllib.error
 import urllib.request
 import copy
@@ -278,6 +279,15 @@ TOOL_PROGRAM_NAME = "cli-usereq"
 @details Used as the target of `uv tool install`/`uv tool uninstall` commands; it matches the
 `[project].name` distribution name registered in the PyPI trusted publisher for repository
 `Ogekuri/CLI-useReq` (SRS-343, SRS-344, SRS-433, SRS-435)."""
+
+TOOL_RECEIPT_FILENAME = "uv-receipt.toml"
+"""! @brief Canonical uv tool receipt filename recording the installed requirement source (SRS-343, SRS-440)."""
+
+NON_REGISTRY_REQUIREMENT_KEYS = ("git", "url", "path", "editable", "rev", "tag", "branch")
+"""! @brief Receipt requirement keys marking a uv tool source other than the PyPI index (SRS-440).
+@details `uv` records the resolved source of every installed tool requirement in its receipt;
+any of these keys means the requirement does not resolve from the PyPI index, so the plain
+`--upgrade` form cannot replace the installed distribution (SRS-343, SRS-440)."""
 
 RELEASE_CHECK_PROGRAM_NAME = "usereq"
 """! @brief Program identifier used in release-check idle-state cache directory.
@@ -978,6 +988,60 @@ def _resolve_github_upgrade_tag() -> str:
     return resolved_tag
 
 
+def _installed_tool_uses_registry_source() -> bool:
+    """!
+    @brief Detect whether the installed `cli-usereq` uv tool requirement resolves from the PyPI index.
+    @details Resolves the effective uv tool root through `uv tool dir` and reads the canonical
+    `TOOL_RECEIPT_FILENAME` requirement record of `TOOL_PROGRAM_NAME`. A record declaring any
+    `NON_REGISTRY_REQUIREMENT_KEYS` entry (`git`, `url`, `path`, `editable`, `rev`, `tag`,
+    `branch`) reports a non-registry source: `uv tool install <name> --upgrade` then re-resolves
+    that non-registry source instead of the PyPI index, so a `--develop` installation would never
+    return to the production channel (SRS-440). Missing `uv`, a failing `uv tool dir`, an absent
+    receipt, an unparsable receipt, and non-mapping payloads all report the registry assumption so
+    the documented SRS-343 command stays byte-identical when the source cannot be proven
+    non-registry. Complexity: O(1) plus one `uv tool dir` subprocess. Side effects: one read-only
+    subprocess and one read-only file read.
+    @return {bool} True when the installed requirement is registry-sourced or undeterminable;
+    False when the receipt records a non-PyPI source.
+    @note Command construction only: this helper never mutates the tool environment.
+    @see run_upgrade
+    @satisfies SRS-343, SRS-440
+    """
+    try:
+        result = subprocess.run(
+            ["uv", "tool", "dir"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return True
+    if result.returncode != 0:
+        return True
+    receipt = (
+        Path(str(result.stdout).strip()) / TOOL_PROGRAM_NAME / TOOL_RECEIPT_FILENAME
+    )
+    try:
+        with receipt.open("rb") as handle:
+            payload = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return True
+    tool_section = payload.get("tool")
+    if not isinstance(tool_section, dict):
+        return True
+    requirements = tool_section.get("requirements")
+    if not isinstance(requirements, list):
+        return True
+    for requirement in requirements:
+        if not isinstance(requirement, dict):
+            continue
+        if str(requirement.get("name", "")).lower() != TOOL_PROGRAM_NAME:
+            continue
+        if any(key in requirement for key in NON_REGISTRY_REQUIREMENT_KEYS):
+            return False
+    return True
+
+
 def run_upgrade(use_github: bool = False, force: bool = False) -> None:
     """!
     @brief Executes the upgrade using uv from the PyPI index or the latest GitHub release tag.
@@ -989,9 +1053,16 @@ def run_upgrade(use_github: bool = False, force: bool = False) -> None:
     by default (SRS-343); without `force` no forcing option is passed so the standard
     install/update process runs unchanged, and `--upgrade` is appended so uv resolves and
     installs the latest PyPI version instead of reusing the already-installed tool version.
-    When `force` is True the command becomes the forced reinstallation form
-    `uv tool install cli-usereq --force --reinstall --refresh` (SRS-509).
-    When `use_github` is True, resolves the latest GitHub release tag through
+    When the installed tool requirement does not resolve from the PyPI index (for example an
+    installation produced by `--upgrade --develop`), `--upgrade` alone re-resolves that
+    non-registry source and never installs the production release, so
+    `_installed_tool_uses_registry_source()` decides whether the single uv option `--force`
+    must be appended: forcing makes uv discard the recorded git/URL/path requirement and
+    install the PyPI distribution, which restores the production channel and downgrades when
+    the production version is older (SRS-440). On a registry-sourced installation the command
+    stays byte-identical to the SRS-343 form. When `force` is True the command becomes the
+    forced reinstallation form `uv tool install cli-usereq --force --reinstall --refresh`
+    (SRS-509). When `use_github` is True, resolves the latest GitHub release tag through
     `_resolve_github_upgrade_tag()` (SRS-451) and appends
     `--from git+https://github.com/Ogekuri/CLI-useReq.git@<TAG>` regardless of the branch
     holding that tag (SRS-440, SRS-452, SRS-510); the git source spec re-resolves the
@@ -1001,8 +1072,9 @@ def run_upgrade(use_github: bool = False, force: bool = False) -> None:
     @throws {ReqError} When the SRS-451 GitHub tag resolution fails (exit code 1, SRS-453) or
     when the uv process fails.
     @return {None} Function return value.
-    @note Tag resolution precedes the platform gate so the non-Linux manual command embeds the
-    resolved tag (SRS-452).
+    @note Tag resolution and the installed-source probe precede the platform gate so the
+    non-Linux manual command embeds the resolved tag and the effective source switch
+    (SRS-452).
     @note The `--develop`/`--dev` argv alias mapping to `use_github=True` and the `--force`
     argv token mapping to `force=True` are resolved by `main(...)` before calling this
     function.
@@ -1018,6 +1090,8 @@ def run_upgrade(use_github: bool = False, force: bool = False) -> None:
         command += ["--force", "--reinstall", "--refresh"]
     elif not use_github:
         command += ["--upgrade"]
+        if not _installed_tool_uses_registry_source():
+            command += ["--force"]
     if use_github:
         resolved_tag = _resolve_github_upgrade_tag()
         command += ["--from", f"{GITHUB_UPGRADE_SOURCE}@{resolved_tag}"]
