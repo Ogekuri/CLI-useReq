@@ -3506,6 +3506,20 @@ SUPPORTED_EXTENSIONS = frozenset(
 )
 """File extensions considered during source directory scanning."""
 
+EMPTY_REFERENCES_DIRECTIVE = """<system_directive>
+[STATUS]: NO_SOURCE_CODE_DETECTED
+[FILE_CONTENT]: EMPTY_REFERENCES
+
+[CONTEXT_UPDATE]
+This repository is structured exclusively for documentation or otherwise lacks analyzable source code. Consequently, this `REFERENCES.md` file contains no source code mappings or references.
+
+[AGENT_INSTRUCTIONS]
+1. Do not attempt to search, extract, or index source code references within this project.
+2. Update current context to reflect that the `req-references` skill and the `/req-references` command are **UNNECESSARY** and **DEPRECATED** for this specific repository.
+3. Do not invoke or prompt the user to execute the `/req-references` command during any future interactions within this workspace.
+</system_directive>"""
+"""Canonical empty-references system-directive payload emitted when no supported source file is selected (SRS-581, SRS-582)."""
+
 
 def _collect_source_files(src_dirs: list[str], project_base: Path) -> list[str]:
     """!
@@ -4094,17 +4108,24 @@ def run_files_find(args_list: list[str], enable_line_numbers: bool = False) -> N
 def run_references(args: Namespace) -> None:
     """!
     @brief Execute references: generate markdown for project source files.
-    @details Implements the run_references function behavior with deterministic control flow.
-    @param args Input parameter `args`.
+    @details Resolves the mandatory ``--prj-base`` project base and the configured ``src-dir``
+    entries, selects supported source files from the git index, and prints the files-structure
+    section followed by generated references markdown. When the selection is empty, prints the
+    canonical :data:`EMPTY_REFERENCES_DIRECTIVE` payload instead and returns successfully so
+    documentation-only repositories produce a deterministic empty-references marker (SRS-581,
+    SRS-582). Complexity: O(F) file analysis over F selected files. Side effects: stdout writes.
+    @param args {Namespace} Parsed CLI namespace carrying the mandatory ``--prj-base`` value.
     @return {None} Function return value.
-    @satisfies SRS-177, SRS-180, SRS-181, SRS-235, SRS-396, SRS-408
+    @throws {ReqError} Raised when ``--prj-base`` is absent or a configured directory value is invalid.
+    @satisfies SRS-177, SRS-180, SRS-181, SRS-235, SRS-396, SRS-408, SRS-581, SRS-582
     """
     from .generate_markdown import generate_markdown
 
     project_base, src_dirs = _resolve_project_src_dirs(args)
     files = _collect_source_files(src_dirs, project_base)
     if not files:
-        raise ReqError("Error: no source files found in configured directories.", 1)
+        print(EMPTY_REFERENCES_DIRECTIVE)
+        return
     md = generate_markdown(files, verbose=VERBOSE, output_base=project_base)
     files_structure = _format_files_structure_markdown(files, project_base)
     print(f"{files_structure}\n\n{md}")

@@ -2,7 +2,7 @@
 title: "useReq Requirements"
 description: "Software Requirements Specification"
 date: "2026-11-12"
-version: 1.26
+version: 1.27
 author: "Ogekuri"
 scope:
   paths:
@@ -303,6 +303,8 @@ No explicit performance optimizations identified.
 - **SRS-179**: MUST implement the following behavior: The `compress` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
 - **SRS-180**: MUST implement the following behavior: For `references`, `compress`, `find`, and `static-check`, `EXCLUDED_DIRS` MUST contain only directory names that are not already excluded by `.gitignore`.
 - **SRS-181**: MUST implement the following behavior: Source-file selection for `references` and `compress` MUST be derived from `git ls-files` relative paths and MUST NOT rely on recursive filesystem walking.
+- **SRS-581**: MUST implement the following behavior: When `references` selects zero supported source files, it MUST print the canonical empty-references system-directive payload to stdout and MUST exit with code 0.
+- **SRS-582**: MUST implement the following behavior: The SRS-581 payload MUST emit the literal lines `<system_directive>`, `[STATUS]: NO_SOURCE_CODE_DETECTED`, `[FILE_CONTENT]: EMPTY_REFERENCES`, `[CONTEXT_UPDATE]`, `[AGENT_INSTRUCTIONS]`, and `</system_directive>` with no source-file mapping output.
 
 ### 3.11 Doxygen Parsing and Field Emission
 - **SRS-213**: MUST implement the following behavior: The parser MUST recognize these Doxygen tags: @brief, @details, @param, @param[in], @param[out], @param[in,out], @return, @retval, @exception, @throws, @warning, @deprecated, @note, @see, @sa, @satisfies, @pre, @post.
@@ -377,6 +379,7 @@ No explicit performance optimizations identified.
 - **SRS-558**: MUST include unit tests in `tests/test_pre_release_check.py` verifying SRS-556 `dist/` independence and SRS-476/SRS-482 temporary build directory lifecycle.
 - **SRS-565**: MUST include unit tests in `tests/test_build_script.py` verifying SRS-548 dist/ cleanup, SRS-566 git availability, SRS-567 and SRS-569 intermediate removal, SRS-568 git-tracked preservation warnings, and SRS-570 summary and exit-code semantics.
 - **SRS-573**: MUST include unit tests in `tests/test_release_workflow.py` verifying SRS-572 optional pre-built `dist/` consumption and absence of build, dependency-sync, test, and pre-release verification stages.
+- **SRS-583**: MUST include unit tests in `tests/test_files_commands.py` verifying that `references` prints the SRS-582 empty-reference payload and exits with code 0 when no supported source file exists.
 
 ## 5. Static Code Analysis Requirements
 

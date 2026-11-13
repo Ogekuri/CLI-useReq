@@ -194,7 +194,7 @@
         - `load_static_check_from_config(...)`: load static-check settings from `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when the `"static-check"` entry is absent [`src/usereq/cli.py`]
         - `dispatch_static_check_for_file(..., fail_only=True, project_base=...)`: dispatch checker for one file/language with output suppression on pass and runtime context [`src/usereq/static_check.py`]
           - `StaticCheckBase.run(...)`: execute the SRS-427 pre-flight availability probe, then the checker; unavailable checkers emit header, `Result: FAIL`, and English evidence without raising while remaining checks continue (SRS-428); suppress output for passing files when `fail_only=True` [`src/usereq/static_check.py`]
-      - `run_references(...)`: generate references for project-selected source files [`src/usereq/cli.py`]
+      - `run_references(...)`: generate references for project-selected source files; when the selection is empty it prints the canonical `EMPTY_REFERENCES_DIRECTIVE` system-directive payload and exits successfully instead of failing (SRS-581, SRS-582) [`src/usereq/cli.py`]
         - `_resolve_project_src_dirs(...)`: resolve project base and effective source dirs [`src/usereq/cli.py`]
         - `_collect_source_files(...)`: select files via `git ls-files` + extension filtering (including JavaScript `.js` and `.mjs`) [`src/usereq/cli.py`]
         - `generate_markdown(...)`: emit references markdown [`src/usereq/generate_markdown.py`]

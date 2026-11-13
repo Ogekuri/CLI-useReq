@@ -1070,6 +1070,31 @@ class TestReferencesCommand:
         captured = capsys.readouterr()
         assert "--prj-base" in captured.err
 
+    def test_references_without_source_files_emits_empty_directive(
+        self, capsys, repo_temp_dir, monkeypatch
+    ):
+        """SRS-581/SRS-582/SRS-583: empty source selection prints the empty-references directive.
+
+        expected_output: exit code 0 and stdout equal to EMPTY_REFERENCES_DIRECTIVE plus one
+        trailing newline, with no files-structure or source mapping content.
+        """
+        src = repo_temp_dir / "empty_src"
+        src.mkdir()
+        (src / "notes.txt").write_text("documentation only\n", encoding="utf-8")
+        req_dir = cli_module.get_global_config_path().parent
+        req_dir.mkdir(parents=True, exist_ok=True)
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["empty_src"]}
+        (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
+        monkeypatch.chdir(repo_temp_dir)
+
+        rc = main(["references", "--prj-base", str(repo_temp_dir)])
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert captured.out == cli_module.EMPTY_REFERENCES_DIRECTIVE + "\n"
+        assert "# Files Structure" not in captured.out
+        assert captured.err == ""
+
     def test_references_with_here(self, capsys, repo_temp_dir, monkeypatch):
         """CMD-009: Must load src-dir from the global configuration."""
         src = repo_temp_dir / "cfg_lib"
