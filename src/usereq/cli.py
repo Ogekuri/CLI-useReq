@@ -205,6 +205,7 @@ def provider_skills_path(provider: str) -> str:
     """
     return format_home_relative_path(provider_skills_root(provider))
 
+
 INVALID_WT_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]')
 """! @brief Regex matching characters invalid in both Linux and Windows directory names."""
 
@@ -283,7 +284,15 @@ TOOL_PROGRAM_NAME = "cli-usereq"
 TOOL_RECEIPT_FILENAME = "uv-receipt.toml"
 """! @brief Canonical uv tool receipt filename recording the installed requirement source (SRS-343, SRS-440)."""
 
-NON_REGISTRY_REQUIREMENT_KEYS = ("git", "url", "path", "editable", "rev", "tag", "branch")
+NON_REGISTRY_REQUIREMENT_KEYS = (
+    "git",
+    "url",
+    "path",
+    "editable",
+    "rev",
+    "tag",
+    "branch",
+)
 """! @brief Receipt requirement keys marking a uv tool source other than the PyPI index (SRS-440).
 @details `uv` records the resolved source of every installed tool requirement in its receipt;
 any of these keys means the requirement does not resolve from the PyPI index, so the plain
@@ -491,9 +500,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         dest="config_get",
-        help=(
-            "Print the JSON value stored at the canonical configuration PATH."
-        ),
+        help=("Print the JSON value stored at the canonical configuration PATH."),
     )
     parser.add_argument(
         "--set",
@@ -501,9 +508,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar=("PATH", "VALUE"),
         default=None,
         dest="config_set",
-        help=(
-            "Validate and store VALUE at the canonical configuration PATH."
-        ),
+        help=("Validate and store VALUE at the canonical configuration PATH."),
     )
     parser.add_argument(
         "--unset",
@@ -709,10 +714,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="WT_NAME",
         default=None,
         dest="git_wt_delete",
-        help=(
-            "Remove a git worktree and branch by name "
-            "(requires --git-base)."
-        ),
+        help=("Remove a git worktree and branch by name (requires --git-base)."),
     )
     # Bare analysis subcommands (SRS-408). Legacy --prefixed forms are not parsed
     # (SRS-409); --prj-base is mandatory exactly per SRS-396/SRS-410 and --git-base is
@@ -829,10 +831,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "find",
         parents=[base_options, line_number_options],
-        usage=(
-            "req find --prj-base PRJ_BASE "
-            "[--enable-line-numbers] TAG PATTERN"
-        ),
+        usage=("req find --prj-base PRJ_BASE [--enable-line-numbers] TAG PATTERN"),
         help=(
             "Find and extract specific constructs from the configured src-dir: "
             "find TAG PATTERN. TAG accepts pipe-separated tags; the per-language "
@@ -876,9 +875,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser(
         "uninstall",
         usage="req uninstall",
-        help=(
-            "Remove req-* skill artifacts of the configured providers."
-        ),
+        help=("Remove req-* skill artifacts of the configured providers."),
     )
 
     sub = subparsers.add_parser(
@@ -960,7 +957,9 @@ def maybe_print_version(argv: list[str], pypi_latest: Optional[str] = None) -> b
             github_latest = None
         pypi_value = pypi_latest if pypi_latest else UNKNOWN_VERSION_LABEL
         github_value = github_latest if github_latest else UNKNOWN_VERSION_LABEL
-        print(f"{'Current Installed':<{VERSION_REPORT_LABEL_WIDTH}}: {installed_version}")
+        print(
+            f"{'Current Installed':<{VERSION_REPORT_LABEL_WIDTH}}: {installed_version}"
+        )
         print(f"{'Latest @ PyPI':<{VERSION_REPORT_LABEL_WIDTH}}: {pypi_value}")
         print(f"{'Latest @ GitHub':<{VERSION_REPORT_LABEL_WIDTH}}: {github_value}")
         return True
@@ -2479,9 +2478,7 @@ def apply_disable_static_check_specs(specs: list[str]) -> None:
         else:
             canonical_lang = STATIC_CHECK_LANG_CANONICAL.get(spec.strip().lower())
             if canonical_lang is None:
-                raise ReqError(
-                    f"Error: unknown static-check language '{spec}'.", 1
-                )
+                raise ReqError(f"Error: unknown static-check language '{spec}'.", 1)
             merged.pop(canonical_lang, None)
     for lang in [key for key, entries in merged.items() if not entries]:
         del merged[lang]
@@ -2567,8 +2564,7 @@ def _non_symlink_regular_files(directory: Path) -> list[Path]:
     entries = [
         Path(entry.path)
         for entry in os.scandir(directory)
-        if entry.is_file(follow_symlinks=False)
-        and not entry.name.startswith(".")
+        if entry.is_file(follow_symlinks=False) and not entry.name.startswith(".")
     ]
     return sorted(entries)
 
@@ -2619,9 +2615,7 @@ def generate_templates_file_names() -> list[str]:
     @return {list[str]} Bare template file names in deterministic sorted order.
     @satisfies SRS-498, SRS-514, SRS-516
     """
-    return [
-        file_path.name for file_path in _non_symlink_regular_files(templates_dir())
-    ]
+    return [file_path.name for file_path in _non_symlink_regular_files(templates_dir())]
 
 
 def _print_resource_report() -> None:
@@ -2871,6 +2865,7 @@ def prune_empty_dirs(root: Path) -> None:
         except OSError:
             continue
 
+
 def remove_generated_resources() -> None:
     """!
     @brief Removes `req-*` skill artifacts generated by the tool from user-level provider directories.
@@ -2903,6 +2898,7 @@ def remove_generated_resources() -> None:
         if root.is_dir():
             prune_empty_dirs(root)
 
+
 def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
     """!
     @brief Render one Unicode box-drawing table from headers and rows.
@@ -2919,9 +2915,7 @@ def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
     def _line(cells: list[str]) -> str:
         return (
             "│ "
-            + " │ ".join(
-                cell.ljust(widths[index]) for index, cell in enumerate(cells)
-            )
+            + " │ ".join(cell.ljust(widths[index]) for index, cell in enumerate(cells))
             + " │"
         )
 
@@ -3020,9 +3014,7 @@ def run_show(args: Namespace) -> None:
     doc_dir_value = str(config["docs-dir"])
     test_dir_value = str(config["tests-dir"])
     src_dir_value = ", ".join(str(item) for item in config["src-dir"])
-    auto_install_state = (
-        "enabled" if load_auto_install_enabled() else "disabled"
-    )
+    auto_install_state = "enabled" if load_auto_install_enabled() else "disabled"
     print("Active Configuration")
     print(
         _render_simple_table(
@@ -3100,11 +3092,7 @@ def run_show(args: Namespace) -> None:
     print()
     print("Static Checks")
     if sc_rows:
-        print(
-            _render_simple_table(
-                ["Language", "Module", "Cmd", "Params"], sc_rows
-            )
-        )
+        print(_render_simple_table(["Language", "Module", "Cmd", "Params"], sc_rows))
     else:
         print("(none)")
 
@@ -3197,6 +3185,7 @@ def run_set_directories(args: Namespace) -> None:
         log(f"OK: tests-dir set to {normalized_tests}")
     if normalized_srcs is not None:
         log(f"OK: src-dir set to {', '.join(normalized_srcs)}")
+
 
 def _validate_enable_static_check_command_executables(
     static_check_config: Mapping[str, list[dict[str, Any]]],
@@ -3368,7 +3357,6 @@ def run(args: Namespace) -> None:
     print(f"Installation completed successfully in {home_value}")
     _print_resource_report()
 
-
     # Build and print installation report table with per-provider skills details.
     def _format_install_table(
         skills_map: dict[str, set[str]],
@@ -3442,9 +3430,9 @@ def run(args: Namespace) -> None:
                 provider_part = (
                     provider_lines[idx] if idx < len(provider_lines) else ""
                 ).ljust(provider_width)
-                skill_part = (
-                    skill_lines[idx] if idx < len(skill_lines) else ""
-                ).ljust(skills_width)
+                skill_part = (skill_lines[idx] if idx < len(skill_lines) else "").ljust(
+                    skills_width
+                )
                 lines.append(f"\u2502 {provider_part} \u2502 {skill_part} \u2502")
             return lines
 
@@ -3471,7 +3459,9 @@ def run(args: Namespace) -> None:
         @param line {str} One already-rendered table line.
         @return {str} Line with border glyphs wrapped in ANSI bright-red and reset sequences.
         """
-        border_chars = frozenset("\u250c\u252c\u2510\u251c\u253c\u2524\u2514\u2534\u2518\u2500\u2502")
+        border_chars = frozenset(
+            "\u250c\u252c\u2510\u251c\u253c\u2524\u2514\u2534\u2518\u2500\u2502"
+        )
         return "".join(
             f"{ANSI_BRIGHT_RED}{char}{ANSI_RESET}" if char in border_chars else char
             for char in line
@@ -3748,12 +3738,15 @@ def _require_git_base(args: Namespace) -> Path:
     """
     return resolve_git_root(_require_git_base_value(args))
 
+
 def run_git_check(args: Namespace) -> None:
     """!
     @brief Execute --git-check: verify clean git status and valid HEAD.
     @param args Parsed CLI namespace.
     @return {None} Function return value.
     @throws ReqError On git status unclear or when `--git-base` is outside a git repository.
+    @details On failure prints `ERROR: Git status unclear!` to stdout per SRS-312 before
+      raising; `main()` additionally forwards the message to stderr via ReqError handling.
     @satisfies SRS-311, SRS-312, SRS-391, SRS-397
     """
     git_path = _require_git_base(args)
@@ -3771,8 +3764,10 @@ def run_git_check(args: Namespace) -> None:
             timeout=30,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        print("ERROR: Git status unclear!")
         raise ReqError("ERROR: Git status unclear!", 1)
     if result.returncode != 0:
+        print("ERROR: Git status unclear!")
         raise ReqError("ERROR: Git status unclear!", 1)
 
 

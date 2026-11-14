@@ -170,7 +170,15 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
     def test_no_project_local_files_are_created(self) -> None:
         """SRS-388: no `.req` directory or provider dirs are created in the project."""
         self.assertFalse((self.TEST_DIR / ".req").exists())
-        for hidden in (".claude", ".codex", ".copilot", ".gemini", ".openclaw", ".pi", ".opencode"):
+        for hidden in (
+            ".claude",
+            ".codex",
+            ".copilot",
+            ".gemini",
+            ".openclaw",
+            ".pi",
+            ".opencode",
+        ):
             self.assertFalse(
                 (self.TEST_DIR / hidden).exists(),
                 f"The project must not contain {hidden}",
@@ -200,11 +208,11 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
             p
             for p in EXPECTED_PROMPTS
             if "%%ARGS%%"
-            in (cli.RESOURCE_ROOT / "prompts" / f"{p}.md").read_text(
-                encoding="utf-8"
-            )
+            in (cli.RESOURCE_ROOT / "prompts" / f"{p}.md").read_text(encoding="utf-8")
         ]
-        self.assertTrue(with_args, "bundled prompts must include argument-based prompts")
+        self.assertTrue(
+            with_args, "bundled prompts must include argument-based prompts"
+        )
         prompt = with_args[0]
         skill = self.HOME / ".claude" / "skills" / f"req-{prompt}" / "SKILL.md"
         content = skill.read_text(encoding="utf-8")
@@ -224,18 +232,12 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         for provider, root in skill_roots.items():
             for prompt in EXPECTED_PROMPTS:
                 skill = root / f"req-{prompt}" / "SKILL.md"
-                self.assertTrue(
-                    skill.exists(), f"Missing {provider} skill {skill}"
-                )
+                self.assertTrue(skill.exists(), f"Missing {provider} skill {skill}")
 
     def test_skill_front_matter_structure(self) -> None:
         """SRS-368/SRS-389: SKILL.md has name and description, never model/tools."""
         skill = (
-            self.HOME
-            / ".claude"
-            / "skills"
-            / f"req-{EXPECTED_PROMPTS[0]}"
-            / "SKILL.md"
+            self.HOME / ".claude" / "skills" / f"req-{EXPECTED_PROMPTS[0]}" / "SKILL.md"
         )
         content = skill.read_text(encoding="utf-8")
         self.assertTrue(content.startswith("---"))
@@ -248,11 +250,7 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
     def test_skills_have_no_model_or_tools_fields(self) -> None:
         """SRS-389: generated skills contain no model/tools fields."""
         skill = (
-            self.HOME
-            / ".claude"
-            / "skills"
-            / f"req-{EXPECTED_PROMPTS[0]}"
-            / "SKILL.md"
+            self.HOME / ".claude" / "skills" / f"req-{EXPECTED_PROMPTS[0]}" / "SKILL.md"
         )
         content = skill.read_text(encoding="utf-8")
         self.assertNotIn("model:", content)
@@ -285,17 +283,13 @@ class TestUserLevelInstall(HomeIsolatedTestCase):
         if "flowchart" not in EXPECTED_PROMPTS:
             self.skipTest("flowchart.md template not bundled")
         self.assertTrue(
-            (
-                self.HOME / ".claude" / "skills" / "req-flowchart" / "SKILL.md"
-            ).exists()
+            (self.HOME / ".claude" / "skills" / "req-flowchart" / "SKILL.md").exists()
         )
         self.assertTrue(
             (self.HOME / ".pi" / "agent" / "skills" / "req-flowchart").is_dir()
         )
         self.assertTrue(
-            (
-                self.HOME / ".codex" / "skills" / "req-flowchart" / "SKILL.md"
-            ).exists()
+            (self.HOME / ".codex" / "skills" / "req-flowchart" / "SKILL.md").exists()
         )
         self.assertTrue(
             (
@@ -535,18 +529,14 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         (self.resource_root / "prompts").mkdir(parents=True, exist_ok=True)
         self.original_resource_root = cli.RESOURCE_ROOT
         cli.RESOURCE_ROOT = self.resource_root
-        self.addCleanup(
-            setattr, cli, "RESOURCE_ROOT", self.original_resource_root
-        )
+        self.addCleanup(setattr, cli, "RESOURCE_ROOT", self.original_resource_root)
 
     def test_guidelines_dir_is_fixed_home_relative_path(self) -> None:
         """SRS-360: GUIDELINES_DIR resolves to packaged resources and is not configurable."""
         self.assertEqual(cli.guidelines_dir(), self.guidelines)
         project = Path(tempfile.mkdtemp(prefix="usereq-guidelines-"))
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
-        rc = self.run_cli(
-            ["--prj-base", str(project), "--enable", "codex", "install"]
-        )
+        rc = self.run_cli(["--prj-base", str(project), "--enable", "codex", "install"])
         self.assertEqual(rc, 0)
         self.assertNotIn(
             "guidelines-dir",
@@ -655,9 +645,7 @@ class TestGuidelinesDirectory(HomeIsolatedTestCase):
         for expected_line in expected_output:
             self.assertIn(expected_line, lines)
         self.assertNotIn("Linked.md", mock_stdout.getvalue())
-        self.assertNotIn(
-            "~/resources/guidelines/RFC2119.md", mock_stdout.getvalue()
-        )
+        self.assertNotIn("~/resources/guidelines/RFC2119.md", mock_stdout.getvalue())
 
     def test_install_report_keeps_symlinked_resource_root_lexical(self) -> None:
         """SRS-515/SRS-517: printed resource paths never resolve symbolic links."""
@@ -868,9 +856,7 @@ class TestInstallationSummaryTable(HomeIsolatedTestCase):
         """SRS-290/SRS-293: Skills Installed wraps at a maximum width of 50 characters."""
         output = self.capture_install("codex")
         clean = self.strip_ansi(output)
-        table_lines = [
-            line for line in clean.splitlines() if line.startswith("\u2502")
-        ]
+        table_lines = [line for line in clean.splitlines() if line.startswith("\u2502")]
         self.assertTrue(table_lines, "Installation table must be rendered")
         for line in table_lines:
             cells = line.split("\u2502")
@@ -890,9 +876,7 @@ class TestUserLevelPathHelpers(unittest.TestCase):
     def test_get_global_config_path_under_home(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
             path = cli.get_global_config_path()
-        self.assertEqual(
-            path, Path("/tmp/testhome/.config/usereq/config.json")
-        )
+        self.assertEqual(path, Path("/tmp/testhome/.config/usereq/config.json"))
 
     def test_provider_skills_roots(self) -> None:
         with patch("usereq.cli.home_dir", return_value=Path("/tmp/testhome")):
@@ -985,17 +969,19 @@ class TestGitCheckCommand(HomeIsolatedTestCase):
             os.chdir(prev_cwd)
 
     def test_git_check_on_dirty_repo_fails(self) -> None:
+        """SRS-312: dirty repo prints the error to stdout and exits non-zero."""
         (self.TEST_DIR / "dirty.txt").write_text("dirty", encoding="utf-8")
         prev_cwd = Path.cwd()
         try:
             os.chdir(self.TEST_DIR)
             with (
                 patch("usereq.cli.maybe_notify_newer_version", autospec=True),
-                patch("sys.stdout", new_callable=io.StringIO),
+                patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
                 patch("sys.stderr", new_callable=io.StringIO) as mock_stderr,
             ):
                 rc = cli.main(["--git-check", "--git-base", str(self.TEST_DIR)])
             self.assertNotEqual(rc, 0)
+            self.assertIn("ERROR: Git status unclear!", mock_stdout.getvalue())
             self.assertEqual(
                 mock_stderr.getvalue().strip(), "ERROR: Git status unclear!"
             )
@@ -1136,7 +1122,9 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "bad/name", "--git-base", str(self.TEST_DIR)])
+                rc = cli.main(
+                    ["--git-wt-create", "bad/name", "--git-base", str(self.TEST_DIR)]
+                )
             self.assertNotEqual(rc, 0)
         finally:
             os.chdir(prev_cwd)
@@ -1146,7 +1134,9 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                cli.main(["--git-wt-create", "in valid", "--git-base", str(self.TEST_DIR)])
+                cli.main(
+                    ["--git-wt-create", "in valid", "--git-base", str(self.TEST_DIR)]
+                )
             self.assertEqual(Path.cwd(), self.TEST_DIR)
         finally:
             os.chdir(prev_cwd)
@@ -1157,11 +1147,27 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "usereq-roundtrip-wt", "--git-base", str(self.TEST_DIR), "--prj-base", str(self.TEST_DIR)])
+                rc = cli.main(
+                    [
+                        "--git-wt-create",
+                        "usereq-roundtrip-wt",
+                        "--git-base",
+                        str(self.TEST_DIR),
+                        "--prj-base",
+                        str(self.TEST_DIR),
+                    ]
+                )
             self.assertEqual(rc, 0)
             self.assertTrue(wt_path.is_dir())
             self.assertEqual(Path.cwd(), self.TEST_DIR)
-            rc = cli.main(["--git-wt-delete", "usereq-roundtrip-wt", "--git-base", str(self.TEST_DIR)])
+            rc = cli.main(
+                [
+                    "--git-wt-delete",
+                    "usereq-roundtrip-wt",
+                    "--git-base",
+                    str(self.TEST_DIR),
+                ]
+            )
             self.assertEqual(rc, 0)
             self.assertFalse(wt_path.exists())
         finally:
@@ -1182,9 +1188,20 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-create", "usereq-partial-full", "--git-base", str(self.TEST_DIR), "--prj-base", str(self.TEST_DIR)])
+                rc = cli.main(
+                    [
+                        "--git-wt-create",
+                        "usereq-partial-full",
+                        "--git-base",
+                        str(self.TEST_DIR),
+                        "--prj-base",
+                        str(self.TEST_DIR),
+                    ]
+                )
             self.assertEqual(rc, 0)
-            rc = cli.main(["--git-wt-delete", "usereq-partial", "--git-base", str(self.TEST_DIR)])
+            rc = cli.main(
+                ["--git-wt-delete", "usereq-partial", "--git-base", str(self.TEST_DIR)]
+            )
             self.assertNotEqual(rc, 0)
         finally:
             subprocess.run(
@@ -1210,7 +1227,14 @@ class TestGitWtCreateDeleteCommands(HomeIsolatedTestCase):
         try:
             os.chdir(self.TEST_DIR)
             with patch("usereq.cli.maybe_notify_newer_version", autospec=True):
-                rc = cli.main(["--git-wt-delete", "does-not-exist", "--git-base", str(self.TEST_DIR)])
+                rc = cli.main(
+                    [
+                        "--git-wt-delete",
+                        "does-not-exist",
+                        "--git-base",
+                        str(self.TEST_DIR),
+                    ]
+                )
             self.assertNotEqual(rc, 0)
         finally:
             os.chdir(prev_cwd)
@@ -1459,9 +1483,7 @@ class TestSetDirectoryCommands(HomeIsolatedTestCase):
         return json.loads(config_path.read_text(encoding="utf-8"))
 
     def test_set_docs_dir_persists_value(self) -> None:
-        rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--set-docs-dir", "docs"]
-        )
+        rc = self.run_cli(["--prj-base", str(self.TEST_DIR), "--set-docs-dir", "docs"])
         self.assertEqual(rc, 0)
         self.assertEqual(self.read_config()["docs-dir"], "docs")
 
@@ -1498,9 +1520,7 @@ class TestSetDirectoryCommands(HomeIsolatedTestCase):
                 "Python=Pylance",
             ]
         )
-        rc = self.run_cli(
-            ["--prj-base", str(self.TEST_DIR), "--set-docs-dir", "docs"]
-        )
+        rc = self.run_cli(["--prj-base", str(self.TEST_DIR), "--set-docs-dir", "docs"])
         self.assertEqual(rc, 0)
         data = self.read_config()
         self.assertEqual(data["docs-dir"], "docs")
@@ -1681,9 +1701,7 @@ class TestUpgradeUninstall(unittest.TestCase):
         with (
             patch("usereq.cli.platform.system", return_value="Linux"),
             patch("usereq.cli.subprocess.run") as mock_run,
-            patch(
-                "usereq.cli.cleanup_release_check_idle_state_cache", autospec=True
-            ),
+            patch("usereq.cli.cleanup_release_check_idle_state_cache", autospec=True),
         ):
             mock_run.return_value.returncode = 0
             cli.run_uninstall()
@@ -1727,9 +1745,7 @@ class TestProviderLifecycleCommands(HomeIsolatedTestCase):
 
     def test_disable_provider_removes_entries(self) -> None:
         """SRS-413: --disable removes the provider from the persisted array."""
-        self.run_cli(
-            ["--enable", "codex", "--enable", "pi"]
-        )
+        self.run_cli(["--enable", "codex", "--enable", "pi"])
         rc = self.run_cli(["--disable", "pi"])
         self.assertEqual(rc, 0)
         self.assertEqual(self._read_config()["providers"], ["codex"])
@@ -1757,7 +1773,11 @@ class TestProviderLifecycleCommands(HomeIsolatedTestCase):
 
     def test_legacy_provider_flag_is_not_parsed(self) -> None:
         """SRS-034: --provider, --enable-provider, and --disable-provider are removed legacy flags."""
-        for legacy in (["--provider", "pi"], ["--enable-provider", "pi"], ["--disable-provider", "pi"]):
+        for legacy in (
+            ["--provider", "pi"],
+            ["--enable-provider", "pi"],
+            ["--disable-provider", "pi"],
+        ):
             with (
                 patch("sys.stderr", new_callable=io.StringIO),
                 self.assertRaises(SystemExit),
@@ -1813,11 +1833,18 @@ class TestStaticCheckLifecycleCommands(HomeIsolatedTestCase):
     def test_disable_static_check_whole_language(self) -> None:
         """SRS-414: bare LANG removes the whole language key."""
         self.run_cli(
-            ["--enable-static-check", "Python=Pylance", "--enable-static-check", "C=Dummy"]
+            [
+                "--enable-static-check",
+                "Python=Pylance",
+                "--enable-static-check",
+                "C=Dummy",
+            ]
         )
         rc = self.run_cli(["--disable-static-check", "Python"])
         self.assertEqual(rc, 0)
-        self.assertEqual(self._read_config()["static-check"], {"C": [{"module": "Dummy"}]})
+        self.assertEqual(
+            self._read_config()["static-check"], {"C": [{"module": "Dummy"}]}
+        )
 
     def test_disable_static_check_unknown_language_fails(self) -> None:
         """SRS-422: unknown language token exits with code 1."""
@@ -1883,9 +1910,7 @@ class TestAutoInstallLifecycle(HomeIsolatedTestCase):
 
     def test_upgrade_auto_install_disabled_skips_install(self) -> None:
         """SRS-420/SRS-421: disabled auto-install skips the install flow."""
-        self.run_cli(
-            ["--enable", "pi", "--disable-auto-install"]
-        )
+        self.run_cli(["--enable", "pi", "--disable-auto-install"])
         with (
             patch("usereq.cli.run_upgrade"),
             patch("usereq.cli.run_install") as mock_install,
@@ -1966,9 +1991,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
 
     def test_show_providers_table_is_alphabetical_with_skills_path(self) -> None:
         """SRS-462/SRS-463/SRS-485/SRS-487/SRS-488: every configurable provider row."""
-        self.run_cli(
-            ["--enable", "pi", "--enable", "openclaw", "--enable", "codex"]
-        )
+        self.run_cli(["--enable", "pi", "--enable", "openclaw", "--enable", "codex"])
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["show"])
         self.assertEqual(rc, 0)
@@ -1990,9 +2013,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             "Installation Status", 1
         )[0]
         rows = [
-            line
-            for line in providers_table.splitlines()
-            if line.startswith("\u2502 ")
+            line for line in providers_table.splitlines() if line.startswith("\u2502 ")
         ]
         # Header row plus exactly every configurable provider (SRS-462).
         self.assertEqual(len(rows), 1 + len(EXPECTED_SKILL_ROOTS))
@@ -2033,9 +2054,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             "Static Checks", 1
         )[0]
         rows = [
-            line
-            for line in status_section.splitlines()
-            if line.startswith("\u2502 ")
+            line for line in status_section.splitlines() if line.startswith("\u2502 ")
         ]
         self.assertEqual(
             [cell.strip() for cell in rows[0].split("\u2502")[1:-1]],
@@ -2051,7 +2070,7 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
             self.assertEqual(cells[2], "pi")
             self.assertEqual(cells[3], "yes")
             self.assertEqual(cells[4], "OK")
-            pair = (cells[1][len("req-"):], cells[2])
+            pair = (cells[1][len("req-") :], cells[2])
             seen_pairs.add(pair)
             row_order.append(pair)
         self.assertEqual(seen_pairs, expected_pairs)

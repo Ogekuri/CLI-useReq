@@ -194,7 +194,9 @@ def _collect_reference_rendered_elements(filepath: Path) -> list:
 
     children_map: Dict[int, List] = {}
     for element in definitions:
-        if getattr(element, "depth", 0) <= 0 or not getattr(element, "parent_name", None):
+        if getattr(element, "depth", 0) <= 0 or not getattr(
+            element, "parent_name", None
+        ):
             continue
         for top in top_level:
             if (
@@ -239,8 +241,10 @@ def _count_file_level_doxygen_tags(filepath: Path) -> Dict[str, int]:
     file_tag_pattern = re.compile(r"(?<!\w)(?:@|\\)file\b")
     comment_elements = sorted(
         [
-            element for element in elements
-            if element.element_type in (ElementType.COMMENT_SINGLE, ElementType.COMMENT_MULTI)
+            element
+            for element in elements
+            if element.element_type
+            in (ElementType.COMMENT_SINGLE, ElementType.COMMENT_MULTI)
             and element.name != "inline"
         ],
         key=lambda element: (element.line_start, element.line_end),
@@ -277,8 +281,9 @@ def _run_cli_capture(args: list[str]) -> tuple[int, str, str]:
     """! @brief Run CLI main() capturing stdout/stderr as plain strings."""
     stdout_buffer = io.StringIO()
     stderr_buffer = io.StringIO()
-    with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(
-        stderr_buffer
+    with (
+        contextlib.redirect_stdout(stdout_buffer),
+        contextlib.redirect_stderr(stderr_buffer),
     ):
         rc = main(args)
     return rc, stdout_buffer.getvalue(), stderr_buffer.getvalue()
@@ -337,7 +342,9 @@ def _format_tag_counts_line(tag_counts: Dict[str, int]) -> str:
     )
 
 
-def _print_file_tag_counts(phase: str, filepath: Path, tag_counts: Dict[str, int]) -> None:
+def _print_file_tag_counts(
+    phase: str, filepath: Path, tag_counts: Dict[str, int]
+) -> None:
     """! @brief Print one per-file Doxygen field report line for debugging and auditability."""
     print(
         f"[{phase}] {filepath.as_posix()} | "
@@ -456,9 +463,7 @@ def _extract_reference_definition_block_by_signature(
 
 def _assert_doxygen_markdown_order(output: str) -> None:
     """! @brief Assert each contiguous Doxygen bullet block follows DOX-011 ordering."""
-    tag_order = {
-        tag: index for index, tag in enumerate(DOXYGEN_TAG_LABELS_IN_ORDER)
-    }
+    tag_order = {tag: index for index, tag in enumerate(DOXYGEN_TAG_LABELS_IN_ORDER)}
     in_block = False
     last_index = -1
 
@@ -624,7 +629,7 @@ def _assert_cmd_major_doxygen_fields(block: str, context_id: str) -> None:
     required_lines = [
         "- @brief CLI entry-point for the `major` release subcommand.",
         "- @param extra Iterable of CLI argument strings; accepted flag: `--include-patch`.",
-        "- @return None; delegates to `_run_release_command(\"major\", ...)`.",
+        '- @return None; delegates to `_run_release_command("major", ...)`.',
         "- @satisfies REQ-026, REQ-045",
     ]
     for line in required_lines:
@@ -635,9 +640,9 @@ def _assert_cmd_major_doxygen_fields(block: str, context_id: str) -> None:
         "Increments the major semver index (resets minor and patch to 0), merges and pushes"
         in block
     ), f"{context_id}: missing details leading fragment"
-    assert (
-        "immediately before pushing `master` with `--tags`." in block
-    ), f"{context_id}: missing details trailing fragment"
+    assert "immediately before pushing `master` with `--tags`." in block, (
+        f"{context_id}: missing details trailing fragment"
+    )
 
     ordered_labels = ["- @brief", "- @details", "- @param", "- @return", "- @satisfies"]
     previous_idx = -1
@@ -736,8 +741,7 @@ class TestFilesTokensCommand:
 
     def test_files_tokens_basic(self, capsys):
         """CMD-001: Must output token/char summary."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("def hello():\n    return 'world'\n")
             path = f.name
         try:
@@ -751,8 +755,7 @@ class TestFilesTokensCommand:
 
     def test_files_tokens_with_mandatory_bases(self, capsys):
         """CMD-002/SRS-410: Must work with mandatory --prj-base and --git-base."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("x = 1\n")
             path = f.name
         try:
@@ -763,8 +766,7 @@ class TestFilesTokensCommand:
 
     def test_files_tokens_skip_missing(self, capsys):
         """CMD-003: Must skip non-existent files with warning."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("x = 1\n")
             valid_path = f.name
         try:
@@ -791,8 +793,7 @@ class TestFilesReferencesCommand:
             "maybe_notify_newer_version",
             lambda timeout_seconds=2.0: None,
         )
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("class Foo:\n    pass\n")
             path = f.name
         try:
@@ -811,8 +812,7 @@ class TestFilesReferencesCommand:
 
     def test_files_references_no_base_required(self, capsys):
         """CMD-005: Must work without --prj-base."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("x = 1\n")
             path = f.name
         try:
@@ -823,8 +823,7 @@ class TestFilesReferencesCommand:
 
     def test_files_references_verbose_outputs_progress(self, capsys):
         """CMD-029: Progress messages must be printed only with --verbose."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("x = 1\n")
             path = f.name
         try:
@@ -939,8 +938,7 @@ class TestFilesCompressCommand:
             "maybe_notify_newer_version",
             lambda timeout_seconds=2.0: None,
         )
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("# comment\nx = 1\n")
             path = f.name
         try:
@@ -959,8 +957,7 @@ class TestFilesCompressCommand:
 
     def test_files_compress_with_mandatory_bases(self, capsys):
         """CMD-007/SRS-410: Must work with mandatory --prj-base and --git-base."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("x = 1\n")
             path = f.name
         try:
@@ -999,8 +996,7 @@ class TestFilesCompressCommand:
 
     def test_files_compress_verbose_outputs_progress(self, capsys):
         """CMD-029: Progress messages must be printed only with --verbose."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                         delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("x = 1\n")
             path = f.name
         try:
@@ -1112,7 +1108,9 @@ class TestReferencesCommand:
         assert "cfg_lib/main.py" in captured.out
         assert str(repo_temp_dir) not in captured.out
 
-    def test_references_prepends_files_structure(self, capsys, repo_temp_dir, monkeypatch):
+    def test_references_prepends_files_structure(
+        self, capsys, repo_temp_dir, monkeypatch
+    ):
         """CMD-015: Must prepend a fenced markdown tree of scanned source files."""
         src = repo_temp_dir / "cfg_src"
         nested = src / "pkg"
@@ -1144,8 +1142,7 @@ class TestReferencesCommand:
         (src / "code.py").write_text("x = 42\n")
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
-        config = {"docs-dir": "docs/",
-                  "tests-dir": "tests/", "src-dir": ["lib"]}
+        config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["lib"]}
         (req_dir / "config.json").write_text(json.dumps(config))
         monkeypatch.chdir(repo_temp_dir)
         rc = main(["references", "--prj-base", str(repo_temp_dir)])
@@ -1303,7 +1300,9 @@ class TestCompressCommand:
         assert "> Lines: 2-4" in captured.out
         assert "```" in captured.out
 
-    def test_compress_no_line_numbers_by_default(self, capsys, repo_temp_dir, monkeypatch):
+    def test_compress_no_line_numbers_by_default(
+        self, capsys, repo_temp_dir, monkeypatch
+    ):
         """CMD-017: Must suppress <n>: prefixes by default."""
         src = repo_temp_dir / "cfg_mylib"
         src.mkdir()
@@ -1331,7 +1330,9 @@ class TestCompressCommand:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["compress", "--prj-base", str(repo_temp_dir), "--enable-line-numbers"])
+        rc = main(
+            ["compress", "--prj-base", str(repo_temp_dir), "--enable-line-numbers"]
+        )
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: x = 1" in captured.out
@@ -1350,7 +1351,9 @@ class TestTokensCommand:
         captured = capsys.readouterr()
         assert "--prj-base" in captured.err
 
-    def test_tokens_implies_here_and_uses_config_docs_dir(self, capsys, repo_temp_dir, monkeypatch):
+    def test_tokens_implies_here_and_uses_config_docs_dir(
+        self, capsys, repo_temp_dir, monkeypatch
+    ):
         """CMD-016: --tokens must use docs-dir from config under --prj-base."""
         docs = repo_temp_dir / "cfg_docs"
         docs.mkdir()
@@ -1397,7 +1400,9 @@ class TestTokensCommand:
 class TestFindCommandVerbose:
     """CMD-029: Verbose-gated progress output for files-find and find."""
 
-    def test_files_find_default_suppresses_progress(self, capsys, repo_temp_dir, monkeypatch):
+    def test_files_find_default_suppresses_progress(
+        self, capsys, repo_temp_dir, monkeypatch
+    ):
         monkeypatch.setattr(
             cli_module,
             "maybe_notify_newer_version",
@@ -1438,7 +1443,9 @@ class TestFindCommandVerbose:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["--verbose", "find", "--prj-base", str(repo_temp_dir), "FUNCTION", "foo"])
+        rc = main(
+            ["--verbose", "find", "--prj-base", str(repo_temp_dir), "FUNCTION", "foo"]
+        )
         assert rc == 0
         captured = capsys.readouterr()
         assert "OK" in captured.err
@@ -1454,7 +1461,16 @@ class TestFindCommandVerbose:
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["find", "--prj-base", str(repo_temp_dir), "FUNCTION", "foo", "--enable-line-numbers"])
+        rc = main(
+            [
+                "find",
+                "--prj-base",
+                str(repo_temp_dir),
+                "FUNCTION",
+                "foo",
+                "--enable-line-numbers",
+            ]
+        )
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: def foo():" in captured.out
@@ -1679,7 +1695,9 @@ class TestFindCommandsDoxygen:
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
 
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(["find", "--prj-base", str(repo_temp_dir), "FUNCTION", "plain_function"])
+        rc = main(
+            ["find", "--prj-base", str(repo_temp_dir), "FUNCTION", "plain_function"]
+        )
         assert rc == 0
         captured = capsys.readouterr()
         output = captured.out
@@ -1777,7 +1795,9 @@ class TestProjectExamplesDoxygenOccurrences:
     def test_project_examples_doxygen_occurrence_parity_two_phase_flow(self):
         """DOX-018: Validate phase-specific parity for files-references and files-find."""
         files = _collect_project_examples_source_files()
-        assert files, "No parser-compatible source files found in tests/project_examples"
+        assert files, (
+            "No parser-compatible source files found in tests/project_examples"
+        )
 
         print("[FILE-LIST] Complete parser-compatible source files:")
         for index, filepath in enumerate(files, start=1):
@@ -1793,7 +1813,9 @@ class TestProjectExamplesDoxygenOccurrences:
             _merge_tag_counts(phase1_expected_directory, phase1_expected_counts)
             _print_file_tag_counts("PHASE1-BASELINE", filepath, phase1_expected_counts)
 
-            rc, references_stdout, _ = _run_cli_capture(["files-references", str(filepath)])
+            rc, references_stdout, _ = _run_cli_capture(
+                ["files-references", str(filepath)]
+            )
             assert rc == 0, f"phase1::{filepath.as_posix()}: files-references failed"
             phase1_counts = _labels_to_tags_counts(
                 _count_output_doxygen_labels(references_stdout)
@@ -1901,7 +1923,9 @@ class TestProjectExamplesReferencesDoxygenParity:
     ):
         """DOX-019: --references must export all Doxygen fields from project_examples files."""
         if filepath.suffix not in SUPPORTED_EXTENSIONS:
-            pytest.skip(f"Extension {filepath.suffix} not in SUPPORTED_EXTENSIONS for --references")
+            pytest.skip(
+                f"Extension {filepath.suffix} not in SUPPORTED_EXTENSIONS for --references"
+            )
         src = repo_temp_dir / "src"
         src.mkdir()
         copied = src / filepath.name
@@ -1926,7 +1950,9 @@ class TestProjectExamplesReferencesDoxygenParity:
                 )
 
         monkeypatch.chdir(repo_temp_dir)
-        rc, stdout, _ = _run_cli_capture(["references", "--prj-base", str(repo_temp_dir)])
+        rc, stdout, _ = _run_cli_capture(
+            ["references", "--prj-base", str(repo_temp_dir)]
+        )
         assert rc == 0, f"references failed for {filepath.as_posix()}"
         output_tag_counts = _labels_to_tags_counts(_count_output_doxygen_labels(stdout))
         _assert_tag_counts_match(
@@ -2017,7 +2043,9 @@ class TestProjectExamplesFindDoxygenParity:
     ):
         """DOX-021: find must export all Doxygen fields from project_examples files."""
         if filepath.suffix not in SUPPORTED_EXTENSIONS:
-            pytest.skip(f"Extension {filepath.suffix} not in SUPPORTED_EXTENSIONS for --find")
+            pytest.skip(
+                f"Extension {filepath.suffix} not in SUPPORTED_EXTENSIONS for --find"
+            )
         src = repo_temp_dir / "src"
         src.mkdir()
         copied = src / filepath.name
@@ -2092,9 +2120,27 @@ class TestSupportedExtensions:
     def test_all_21_extensions_present(self):
         """All supported source extensions must be in SUPPORTED_EXTENSIONS."""
         expected = {
-            ".c", ".cpp", ".cs", ".ex", ".go", ".hs", ".java", ".js", ".mjs",
-            ".kt", ".lua", ".pl", ".php", ".py", ".rb", ".rs", ".scala",
-            ".sh", ".swift", ".ts", ".zig",
+            ".c",
+            ".cpp",
+            ".cs",
+            ".ex",
+            ".go",
+            ".hs",
+            ".java",
+            ".js",
+            ".mjs",
+            ".kt",
+            ".lua",
+            ".pl",
+            ".php",
+            ".py",
+            ".rb",
+            ".rs",
+            ".scala",
+            ".sh",
+            ".swift",
+            ".ts",
+            ".zig",
         }
         assert expected == SUPPORTED_EXTENSIONS
 
@@ -2105,3 +2151,31 @@ class TestExcludedDirs:
     def test_excluded_dirs_kept_only_when_not_gitignored(self):
         """EXCLUDED_DIRS should be empty for this repository."""
         assert EXCLUDED_DIRS == frozenset()
+
+
+class TestLegacyAnalysisFlagsRejected:
+    """SRS-409/SRS-412: legacy --prefixed analysis command forms are rejected."""
+
+    @pytest.mark.parametrize(
+        "legacy_argv",
+        [
+            ["--files-tokens", "f.py"],
+            ["--files-references", "f.py"],
+            ["--files-compress", "f.py"],
+            ["--files-find", "FUNCTION", "x", "f.py"],
+            ["--files-static-check", "f.py"],
+            ["--tokens"],
+            ["--references"],
+            ["--compress"],
+            ["--find", "FUNCTION", "x"],
+            ["--static-check"],
+        ],
+    )
+    def test_legacy_flag_is_rejected_by_parser(self, legacy_argv, capsys):
+        """SRS-408/SRS-412: each legacy -- form exits via the parser error path."""
+        with pytest.raises(SystemExit):
+            main(legacy_argv)
+        parser_error = capsys.readouterr().err
+        assert (
+            "invalid choice" in parser_error or "unrecognized arguments" in parser_error
+        )

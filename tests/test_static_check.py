@@ -58,7 +58,9 @@ from usereq.cli import ReqError
 TEMP_BASE = Path(__file__).resolve().parents[1] / "temp" / "test_static_check"
 
 
-def _make_temp_file(directory: Path, name: str = "sample.py", content: str = "x = 1\n") -> Path:
+def _make_temp_file(
+    directory: Path, name: str = "sample.py", content: str = "x = 1\n"
+) -> Path:
     """Create a temporary file under directory and return its path."""
     directory.mkdir(parents=True, exist_ok=True)
     p = directory / name
@@ -69,6 +71,7 @@ def _make_temp_file(directory: Path, name: str = "sample.py", content: str = "x 
 # ---------------------------------------------------------------------------
 # _resolve_files tests
 # ---------------------------------------------------------------------------
+
 
 class GlobalConfigIsolatedTestCase(unittest.TestCase):
     """!
@@ -169,6 +172,7 @@ class TestResolveFiles(unittest.TestCase):
 # StaticCheckBase (Dummy)
 # ---------------------------------------------------------------------------
 
+
 class TestStaticCheckBase(unittest.TestCase):
     """Tests for StaticCheckBase (Dummy) behavior."""
 
@@ -190,7 +194,9 @@ class TestStaticCheckBase(unittest.TestCase):
             rc = checker.run()
         self.assertEqual(rc, 0)
         calls = [str(c.args[0]) for c in mock_print.call_args_list]
-        self.assertTrue(any("Static-Check(Dummy)" in s and str(f.resolve()) in s for s in calls))
+        self.assertTrue(
+            any("Static-Check(Dummy)" in s and str(f.resolve()) in s for s in calls)
+        )
         self.assertIn("Result: OK", calls)
 
     def test_output_format_with_extra_args(self) -> None:
@@ -236,6 +242,7 @@ class TestStaticCheckBase(unittest.TestCase):
 # StaticCheckPylance
 # ---------------------------------------------------------------------------
 
+
 class TestStaticCheckPylance(unittest.TestCase):
     """Tests for StaticCheckPylance OK/FAIL branches with mocked subprocess."""
 
@@ -249,7 +256,9 @@ class TestStaticCheckPylance(unittest.TestCase):
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
 
-    def _make_completed(self, returncode: int, stdout: str = "", stderr: str = "") -> MagicMock:
+    def _make_completed(
+        self, returncode: int, stdout: str = "", stderr: str = ""
+    ) -> MagicMock:
         m = MagicMock()
         m.returncode = returncode
         m.stdout = stdout
@@ -276,7 +285,9 @@ class TestStaticCheckPylance(unittest.TestCase):
         """Pylance FAIL branch: prints header, Result: FAIL, Evidence:, and output."""
         f = _make_temp_file(self.tmp, "fail.py")
         evidence = "error: some type error"
-        with patch("subprocess.run", return_value=self._make_completed(1, stdout=evidence)):
+        with patch(
+            "subprocess.run", return_value=self._make_completed(1, stdout=evidence)
+        ):
             with patch("builtins.print") as mock_print:
                 checker = StaticCheckPylance(inputs=[str(f)])
                 rc = checker.run()
@@ -301,7 +312,10 @@ class TestStaticCheckPylance(unittest.TestCase):
         """FAIL evidence includes stderr when stdout is empty."""
         f = _make_temp_file(self.tmp, "stderr_fail.py")
         evidence = "type error on line 1"
-        with patch("subprocess.run", return_value=self._make_completed(1, stdout="", stderr=evidence)):
+        with patch(
+            "subprocess.run",
+            return_value=self._make_completed(1, stdout="", stderr=evidence),
+        ):
             with patch("builtins.print") as mock_print:
                 checker = StaticCheckPylance(inputs=[str(f)])
                 rc = checker.run()
@@ -351,9 +365,29 @@ class TestStaticCheckPylance(unittest.TestCase):
         self.assertNotIn("--extra-path", cmd_used)
         self.assertIn(str(f.resolve()), cmd_used)
 
+    def test_no_venv_interpreter_probing(self) -> None:
+        """Command stays fixed on sys.executable even when a project `.venv` exists (SRS-247, SRS-339)."""
+        project_base = self.tmp / "project"
+        venv_python = project_base / ".venv" / "bin" / "python"
+        venv_python.parent.mkdir(parents=True, exist_ok=True)
+        venv_python.write_text("", encoding="utf-8")
+        f = _make_temp_file(project_base, "no_venv_probe.py")
+        with patch("subprocess.run", return_value=self._make_completed(0)) as mock_run:
+            checker = StaticCheckPylance(inputs=[str(f)], project_base=project_base)
+            with patch("builtins.print"):
+                checker.run()
+        cmd_used = mock_run.call_args[0][0]
+        self.assertEqual(
+            cmd_used[:5],
+            [sys.executable, "-m", "pyright", "--pythonpath", sys.executable],
+        )
+        self.assertFalse(any(str(venv_python) in str(part) for part in cmd_used))
+
+
 # ---------------------------------------------------------------------------
 # StaticCheckRuff
 # ---------------------------------------------------------------------------
+
 
 class TestStaticCheckRuff(unittest.TestCase):
     """Tests for StaticCheckRuff OK/FAIL branches with mocked subprocess."""
@@ -368,7 +402,9 @@ class TestStaticCheckRuff(unittest.TestCase):
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
 
-    def _make_completed(self, returncode: int, stdout: str = "", stderr: str = "") -> MagicMock:
+    def _make_completed(
+        self, returncode: int, stdout: str = "", stderr: str = ""
+    ) -> MagicMock:
         m = MagicMock()
         m.returncode = returncode
         m.stdout = stdout
@@ -395,7 +431,9 @@ class TestStaticCheckRuff(unittest.TestCase):
         """Ruff FAIL branch: prints header, Result: FAIL, Evidence:, and output."""
         f = _make_temp_file(self.tmp, "fail.py")
         evidence = "E501 line too long"
-        with patch("subprocess.run", return_value=self._make_completed(1, stdout=evidence)):
+        with patch(
+            "subprocess.run", return_value=self._make_completed(1, stdout=evidence)
+        ):
             with patch("builtins.print") as mock_print:
                 checker = StaticCheckRuff(inputs=[str(f)])
                 rc = checker.run()
@@ -429,6 +467,21 @@ class TestStaticCheckRuff(unittest.TestCase):
         self.assertEqual(cmd_used[2], "ruff")
         self.assertEqual(cmd_used[3], "check")
 
+    def test_no_venv_interpreter_probing(self) -> None:
+        """Command stays fixed on sys.executable even when a project `.venv` exists (SRS-247, SRS-339)."""
+        project_base = self.tmp / "project"
+        venv_python = project_base / ".venv" / "bin" / "python"
+        venv_python.parent.mkdir(parents=True, exist_ok=True)
+        venv_python.write_text("", encoding="utf-8")
+        f = _make_temp_file(project_base, "no_venv_probe.py")
+        with patch("subprocess.run", return_value=self._make_completed(0)) as mock_run:
+            checker = StaticCheckRuff(inputs=[str(f)])
+            with patch("builtins.print"):
+                checker.run()
+        cmd_used = mock_run.call_args[0][0]
+        self.assertEqual(cmd_used[:4], [sys.executable, "-m", "ruff", "check"])
+        self.assertFalse(any(str(venv_python) in str(part) for part in cmd_used))
+
     def test_multiple_files_all_ok(self) -> None:
         """All files OK returns rc 0."""
         files = [_make_temp_file(self.tmp, f"r{i}.py") for i in range(2)]
@@ -443,6 +496,7 @@ class TestStaticCheckRuff(unittest.TestCase):
 # StaticCheckCommand
 # ---------------------------------------------------------------------------
 
+
 class TestStaticCheckCommand(unittest.TestCase):
     """Tests for StaticCheckCommand availability check and OK/FAIL branches."""
 
@@ -456,7 +510,9 @@ class TestStaticCheckCommand(unittest.TestCase):
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
 
-    def _make_completed(self, returncode: int, stdout: str = "", stderr: str = "") -> MagicMock:
+    def _make_completed(
+        self, returncode: int, stdout: str = "", stderr: str = ""
+    ) -> MagicMock:
         m = MagicMock()
         m.returncode = returncode
         m.stdout = stdout
@@ -475,7 +531,10 @@ class TestStaticCheckCommand(unittest.TestCase):
         self.assertIn("Result: FAIL", calls)
         self.assertIn("Evidence:", calls)
         self.assertTrue(
-            any("nonexistent_tool_xyz" in s and "not available on PATH" in s for s in calls)
+            any(
+                "nonexistent_tool_xyz" in s and "not available on PATH" in s
+                for s in calls
+            )
         )
 
     def test_label_includes_cmd_name(self) -> None:
@@ -502,7 +561,9 @@ class TestStaticCheckCommand(unittest.TestCase):
         f = _make_temp_file(self.tmp, "fail.py")
         evidence = "found issue in file"
         with patch("shutil.which", return_value="/usr/bin/mytool"):
-            with patch("subprocess.run", return_value=self._make_completed(1, stdout=evidence)):
+            with patch(
+                "subprocess.run", return_value=self._make_completed(1, stdout=evidence)
+            ):
                 with patch("builtins.print") as mock_print:
                     checker = StaticCheckCommand(cmd="mytool", inputs=[str(f)])
                     rc = checker.run()
@@ -528,7 +589,9 @@ class TestStaticCheckCommand(unittest.TestCase):
         """Subprocess call includes the cmd name and filepath."""
         f = _make_temp_file(self.tmp, "invoke_check.py")
         with patch("shutil.which", return_value="/usr/bin/mytool"):
-            with patch("subprocess.run", return_value=self._make_completed(0)) as mock_run:
+            with patch(
+                "subprocess.run", return_value=self._make_completed(0)
+            ) as mock_run:
                 checker = StaticCheckCommand(cmd="mytool", inputs=[str(f)])
                 with patch("builtins.print"):
                     checker.run()
@@ -540,8 +603,12 @@ class TestStaticCheckCommand(unittest.TestCase):
         """extra_args are forwarded before filepath in subprocess call."""
         f = _make_temp_file(self.tmp, "extra.py")
         with patch("shutil.which", return_value="/usr/bin/mytool"):
-            with patch("subprocess.run", return_value=self._make_completed(0)) as mock_run:
-                checker = StaticCheckCommand(cmd="mytool", inputs=[str(f)], extra_args=["--flag"])
+            with patch(
+                "subprocess.run", return_value=self._make_completed(0)
+            ) as mock_run:
+                checker = StaticCheckCommand(
+                    cmd="mytool", inputs=[str(f)], extra_args=["--flag"]
+                )
                 with patch("builtins.print"):
                     checker.run()
         cmd_used = mock_run.call_args[0][0]
@@ -551,6 +618,7 @@ class TestStaticCheckCommand(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # run_static_check dispatcher
 # ---------------------------------------------------------------------------
+
 
 class TestRunStaticCheck(unittest.TestCase):
     """Tests for the run_static_check CLI dispatcher."""
@@ -637,7 +705,9 @@ class TestRunStaticCheck(unittest.TestCase):
         calls = [str(c.args[0]) for c in mock_print.call_args_list]
         headers = [s for s in calls if "Static-Check(Dummy)" in s]
         # Header format: "# Static-Check(Dummy): <filepath>"
-        names_in_headers = [Path(h.split(": ", 1)[1].split(" ")[0]).name for h in headers]
+        names_in_headers = [
+            Path(h.split(": ", 1)[1].split(" ")[0]).name for h in headers
+        ]
         self.assertIn("top.py", names_in_headers)
         self.assertIn("nested.py", names_in_headers)
 
@@ -652,6 +722,7 @@ class TestRunStaticCheck(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Integration: CLI main() wires --test-static-check
 # ---------------------------------------------------------------------------
+
 
 class TestCLIIntegrationStaticCheck(unittest.TestCase):
     """Integration tests: ensure cli.main() dispatches --test-static-check."""
@@ -669,6 +740,7 @@ class TestCLIIntegrationStaticCheck(unittest.TestCase):
     def test_main_dispatches_dummy(self) -> None:
         """cli.main(['--test-static-check', 'dummy', <file>]) returns 0."""
         from usereq import cli
+
         f = _make_temp_file(self.tmp, "main_dummy.py")
         with patch("builtins.print"):
             rc = cli.main(["--test-static-check", "dummy", str(f)])
@@ -677,6 +749,7 @@ class TestCLIIntegrationStaticCheck(unittest.TestCase):
     def test_main_dispatches_unknown_subcommand(self) -> None:
         """cli.main(['--test-static-check', 'badcmd']) returns non-zero."""
         from usereq import cli
+
         with patch("builtins.print"):
             with patch("sys.stderr", new_callable=StringIO):
                 rc = cli.main(["--test-static-check", "badcmd"])
@@ -685,6 +758,7 @@ class TestCLIIntegrationStaticCheck(unittest.TestCase):
     def test_main_static_check_is_standalone(self) -> None:
         """--test-static-check does not require --base or --here."""
         from usereq import cli
+
         f = _make_temp_file(self.tmp, "standalone.py")
         with patch("builtins.print"):
             rc = cli.main(["--test-static-check", "dummy", str(f)])
@@ -694,6 +768,7 @@ class TestCLIIntegrationStaticCheck(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # fail_only mode tests (SRS-241, SRS-242, SRS-243, SRS-244, SRS-247)
 # ---------------------------------------------------------------------------
+
 
 class TestFailOnlyMode(unittest.TestCase):
     """!
@@ -712,7 +787,9 @@ class TestFailOnlyMode(unittest.TestCase):
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
 
-    def _make_proc_result(self, rc: int, stdout: str = "", stderr: str = "") -> MagicMock:
+    def _make_proc_result(
+        self, rc: int, stdout: str = "", stderr: str = ""
+    ) -> MagicMock:
         """!
         @brief Create a mock subprocess result.
         @param rc Return code.
@@ -762,7 +839,9 @@ class TestFailOnlyMode(unittest.TestCase):
         """StaticCheckPylance with fail_only=True still emits header+FAIL on failure (SRS-242)."""
         f = _make_temp_file(self.tmp, "bad.py")
         out = StringIO()
-        with patch("subprocess.run", return_value=self._make_proc_result(1, "type error")):
+        with patch(
+            "subprocess.run", return_value=self._make_proc_result(1, "type error")
+        ):
             with patch("sys.stdout", out):
                 checker = StaticCheckPylance(inputs=[str(f)], fail_only=True)
                 rc = checker.run()
@@ -788,7 +867,9 @@ class TestFailOnlyMode(unittest.TestCase):
         """StaticCheckRuff with fail_only=True still emits header+FAIL on failure (SRS-243)."""
         f = _make_temp_file(self.tmp, "bad.py")
         out = StringIO()
-        with patch("subprocess.run", return_value=self._make_proc_result(1, "lint error")):
+        with patch(
+            "subprocess.run", return_value=self._make_proc_result(1, "lint error")
+        ):
             with patch("sys.stdout", out):
                 checker = StaticCheckRuff(inputs=[str(f)], fail_only=True)
                 rc = checker.run()
@@ -806,7 +887,9 @@ class TestFailOnlyMode(unittest.TestCase):
         with patch("shutil.which", return_value="/usr/bin/cppcheck"):
             with patch("subprocess.run", return_value=self._make_proc_result(0)):
                 with patch("sys.stdout", out):
-                    checker = StaticCheckCommand(cmd="cppcheck", inputs=[str(f)], fail_only=True)
+                    checker = StaticCheckCommand(
+                        cmd="cppcheck", inputs=[str(f)], fail_only=True
+                    )
                     rc = checker.run()
         self.assertEqual(rc, 0)
         self.assertEqual(out.getvalue(), "")
@@ -816,9 +899,13 @@ class TestFailOnlyMode(unittest.TestCase):
         f = _make_temp_file(self.tmp, "bad.c", "int main(){return 0;}\n")
         out = StringIO()
         with patch("shutil.which", return_value="/usr/bin/cppcheck"):
-            with patch("subprocess.run", return_value=self._make_proc_result(1, "syntax error")):
+            with patch(
+                "subprocess.run", return_value=self._make_proc_result(1, "syntax error")
+            ):
                 with patch("sys.stdout", out):
-                    checker = StaticCheckCommand(cmd="cppcheck", inputs=[str(f)], fail_only=True)
+                    checker = StaticCheckCommand(
+                        cmd="cppcheck", inputs=[str(f)], fail_only=True
+                    )
                     rc = checker.run()
         self.assertEqual(rc, 1)
         output = out.getvalue()
@@ -852,6 +939,7 @@ class TestFailOnlyMode(unittest.TestCase):
 # parse_enable_static_check tests (SRS-260, SRS-262)
 # ---------------------------------------------------------------------------
 
+
 class TestParseEnableStaticCheck(unittest.TestCase):
     """!
     @brief Tests for parse_enable_static_check (SRS-260, SRS-262).
@@ -879,7 +967,9 @@ class TestParseEnableStaticCheck(unittest.TestCase):
 
     def test_command_module_with_cmd_and_params(self) -> None:
         """C=Command,/usr/bin/cppcheck,--check-library produces cmd and params."""
-        lang, cfg = parse_enable_static_check("C=Command,/usr/bin/cppcheck,--check-library")
+        lang, cfg = parse_enable_static_check(
+            "C=Command,/usr/bin/cppcheck,--check-library"
+        )
         self.assertEqual(lang, "C")
         self.assertEqual(cfg["module"], "Command")
         self.assertEqual(cfg["cmd"], "/usr/bin/cppcheck")
@@ -906,7 +996,10 @@ class TestParseEnableStaticCheck(unittest.TestCase):
         self.assertEqual(lang, "Python")
         self.assertEqual(cfg["module"], "Command")
         self.assertEqual(cfg["cmd"], "ruff")
-        self.assertEqual(cfg["params"], ["--select=ALL", "--enable=warning,style,performance,portability"])
+        self.assertEqual(
+            cfg["params"],
+            ["--select=ALL", "--enable=warning,style,performance,portability"],
+        )
 
     def test_command_module_param_with_comma_single_quotes(self) -> None:
         """Single-quoted param containing commas is preserved and unquoted (SRS-250)."""
@@ -918,7 +1011,11 @@ class TestParseEnableStaticCheck(unittest.TestCase):
         self.assertEqual(cfg["cmd"], "cppcheck")
         self.assertEqual(
             cfg["params"],
-            ["--error-exitcode=1", "--enable=warning,style,performance,portability", "--std=c11"],
+            [
+                "--error-exitcode=1",
+                "--enable=warning,style,performance,portability",
+                "--std=c11",
+            ],
         )
 
     def test_lang_case_insensitive(self) -> None:
@@ -986,9 +1083,26 @@ class TestParseEnableStaticCheck(unittest.TestCase):
     def test_all_20_languages_recognized(self) -> None:
         """All 20 canonical languages from SRS-249 are recognized."""
         canonical_langs = {
-            "Python", "C", "C++", "C#", "Rust", "JavaScript", "TypeScript",
-            "Java", "Go", "Ruby", "PHP", "Swift", "Kotlin", "Scala", "Lua",
-            "Shell", "Perl", "Haskell", "Zig", "Elixir",
+            "Python",
+            "C",
+            "C++",
+            "C#",
+            "Rust",
+            "JavaScript",
+            "TypeScript",
+            "Java",
+            "Go",
+            "Ruby",
+            "PHP",
+            "Swift",
+            "Kotlin",
+            "Scala",
+            "Lua",
+            "Shell",
+            "Perl",
+            "Haskell",
+            "Zig",
+            "Elixir",
         }
         recognized = set(STATIC_CHECK_LANG_CANONICAL.values())
         self.assertEqual(recognized, canonical_langs)
@@ -1002,6 +1116,7 @@ class TestParseEnableStaticCheck(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # STATIC_CHECK_EXT_TO_LANG tests (SRS-259, SRS-262)
 # ---------------------------------------------------------------------------
+
 
 class TestStaticCheckExtToLang(unittest.TestCase):
     """!
@@ -1060,6 +1175,7 @@ class TestStaticCheckExtToLang(unittest.TestCase):
 # dispatch_static_check_for_file tests (SRS-261, SRS-262)
 # ---------------------------------------------------------------------------
 
+
 class TestDispatchStaticCheckForFile(unittest.TestCase):
     """!
     @brief Tests for dispatch_static_check_for_file (SRS-261, SRS-262).
@@ -1106,7 +1222,9 @@ class TestDispatchStaticCheckForFile(unittest.TestCase):
         f = _make_temp_file(self.tmp, "b_ctx.py")
         (self.tmp / "src").mkdir(exist_ok=True)
         cfg = {"module": "Pylance"}
-        with patch("subprocess.run", return_value=self._make_proc_result(0)) as mock_run:
+        with patch(
+            "subprocess.run", return_value=self._make_proc_result(0)
+        ) as mock_run:
             with patch("builtins.print"):
                 rc = dispatch_static_check_for_file(
                     str(f),
@@ -1121,7 +1239,9 @@ class TestDispatchStaticCheckForFile(unittest.TestCase):
         """Pylance module returns 1 when pyright exits non-zero."""
         f = _make_temp_file(self.tmp, "b2.py")
         cfg = {"module": "Pylance"}
-        with patch("subprocess.run", return_value=self._make_proc_result(1, "type error")):
+        with patch(
+            "subprocess.run", return_value=self._make_proc_result(1, "type error")
+        ):
             with patch("builtins.print"):
                 rc = dispatch_static_check_for_file(str(f), cfg)
         self.assertEqual(rc, 1)
@@ -1150,7 +1270,9 @@ class TestDispatchStaticCheckForFile(unittest.TestCase):
         f = _make_temp_file(self.tmp, "e.c")
         cfg = {"module": "Command", "cmd": "cppcheck", "params": ["--enable=all"]}
         with patch("shutil.which", return_value="/usr/bin/cppcheck"):
-            with patch("subprocess.run", return_value=self._make_proc_result(0)) as mock_run:
+            with patch(
+                "subprocess.run", return_value=self._make_proc_result(0)
+            ) as mock_run:
                 with patch("builtins.print"):
                     dispatch_static_check_for_file(str(f), cfg)
         cmd_args = mock_run.call_args[0][0]
@@ -1208,6 +1330,7 @@ class TestDispatchStaticCheckForFile(unittest.TestCase):
 # files-static-check CLI dispatch tests (SRS-253, SRS-254, SRS-255, SRS-262)
 # ---------------------------------------------------------------------------
 
+
 class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
     """!
     @brief Tests for files-static-check CLI subcommand (SRS-253, SRS-254, SRS-255, SRS-262).
@@ -1240,6 +1363,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
     def test_files_static_check_dummy_language(self) -> None:
         """files-static-check dispatches Dummy for .py file when configured."""
         from usereq import cli
+
         f = _make_temp_file(self.tmp, "main.py")
         self._write_config({"Python": [{"module": "Dummy"}]})
         with patch("builtins.print"):
@@ -1249,16 +1373,20 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
     def test_files_static_check_unknown_extension_skipped(self) -> None:
         """files-static-check skips files with unrecognized extension."""
         from usereq import cli
+
         self._write_config({"Python": [{"module": "Dummy"}]})
         f = _make_temp_file(self.tmp, "file.unknown_ext")
         with patch("builtins.print"):
             with patch("sys.stderr", new_callable=StringIO):
-                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
+                rc = cli.main(
+                    ["files-static-check", "--prj-base", str(self.tmp), str(f)]
+                )
         self.assertEqual(rc, 0)
 
     def test_files_static_check_no_config_warns_and_uses_defaults(self) -> None:
         """SRS-254/SRS-424: missing config file warns and applies the default configuration."""
         from usereq import cli
+
         if self.config_path.exists():
             self.config_path.unlink()
         f = _make_temp_file(self.tmp, "main.py")
@@ -1275,6 +1403,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
     def test_files_static_check_lang_not_in_config_skipped(self) -> None:
         """File whose language is not configured in static-check config is skipped."""
         from usereq import cli
+
         self._write_config({"Python": [{"module": "Dummy"}]})
         # .c file, but only Python is configured
         f = _make_temp_file(self.tmp, "prog.c", "int main(){return 0;}\n")
@@ -1285,6 +1414,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
     def test_files_static_check_fail_propagates_exit_code(self) -> None:
         """files-static-check returns 1 when at least one file fails."""
         from usereq import cli
+
         self._write_config({"Python": [{"module": "Pylance"}]})
         f = _make_temp_file(self.tmp, "bad.py")
         mock_result = MagicMock()
@@ -1293,41 +1423,63 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         mock_result.stderr = ""
         with patch("subprocess.run", return_value=mock_result):
             with patch("builtins.print"):
-                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
+                rc = cli.main(
+                    ["files-static-check", "--prj-base", str(self.tmp), str(f)]
+                )
         self.assertEqual(rc, 1)
 
     def test_files_static_check_multiple_files_mixed(self) -> None:
         """Mixed pass/fail across files: overall exit code 1."""
         from usereq import cli
+
         self._write_config({"Python": [{"module": "Pylance"}]})
         f1 = _make_temp_file(self.tmp, "ok.py")
         f2 = _make_temp_file(self.tmp, "fail.py")
-        results = [MagicMock(returncode=0, stdout="", stderr=""),
-                   MagicMock(returncode=1, stdout="err", stderr="")]
+        results = [
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=1, stdout="err", stderr=""),
+        ]
         with patch("subprocess.run", side_effect=results):
             with patch("builtins.print"):
-                rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f1), str(f2)])
+                rc = cli.main(
+                    [
+                        "files-static-check",
+                        "--prj-base",
+                        str(self.tmp),
+                        str(f1),
+                        str(f2),
+                    ]
+                )
         self.assertEqual(rc, 1)
 
     def test_files_static_check_runs_all_entries_for_language_in_order(self) -> None:
         """One file runs all configured entries for language in insertion order."""
         from usereq import cli
+
         f = _make_temp_file(self.tmp, "multi.py")
         self._write_config(
             {
                 "Python": [
                     {"module": "Command", "cmd": "cppcheck"},
-                    {"module": "Command", "cmd": "clang-format", "params": ["--dry-run", "--Werror"]},
+                    {
+                        "module": "Command",
+                        "cmd": "clang-format",
+                        "params": ["--dry-run", "--Werror"],
+                    },
                 ]
             }
         )
-        with patch("usereq.static_check.dispatch_static_check_for_file", side_effect=[0, 0]) as mock_dispatch:
+        with patch(
+            "usereq.static_check.dispatch_static_check_for_file", side_effect=[0, 0]
+        ) as mock_dispatch:
             rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
         self.assertEqual(rc, 0)
         self.assertEqual(mock_dispatch.call_count, 2)
         self.assertEqual(mock_dispatch.call_args_list[0].args[1]["cmd"], "cppcheck")
         self.assertEqual(mock_dispatch.call_args_list[1].args[1]["cmd"], "clang-format")
-        self.assertEqual(mock_dispatch.call_args_list[0].kwargs["project_base"], self.tmp.resolve())
+        self.assertEqual(
+            mock_dispatch.call_args_list[0].kwargs["project_base"], self.tmp.resolve()
+        )
         self.assertNotIn("src_dirs", mock_dispatch.call_args_list[0].kwargs)
 
     def test_files_static_check_command_invokes_params_before_filename(self) -> None:
@@ -1336,7 +1488,11 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
 
         f = _make_temp_file(self.tmp, "order.js", "const x = 1;\n")
         self._write_config(
-            {"JavaScript": [{"module": "Command", "cmd": "node", "params": ["--check"]}]}
+            {
+                "JavaScript": [
+                    {"module": "Command", "cmd": "node", "params": ["--check"]}
+                ]
+            }
         )
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -1345,7 +1501,9 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
         with patch("shutil.which", return_value="/usr/bin/node"):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
                 with patch("builtins.print"):
-                    rc = cli.main(["files-static-check", "--prj-base", str(self.tmp), str(f)])
+                    rc = cli.main(
+                        ["files-static-check", "--prj-base", str(self.tmp), str(f)]
+                    )
         self.assertEqual(rc, 0)
         cmd_used = mock_run.call_args[0][0]
         self.assertEqual(cmd_used, ["node", "--check", str(f.resolve())])
@@ -1354,6 +1512,7 @@ class TestFilesStaticCheckCLI(GlobalConfigIsolatedTestCase):
 # ---------------------------------------------------------------------------
 # static-check project-scan dispatch tests (SRS-256, SRS-257, SRS-262)
 # ---------------------------------------------------------------------------
+
 
 class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
     """!
@@ -1388,6 +1547,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
     def test_static_check_dummy_on_project_files(self) -> None:
         """static-check runs Dummy on .py files in src-dir with implicit --here."""
         from usereq import cli
+
         _make_temp_file(self.tmp / "src", "main.py")
         self._write_config({"Python": [{"module": "Dummy"}]})
         old_cwd = os.getcwd()
@@ -1402,6 +1562,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
     def test_static_check_skips_unconfigured_language(self) -> None:
         """static-check skips files whose language has no configured tool."""
         from usereq import cli
+
         _make_temp_file(self.tmp / "src", "main.c", "int main(){return 0;}\n")
         # Only Python configured, but file is C
         self._write_config({"Python": [{"module": "Dummy"}]})
@@ -1421,6 +1582,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
     def test_static_check_fail_propagates_exit_code(self) -> None:
         """static-check returns 1 when at least one file fails."""
         from usereq import cli
+
         _make_temp_file(self.tmp / "src", "bad.py")
         self._write_config({"Python": [{"module": "Pylance"}]})
         mock_result = MagicMock()
@@ -1440,6 +1602,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
     def test_static_check_no_source_files_raises(self) -> None:
         """static-check raises ReqError when no source files found."""
         from usereq import cli
+
         # src dir exists but is empty
         self._write_config({})
         old_cwd = os.getcwd()
@@ -1455,6 +1618,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
     def test_static_check_requires_prj_base(self) -> None:
         """static-check requires the mandatory --prj-base argument (SRS-396, SRS-410)."""
         from usereq import cli
+
         self._write_config({"Python": [{"module": "Dummy"}]})
         with (
             patch("sys.stderr", new_callable=StringIO) as mock_stderr,
@@ -1467,6 +1631,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
     def test_static_check_uses_prj_base(self) -> None:
         """static-check resolves project files from --prj-base."""
         from usereq import cli
+
         _make_temp_file(self.tmp / "src", "ok.py")
         self._write_config({"Python": [{"module": "Dummy"}]})
         with patch("builtins.print"):
@@ -1480,12 +1645,17 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
           on the src root); `clang-format` resolves false (per-file dispatch). Entry order preserved.
         """
         from usereq import cli
+
         _make_temp_file(self.tmp / "src", "multi.py")
         self._write_config(
             {
                 "Python": [
                     {"module": "Command", "cmd": "cppcheck"},
-                    {"module": "Command", "cmd": "clang-format", "params": ["--dry-run", "--Werror"]},
+                    {
+                        "module": "Command",
+                        "cmd": "clang-format",
+                        "params": ["--dry-run", "--Werror"],
+                    },
                 ]
             }
         )
@@ -1493,20 +1663,31 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with (
-                patch("usereq.static_check.dispatch_static_check_for_directory", return_value=0) as mock_dir,
-                patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_file,
+                patch(
+                    "usereq.static_check.dispatch_static_check_for_directory",
+                    return_value=0,
+                ) as mock_dir,
+                patch(
+                    "usereq.static_check.dispatch_static_check_for_file", return_value=0
+                ) as mock_file,
             ):
                 rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
         self.assertEqual(mock_dir.call_count, 1)
-        self.assertEqual(mock_dir.call_args_list[0].args[0], str((self.tmp / "src").resolve()))
+        self.assertEqual(
+            mock_dir.call_args_list[0].args[0], str((self.tmp / "src").resolve())
+        )
         self.assertEqual(mock_dir.call_args_list[0].args[1]["cmd"], "cppcheck")
-        self.assertEqual(mock_dir.call_args_list[0].kwargs["project_base"], self.tmp.resolve())
+        self.assertEqual(
+            mock_dir.call_args_list[0].kwargs["project_base"], self.tmp.resolve()
+        )
         self.assertEqual(mock_file.call_count, 1)
         self.assertEqual(mock_file.call_args_list[0].args[1]["cmd"], "clang-format")
-        self.assertEqual(mock_file.call_args_list[0].kwargs["project_base"], self.tmp.resolve())
+        self.assertEqual(
+            mock_file.call_args_list[0].kwargs["project_base"], self.tmp.resolve()
+        )
         self.assertNotIn("src_dirs", mock_file.call_args_list[0].kwargs)
 
     def test_static_check_command_invokes_params_before_filename(self) -> None:
@@ -1515,7 +1696,11 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
 
         f = _make_temp_file(self.tmp / "src", "order.js", "const y = 2;\n")
         self._write_config(
-            {"JavaScript": [{"module": "Command", "cmd": "node", "params": ["--check"]}]}
+            {
+                "JavaScript": [
+                    {"module": "Command", "cmd": "node", "params": ["--check"]}
+                ]
+            }
         )
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -1534,9 +1719,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("shutil.which", return_value="/usr/bin/node"):
-                with patch(
-                    "subprocess.run", side_effect=_run_side_effect
-                ) as mock_run:
+                with patch("subprocess.run", side_effect=_run_side_effect) as mock_run:
                     with patch("builtins.print"):
                         rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
@@ -1545,7 +1728,9 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         non_git_calls = [
             call.args[0]
             for call in mock_run.call_args_list
-            if isinstance(call.args[0], list) and call.args[0] and call.args[0][0] != "git"
+            if isinstance(call.args[0], list)
+            and call.args[0]
+            and call.args[0][0] != "git"
         ]
         self.assertEqual(len(non_git_calls), 1)
         cmd_used = non_git_calls[0]
@@ -1567,7 +1752,9 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         old_cwd = os.getcwd()
         try:
             os.chdir(str(self.tmp))
-            with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
+            with patch(
+                "usereq.static_check.dispatch_static_check_for_file", return_value=0
+            ) as mock_dispatch:
                 rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
@@ -1590,12 +1777,18 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         fixtures_dir.mkdir(parents=True, exist_ok=True)
         _make_temp_file(self.tmp / "src", "main.py")
         _make_temp_file(self.tmp / "tests", "test_main.py")
-        fixture_file = _make_temp_file(fixtures_dir, "fixture_c.c", "int main(void){return 0;}\n")
-        self._write_config({"Python": [{"module": "Dummy"}], "C": [{"module": "Dummy"}]})
+        fixture_file = _make_temp_file(
+            fixtures_dir, "fixture_c.c", "int main(void){return 0;}\n"
+        )
+        self._write_config(
+            {"Python": [{"module": "Dummy"}], "C": [{"module": "Dummy"}]}
+        )
         old_cwd = os.getcwd()
         try:
             os.chdir(str(self.tmp))
-            with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
+            with patch(
+                "usereq.static_check.dispatch_static_check_for_file", return_value=0
+            ) as mock_dispatch:
                 rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
@@ -1622,7 +1815,9 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         old_cwd = os.getcwd()
         try:
             os.chdir(str(self.tmp))
-            with patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_dispatch:
+            with patch(
+                "usereq.static_check.dispatch_static_check_for_file", return_value=0
+            ) as mock_dispatch:
                 rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
@@ -1635,6 +1830,7 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
 # ---------------------------------------------------------------------------
 # scan-by-dir capability resolution tests (SRS-584, SRS-585)
 # ---------------------------------------------------------------------------
+
 
 class TestScanByDirResolution(unittest.TestCase):
     """!
@@ -1675,7 +1871,9 @@ class TestScanByDirResolution(unittest.TestCase):
         from usereq.static_check import entry_scan_by_dir
 
         self.assertIs(entry_scan_by_dir({"module": "Pylance"}), True)
-        self.assertIs(entry_scan_by_dir({"module": "Pylance", "scan-by-dir": False}), False)
+        self.assertIs(
+            entry_scan_by_dir({"module": "Pylance", "scan-by-dir": False}), False
+        )
         self.assertIs(entry_scan_by_dir({"module": "Dummy"}), False)
         self.assertIs(entry_scan_by_dir({"module": "Dummy", "scan-by-dir": True}), True)
         self.assertIs(entry_scan_by_dir({"module": "Command", "cmd": "cppcheck"}), True)
@@ -1685,6 +1883,7 @@ class TestScanByDirResolution(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Directory-scan command composition tests (SRS-588..SRS-592)
 # ---------------------------------------------------------------------------
+
 
 class TestDirectoryScanCommand(unittest.TestCase):
     """!
@@ -1754,12 +1953,15 @@ class TestDirectoryScanCommand(unittest.TestCase):
         with (
             patch("shutil.which", return_value="/usr/bin/cppcheck"),
             patch(
-                "usereq.static_check.subprocess.run", return_value=self._passing_result()
+                "usereq.static_check.subprocess.run",
+                return_value=self._passing_result(),
             ) as mock_run,
         ):
             rc = checker.run_directory(target, exclude_dirs=[fixtures])
         self.assertEqual(rc, 0)
-        self.assertEqual(mock_run.call_args.args[0], ["cppcheck", "-i", fixtures, target])
+        self.assertEqual(
+            mock_run.call_args.args[0], ["cppcheck", "-i", fixtures, target]
+        )
 
     def test_directory_scan_output_format_fail_only_false(self) -> None:
         """!
@@ -1771,10 +1973,14 @@ class TestDirectoryScanCommand(unittest.TestCase):
         with patch(
             "usereq.static_check.subprocess.run", return_value=self._passing_result()
         ):
-            with patch("builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")):
+            with patch(
+                "builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")
+            ):
                 rc = checker.run_directory(target)
         self.assertEqual(rc, 0)
-        self.assertEqual(out.getvalue(), f"# Static-Check(Ruff): {target}\nResult: OK\n\n")
+        self.assertEqual(
+            out.getvalue(), f"# Static-Check(Ruff): {target}\nResult: OK\n\n"
+        )
 
     def test_directory_scan_fail_only_pass_is_silent(self) -> None:
         """!
@@ -1793,6 +1999,7 @@ class TestDirectoryScanCommand(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # scan-by-dir project-scan dispatch tests (SRS-587, SRS-588, SRS-590)
 # ---------------------------------------------------------------------------
+
 
 class TestScanByDirProjectDispatch(GlobalConfigIsolatedTestCase):
     """!
@@ -1826,10 +2033,16 @@ class TestScanByDirProjectDispatch(GlobalConfigIsolatedTestCase):
 
     def _run_static_check(self) -> tuple[int, MagicMock, MagicMock]:
         from usereq import cli
+
         with patch("usereq.cli.maybe_notify_newer_version", return_value=None):
             with (
-                patch("usereq.static_check.dispatch_static_check_for_directory", return_value=0) as mock_dir,
-                patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_file,
+                patch(
+                    "usereq.static_check.dispatch_static_check_for_directory",
+                    return_value=0,
+                ) as mock_dir,
+                patch(
+                    "usereq.static_check.dispatch_static_check_for_file", return_value=0
+                ) as mock_file,
                 patch("builtins.print"),
             ):
                 rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
@@ -1895,6 +2108,7 @@ class TestFilesStaticCheckIgnoresScanByDir(GlobalConfigIsolatedTestCase):
         @brief scan-by-dir true still dispatches per explicit input file (SRS-591).
         """
         from usereq import cli
+
         self.tmp = TEMP_BASE / "files_sc_dir"
         if self.tmp.exists():
             shutil.rmtree(self.tmp)
@@ -1905,13 +2119,20 @@ class TestFilesStaticCheckIgnoresScanByDir(GlobalConfigIsolatedTestCase):
                 "docs-dir": "docs",
                 "tests-dir": "tests",
                 "src-dir": ["src"],
-                "static-check": {"Python": [{"module": "Pylance", "scan-by-dir": True}]},
+                "static-check": {
+                    "Python": [{"module": "Pylance", "scan-by-dir": True}]
+                },
             }
         )
         with patch("usereq.cli.maybe_notify_newer_version", return_value=None):
             with (
-                patch("usereq.static_check.dispatch_static_check_for_directory", return_value=0) as mock_dir,
-                patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_file,
+                patch(
+                    "usereq.static_check.dispatch_static_check_for_directory",
+                    return_value=0,
+                ) as mock_dir,
+                patch(
+                    "usereq.static_check.dispatch_static_check_for_file", return_value=0
+                ) as mock_file,
                 patch("builtins.print"),
             ):
                 rc = cli.main(
@@ -1926,6 +2147,7 @@ class TestFilesStaticCheckIgnoresScanByDir(GlobalConfigIsolatedTestCase):
 # ---------------------------------------------------------------------------
 # --enable-static-check Command executable validation tests (SRS-250)
 # ---------------------------------------------------------------------------
+
 
 class TestEnableStaticCheckExecutableValidation(GlobalConfigIsolatedTestCase):
     """!
@@ -1968,6 +2190,7 @@ class TestEnableStaticCheckExecutableValidation(GlobalConfigIsolatedTestCase):
 # --enable-static-check config persistence tests (SRS-248, SRS-252, SRS-262)
 # ---------------------------------------------------------------------------
 
+
 class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
     """!
     @brief Tests for --enable-static-check config persistence (SRS-248, SRS-251, SRS-252, SRS-262, SRS-301).
@@ -1993,6 +2216,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
     def test_enable_static_check_saved_to_config_json(self) -> None:
         """save_config with static_check_config persists Pylance config for Python."""
         from usereq.cli import save_config, load_static_check_from_config
+
         sc = {"Python": [{"module": "Pylance"}]}
         save_config("docs", "tests", ["src"], static_check_config=sc)
         result = load_static_check_from_config()
@@ -2002,7 +2226,12 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
     def test_enable_static_check_command_saves_cmd_and_params(self) -> None:
         """save_config persists Command module with cmd and params for C."""
         from usereq.cli import save_config, load_static_check_from_config
-        sc = {"C": [{"module": "Command", "cmd": "cppcheck", "params": ["--check-library"]}]}
+
+        sc = {
+            "C": [
+                {"module": "Command", "cmd": "cppcheck", "params": ["--check-library"]}
+            ]
+        }
         save_config("docs", "tests", ["src"], static_check_config=sc)
         result = load_static_check_from_config()
         self.assertIn("C", result)
@@ -2013,6 +2242,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
     def test_enable_static_check_multiple_langs(self) -> None:
         """save_config with multiple languages persists all entries."""
         from usereq.cli import save_config, load_static_check_from_config
+
         sc = {
             "Python": [{"module": "Pylance"}],
             "C": [{"module": "Dummy"}],
@@ -2026,6 +2256,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """Collecting multiple specs with same language preserves insertion order (SRS-251)."""
         from usereq.cli import save_config, load_static_check_from_config
         from usereq.static_check import parse_enable_static_check
+
         # Simulate collecting multiple --enable-static-check specs for the same language.
         specs = ["Python=Dummy", "Python=Ruff"]
         merged: dict = {}
@@ -2034,11 +2265,14 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
             merged.setdefault(lang, []).append(cfg)
         save_config("docs", "tests", ["src"], static_check_config=merged)
         result = load_static_check_from_config()
-        self.assertEqual([entry["module"] for entry in result["Python"]], ["Dummy", "Ruff"])
+        self.assertEqual(
+            [entry["module"] for entry in result["Python"]], ["Dummy", "Ruff"]
+        )
 
     def test_enable_static_check_unknown_lang_raises_req_error(self) -> None:
         """parse_enable_static_check with unknown language raises ReqError (SRS-249)."""
         from usereq.static_check import parse_enable_static_check
+
         with self.assertRaises(ReqError) as ctx:
             parse_enable_static_check("CobolLanguage=Dummy")
         self.assertEqual(ctx.exception.code, 1)
@@ -2047,13 +2281,19 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """save_config without static_check_config omits 'static-check' key from JSON."""
         import json
         from usereq.cli import save_config
+
         save_config("docs", "tests", ["src"])
         payload = json.loads(self.config_path.read_text())
         self.assertNotIn("static-check", payload)
 
     def test_load_static_check_returns_defaults_when_key_absent(self) -> None:
         """SRS-424: absent 'static-check' key resolves to the default configuration."""
-        from usereq.cli import save_config, load_static_check_from_config, DEFAULT_STATIC_CHECK
+        from usereq.cli import (
+            save_config,
+            load_static_check_from_config,
+            DEFAULT_STATIC_CHECK,
+        )
+
         save_config("docs", "tests", ["src"])
         result = load_static_check_from_config()
         self.assertEqual(result, DEFAULT_STATIC_CHECK)
@@ -2061,14 +2301,18 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
     def test_load_static_check_returns_defaults_when_no_config_file(self) -> None:
         """SRS-424: missing config.json resolves to the default configuration."""
         from usereq.cli import load_static_check_from_config, DEFAULT_STATIC_CHECK
+
         # No config.json written in setUp for this test
         result = load_static_check_from_config()
         self.assertEqual(result, DEFAULT_STATIC_CHECK)
 
-    def test_enable_static_check_deduplicates_identical_entries_same_invocation(self) -> None:
+    def test_enable_static_check_deduplicates_identical_entries_same_invocation(
+        self,
+    ) -> None:
         """Identical specs in one invocation are deduplicated to first occurrence (SRS-251)."""
         from usereq.cli import _static_check_entry_identity
         from usereq.static_check import parse_enable_static_check
+
         specs = ["Python=Ruff", "Python=Ruff"]
         new_static_check: dict = {}
         for spec in specs:
@@ -2086,6 +2330,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         """Two Command entries for same language with different params are both preserved (SRS-251)."""
         from usereq.cli import _static_check_entry_identity
         from usereq.static_check import parse_enable_static_check
+
         specs = [
             "C=Command,cppcheck,--check-library",
             "C=Command,cppcheck,--enable=all",
@@ -2103,9 +2348,16 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         self.assertEqual(new_static_check["C"][0]["params"], ["--check-library"])
         self.assertEqual(new_static_check["C"][1]["params"], ["--enable=all"])
 
-    def test_enable_static_check_update_does_not_duplicate_existing_identical_entry(self) -> None:
+    def test_enable_static_check_update_does_not_duplicate_existing_identical_entry(
+        self,
+    ) -> None:
         """Merging new entry identical to existing config entry is discarded (SRS-301)."""
-        from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
+        from usereq.cli import (
+            _static_check_entry_identity,
+            save_config,
+            load_static_check_from_config,
+        )
+
         existing_sc = {"Python": [{"module": "Pylance"}]}
         save_config("docs", "tests", ["src"], static_check_config=existing_sc)
         # Simulate merge logic: load existing then add identical new entry.
@@ -2120,9 +2372,16 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
             merged.setdefault("Python", []).append(new_entry)
         self.assertEqual(len(merged["Python"]), 1)
 
-    def test_enable_static_check_update_preserves_existing_tools_when_adding_new(self) -> None:
+    def test_enable_static_check_update_preserves_existing_tools_when_adding_new(
+        self,
+    ) -> None:
         """Existing static-check entries are not removed when a new non-duplicate entry is added (SRS-301)."""
-        from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
+        from usereq.cli import (
+            _static_check_entry_identity,
+            save_config,
+            load_static_check_from_config,
+        )
+
         existing_sc = {"Python": [{"module": "Pylance"}]}
         save_config("docs", "tests", ["src"], static_check_config=existing_sc)
         loaded = load_static_check_from_config()
@@ -2140,15 +2399,23 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
 
     def test_enable_static_check_update_adds_same_module_different_params(self) -> None:
         """New Command entry with different params is appended even if same module exists (SRS-301)."""
-        from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
-        existing_sc = {"C": [{"module": "Command", "cmd": "cppcheck", "params": ["--check-library"]}]}
+        from usereq.cli import (
+            _static_check_entry_identity,
+            save_config,
+            load_static_check_from_config,
+        )
+
+        existing_sc = {
+            "C": [
+                {"module": "Command", "cmd": "cppcheck", "params": ["--check-library"]}
+            ]
+        }
         save_config("docs", "tests", ["src"], static_check_config=existing_sc)
         loaded = load_static_check_from_config()
         merged: dict = {k: list(v) for k, v in loaded.items()}
         new_entry = {"module": "Command", "cmd": "cppcheck", "params": ["--enable=all"]}
         existing_identities = {
-            _static_check_entry_identity("C", entry)
-            for entry in merged.get("C", [])
+            _static_check_entry_identity("C", entry) for entry in merged.get("C", [])
         }
         if _static_check_entry_identity("C", new_entry) not in existing_identities:
             merged.setdefault("C", []).append(new_entry)
@@ -2156,9 +2423,16 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
         self.assertEqual(merged["C"][0]["params"], ["--check-library"])
         self.assertEqual(merged["C"][1]["params"], ["--enable=all"])
 
-    def test_enable_static_check_update_ignores_non_identity_fields_for_duplicate_check(self) -> None:
+    def test_enable_static_check_update_ignores_non_identity_fields_for_duplicate_check(
+        self,
+    ) -> None:
         """Existing entry with extra metadata still blocks identical identity tuple (SRS-301)."""
-        from usereq.cli import _static_check_entry_identity, save_config, load_static_check_from_config
+        from usereq.cli import (
+            _static_check_entry_identity,
+            save_config,
+            load_static_check_from_config,
+        )
+
         existing_sc = {"Python": [{"module": "Pylance", "meta": "legacy-note"}]}
         save_config("docs", "tests", ["src"], static_check_config=existing_sc)
         loaded = load_static_check_from_config()
@@ -2185,7 +2459,9 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
             "base-path": str(self.tmp),
             "git-path": str(self.tmp),
             "static-check": {
-                "JavaScript": [{"module": "Command", "cmd": "scripts/check-js-syntax.sh"}]
+                "JavaScript": [
+                    {"module": "Command", "cmd": "scripts/check-js-syntax.sh"}
+                ]
             },
         }
         (self.tmp / "docs").mkdir(parents=True, exist_ok=True)
@@ -2218,6 +2494,7 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
 # ---------------------------------------------------------------------------
 # Default static-check configuration tests (SRS-424, SRS-425, SRS-426, SRS-429)
 # ---------------------------------------------------------------------------
+
 
 class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
     """!
@@ -2261,9 +2538,7 @@ class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
             [{"module": "Command", "cmd": "node", "params": ["--check"]}],
         )
         self.assertEqual(sc["Python"], [{"module": "Pylance"}, {"module": "Ruff"}])
-        self.assertEqual(
-            sc["TypeScript"], [{"module": "Command", "cmd": "eslint"}]
-        )
+        self.assertEqual(sc["TypeScript"], [{"module": "Command", "cmd": "eslint"}])
 
     def test_defaults_are_returned_as_copy(self) -> None:
         """SRS-424: resolved defaults must not alias the module constant."""
@@ -2282,9 +2557,7 @@ class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
 
         self.write_global_config({"static-check": {}})
         self.assertEqual(cli.load_static_check_from_config(), {})
-        self.write_global_config(
-            {"static-check": {"Python": [{"module": "Dummy"}]}}
-        )
+        self.write_global_config({"static-check": {"Python": [{"module": "Dummy"}]}})
         self.assertEqual(
             cli.load_static_check_from_config(),
             {"Python": [{"module": "Dummy"}]},
@@ -2294,9 +2567,7 @@ class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
         """SRS-414/SRS-424: explicit disable persists an empty object."""
         from usereq import cli
 
-        self.write_global_config(
-            {"static-check": {"Python": [{"module": "Dummy"}]}}
-        )
+        self.write_global_config({"static-check": {"Python": [{"module": "Dummy"}]}})
         rc = cli.main(["--disable-static-check", "Python"])
         self.assertEqual(rc, 0)
         payload = json.loads(self.config_path.read_text(encoding="utf-8"))
@@ -2306,6 +2577,7 @@ class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
 # ---------------------------------------------------------------------------
 # Pre-flight availability tests (SRS-427, SRS-428, SRS-429)
 # ---------------------------------------------------------------------------
+
 
 class TestPreflightAvailability(unittest.TestCase):
     """!
@@ -2352,7 +2624,9 @@ class TestPreflightAvailability(unittest.TestCase):
         f = _make_temp_file(self.tmp, "missing_cmd_fail_only.py")
         with patch("shutil.which", return_value=None):
             rc = dispatch_static_check_for_file(
-                str(f), {"module": "Command", "cmd": "no_such_binary_xyz"}, fail_only=True
+                str(f),
+                {"module": "Command", "cmd": "no_such_binary_xyz"},
+                fail_only=True,
             )
         self.assertEqual(rc, 1)
 
@@ -2361,7 +2635,9 @@ class TestPreflightAvailability(unittest.TestCase):
         f = _make_temp_file(self.tmp, "no_pylance.py")
         out = StringIO()
         with patch("importlib.util.find_spec", return_value=None):
-            with patch("builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")):
+            with patch(
+                "builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")
+            ):
                 rc = dispatch_static_check_for_file(
                     str(f), {"module": "Pylance"}, fail_only=False
                 )
@@ -2374,7 +2650,9 @@ class TestPreflightAvailability(unittest.TestCase):
         f = _make_temp_file(self.tmp, "no_ruff.py")
         out = StringIO()
         with patch("importlib.util.find_spec", return_value=None):
-            with patch("builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")):
+            with patch(
+                "builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")
+            ):
                 rc = dispatch_static_check_for_file(
                     str(f), {"module": "Ruff"}, fail_only=False
                 )

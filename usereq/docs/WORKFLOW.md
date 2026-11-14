@@ -232,7 +232,7 @@
     - `_is_standalone_command(...)`: detect the standalone `--test-static-check` command path (SRS-240) [`src/usereq/cli.py`]
       - external boundaries: `usereq.static_check.run_static_check` imported at dispatch
     - `_is_project_scan_command(...)`: detect project-scan command path for git and docs commands [`src/usereq/cli.py`]
-      - `run_git_check(...)`: execute `--git-check` verifying clean git status and valid HEAD in the `--git-base` repository, with output only on failure [`src/usereq/cli.py`]
+      - `run_git_check(...)`: execute `--git-check` verifying clean git status and valid HEAD in the `--git-base` repository, printing `ERROR: Git status unclear!` to stdout only on failure (SRS-312) [`src/usereq/cli.py`]
         - `_require_git_base(...)`: resolve the mandatory `--git-base` repository root [`src/usereq/cli.py`]
           - `_require_git_base_value(...)`: validate `--git-base` presence and existence [`src/usereq/cli.py`]
           - `resolve_git_root(...)`: execute `git rev-parse --show-toplevel` in `--git-base` [`src/usereq/cli.py`]
