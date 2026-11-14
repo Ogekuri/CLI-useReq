@@ -97,6 +97,41 @@ STATIC_CHECK_LANGUAGES = (
 STATIC_CHECK_MODULES = ("Dummy", "Pylance", "Ruff", "Command")
 """! @brief Canonical static-check module names accepted by the entry schema (SRS-250)."""
 
+STATIC_CHECK_DIR_SCAN_MODULES: frozenset[str] = frozenset({"Pylance", "Ruff"})
+"""! @brief Built-in static-check modules supporting recursive directory-scan execution (SRS-584)."""
+
+STATIC_CHECK_DIR_SCAN_COMMANDS: frozenset[str] = frozenset(
+    {"cppcheck", "eslint", "ruff", "pyright"}
+)
+"""! @brief Command `cmd` binaries supporting recursive directory-scan execution (SRS-584)."""
+
+
+def static_check_dir_scan_default(module: Any, cmd: Any = None) -> bool:
+    """!
+    @brief Resolve the default directory-scan mode of one static-check entry.
+    @param module {Any} Raw module token; matched case-insensitively against
+      `STATIC_CHECK_MODULES`.
+    @param cmd {Any} Raw Command `cmd` token; matched lowercased against
+      `STATIC_CHECK_DIR_SCAN_COMMANDS`.
+    @return {bool} True exactly for SRS-584 directory-scan-capable entries, False otherwise.
+    @details Capability table: `Pylance` and `Ruff` are always capable, `Dummy` is never
+      capable, and `Command` is capable exactly when `cmd` is `cppcheck`, `eslint`, `ruff`,
+      or `pyright`. Non-string tokens are never capable. Complexity: O(1). No side effects.
+    @satisfies SRS-584, SRS-585
+    """
+    if not isinstance(module, str):
+        return False
+    module_key = module.strip().lower()
+    for canonical in STATIC_CHECK_MODULES:
+        if canonical.lower() != module_key:
+            continue
+        if canonical in STATIC_CHECK_DIR_SCAN_MODULES:
+            return True
+        if canonical == "Command" and isinstance(cmd, str):
+            return cmd.strip().lower() in STATIC_CHECK_DIR_SCAN_COMMANDS
+        return False
+    return False
+
 DEFAULT_STATIC_CHECK: dict[str, list[dict[str, Any]]] = {
     "C": [
         {
@@ -167,7 +202,7 @@ class SchemaNode:
 def _entry_fields() -> tuple[SchemaNode, ...]:
     """!
     @brief Build the fixed field set of one static-check dictionary entry (SRS-540).
-    @return {tuple[SchemaNode, ...]} Ordered `module`, `cmd`, and `params` field nodes.
+    @return {tuple[SchemaNode, ...]} Ordered `module`, `cmd`, `params`, and `scan-by-dir` field nodes.
     """
     return (
         SchemaNode(
@@ -203,6 +238,14 @@ def _entry_fields() -> tuple[SchemaNode, ...]:
                 non_empty=False,
             ),
         ),
+        SchemaNode(
+            token="scan-by-dir",
+            kind=KIND_BOOLEAN,
+            description="Recursive directory-scan execution mode.",
+            constraints="true only for directory-scan-capable entries",
+            optional=True,
+            example="true",
+        ),
     )
 
 
@@ -211,7 +254,7 @@ _STATIC_CHECK_ENTRY = SchemaNode(
     kind=KIND_DICTIONARY,
     description="One static-check entry.",
     type_label="Dictionary",
-    constraints="fields: module, cmd, params",
+    constraints="fields: module, cmd, params, scan-by-dir",
     fields=_entry_fields(),
 )
 """! @brief Fixed-schema dictionary describing one static-check entry (SRS-540)."""

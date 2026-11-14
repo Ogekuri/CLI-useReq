@@ -14,6 +14,8 @@
   - dispatch_static_check_for_file per module (SRS-262)
   - files-static-check CLI dispatch (SRS-262, SRS-408, SRS-410)
   - static-check project-scan dispatch (SRS-262, SRS-408, SRS-410)
+  - scan-by-dir capability defaults, directory-scan dispatch, and SRS-590 exclusions
+    (SRS-584..SRS-592)
   - --enable-static-check config persistence (SRS-262)
   - Language name case-insensitivity (SRS-262)
   - fail_only mode suppressing output on pass for each checker class (SRS-247)
@@ -1472,7 +1474,11 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         self.assertEqual(rc, 0)
 
     def test_static_check_runs_all_entries_for_language_in_order(self) -> None:
-        """Project scan runs all configured entries for each language file in order."""
+        """!
+        @brief Project scan dispatches dir-capable entries per root and per-file entries per file.
+        @details SRS-584/SRS-585: `cppcheck` resolves scan-by-dir=true (one directory dispatch
+          on the src root); `clang-format` resolves false (per-file dispatch). Entry order preserved.
+        """
         from usereq import cli
         _make_temp_file(self.tmp / "src", "multi.py")
         self._write_config(
@@ -1486,16 +1492,22 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         old_cwd = os.getcwd()
         try:
             os.chdir(str(self.tmp))
-            with patch("usereq.static_check.dispatch_static_check_for_file", side_effect=[0, 0]) as mock_dispatch:
+            with (
+                patch("usereq.static_check.dispatch_static_check_for_directory", return_value=0) as mock_dir,
+                patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_file,
+            ):
                 rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 0)
-        self.assertEqual(mock_dispatch.call_count, 2)
-        self.assertEqual(mock_dispatch.call_args_list[0].args[1]["cmd"], "cppcheck")
-        self.assertEqual(mock_dispatch.call_args_list[1].args[1]["cmd"], "clang-format")
-        self.assertEqual(mock_dispatch.call_args_list[0].kwargs["project_base"], self.tmp.resolve())
-        self.assertNotIn("src_dirs", mock_dispatch.call_args_list[0].kwargs)
+        self.assertEqual(mock_dir.call_count, 1)
+        self.assertEqual(mock_dir.call_args_list[0].args[0], str((self.tmp / "src").resolve()))
+        self.assertEqual(mock_dir.call_args_list[0].args[1]["cmd"], "cppcheck")
+        self.assertEqual(mock_dir.call_args_list[0].kwargs["project_base"], self.tmp.resolve())
+        self.assertEqual(mock_file.call_count, 1)
+        self.assertEqual(mock_file.call_args_list[0].args[1]["cmd"], "clang-format")
+        self.assertEqual(mock_file.call_args_list[0].kwargs["project_base"], self.tmp.resolve())
+        self.assertNotIn("src_dirs", mock_file.call_args_list[0].kwargs)
 
     def test_static_check_command_invokes_params_before_filename(self) -> None:
         """Project scan Command entry runs as cmd + params + filepath."""
@@ -1618,6 +1630,297 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         dispatched_files = [c.args[0] for c in mock_dispatch.call_args_list]
         dispatched_str = "\n".join(dispatched_files)
         self.assertIn("test_core.py", dispatched_str)
+
+
+# ---------------------------------------------------------------------------
+# scan-by-dir capability resolution tests (SRS-584, SRS-585)
+# ---------------------------------------------------------------------------
+
+class TestScanByDirResolution(unittest.TestCase):
+    """!
+    @brief Level 0 tests for scan-by-dir capability resolution (SRS-584, SRS-585).
+    @details Pure-function tests over `static_check_dir_scan_default` and `entry_scan_by_dir`;
+      no filesystem, subprocess, or configuration access.
+    """
+
+    def test_capability_matrix(self) -> None:
+        """!
+        @brief Capability defaults are true exactly for directory-scan-capable entries (SRS-584).
+        @details Covers built-in modules, capable/incapable Command binaries, case-insensitive
+          module tokens, and non-string inputs.
+        """
+        from usereq.config_schema import static_check_dir_scan_default
+
+        cases: list[tuple[object, object, bool]] = [
+            ("Pylance", None, True),
+            ("Ruff", None, True),
+            ("Dummy", None, False),
+            ("Command", "cppcheck", True),
+            ("Command", "eslint", True),
+            ("Command", "ruff", True),
+            ("Command", "pyright", True),
+            ("Command", "clang-format", False),
+            ("Command", "node", False),
+            ("pylance", None, True),
+            (None, None, False),
+        ]
+        for module, cmd, expected in cases:
+            with self.subTest(module=module, cmd=cmd):
+                self.assertIs(static_check_dir_scan_default(module, cmd), expected)
+
+    def test_entry_resolution_stored_overrides_default(self) -> None:
+        """!
+        @brief Stored booleans override the capability default; absent values use it (SRS-585).
+        """
+        from usereq.static_check import entry_scan_by_dir
+
+        self.assertIs(entry_scan_by_dir({"module": "Pylance"}), True)
+        self.assertIs(entry_scan_by_dir({"module": "Pylance", "scan-by-dir": False}), False)
+        self.assertIs(entry_scan_by_dir({"module": "Dummy"}), False)
+        self.assertIs(entry_scan_by_dir({"module": "Dummy", "scan-by-dir": True}), True)
+        self.assertIs(entry_scan_by_dir({"module": "Command", "cmd": "cppcheck"}), True)
+        self.assertIs(entry_scan_by_dir({"module": "Command", "cmd": "node"}), False)
+
+
+# ---------------------------------------------------------------------------
+# Directory-scan command composition tests (SRS-588..SRS-592)
+# ---------------------------------------------------------------------------
+
+class TestDirectoryScanCommand(unittest.TestCase):
+    """!
+    @brief Level 1 tests for recursive directory-scan invocation composition (SRS-588..SRS-592).
+    @details Isolates `subprocess.run` inside `usereq.static_check`; asserts command shape,
+      SRS-590 exclusion flags, SRS-592 output format, and fail_only suppression.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = TEMP_BASE / "dir_scan"
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+        self.tmp.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self) -> None:
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+
+    @staticmethod
+    def _passing_result() -> MagicMock:
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+        mock_result.stderr = ""
+        return mock_result
+
+    def test_ruff_directory_command_with_exclude(self) -> None:
+        """!
+        @brief Ruff directory scan appends --exclude tokens and targets the root (SRS-588, SRS-590).
+        """
+        target = str(self.tmp)
+        fixtures = str(self.tmp / "fixtures")
+        checker = StaticCheckRuff(inputs=[], fail_only=True)
+        with patch(
+            "usereq.static_check.subprocess.run", return_value=self._passing_result()
+        ) as mock_run:
+            rc = checker.run_directory(target, exclude_dirs=[fixtures])
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            mock_run.call_args.args[0],
+            [sys.executable, "-m", "ruff", "check", "--exclude", fixtures, target],
+        )
+
+    def test_pylance_directory_command_form(self) -> None:
+        """!
+        @brief Pylance directory scan keeps the fixed interpreter/module form and targets the root (SRS-588).
+        """
+        target = str(self.tmp)
+        checker = StaticCheckPylance(inputs=[], fail_only=True)
+        with patch(
+            "usereq.static_check.subprocess.run", return_value=self._passing_result()
+        ) as mock_run:
+            rc = checker.run_directory(target)
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            mock_run.call_args.args[0],
+            [sys.executable, "-m", "pyright", "--pythonpath", sys.executable, target],
+        )
+
+    def test_command_cppcheck_directory_uses_dash_i(self) -> None:
+        """!
+        @brief cppcheck directory scan excludes fixtures via -i and targets the root (SRS-588, SRS-590).
+        """
+        target = str(self.tmp)
+        fixtures = str(self.tmp / "fixtures")
+        checker = StaticCheckCommand(cmd="cppcheck", inputs=[], fail_only=True)
+        with (
+            patch("shutil.which", return_value="/usr/bin/cppcheck"),
+            patch(
+                "usereq.static_check.subprocess.run", return_value=self._passing_result()
+            ) as mock_run,
+        ):
+            rc = checker.run_directory(target, exclude_dirs=[fixtures])
+        self.assertEqual(rc, 0)
+        self.assertEqual(mock_run.call_args.args[0], ["cppcheck", "-i", fixtures, target])
+
+    def test_directory_scan_output_format_fail_only_false(self) -> None:
+        """!
+        @brief Directory block renders header with directory path, Result: OK, trailing blank (SRS-592).
+        """
+        target = str(self.tmp)
+        out = StringIO()
+        checker = StaticCheckRuff(inputs=[], fail_only=False)
+        with patch(
+            "usereq.static_check.subprocess.run", return_value=self._passing_result()
+        ):
+            with patch("builtins.print", new=lambda *a, **k: out.write(str(a[0]) + "\n")):
+                rc = checker.run_directory(target)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.getvalue(), f"# Static-Check(Ruff): {target}\nResult: OK\n\n")
+
+    def test_directory_scan_fail_only_pass_is_silent(self) -> None:
+        """!
+        @brief Passing directory scan produces no output in fail_only mode (SRS-592).
+        """
+        checker = StaticCheckRuff(inputs=[], fail_only=True)
+        with patch(
+            "usereq.static_check.subprocess.run", return_value=self._passing_result()
+        ):
+            with patch("builtins.print") as mock_print:
+                rc = checker.run_directory(str(self.tmp))
+        self.assertEqual(rc, 0)
+        mock_print.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# scan-by-dir project-scan dispatch tests (SRS-587, SRS-588, SRS-590)
+# ---------------------------------------------------------------------------
+
+class TestScanByDirProjectDispatch(GlobalConfigIsolatedTestCase):
+    """!
+    @brief Level 2 tests for scan-by-dir dispatch in the project-scan command (SRS-587, SRS-588, SRS-590).
+    @details Uses disposable git repositories and patches both dispatch entry points plus the
+      startup release-check; no real checker subprocess is executed.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.tmp = TEMP_BASE / "project_sc_dir"
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "init"], cwd=self.tmp, check=True, capture_output=True)
+        (self.tmp / "src").mkdir()
+        (self.tmp / "tests").mkdir()
+
+    def tearDown(self) -> None:
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+
+    def _write_config(self, sc_config: dict) -> None:
+        payload = {
+            "docs-dir": "docs",
+            "tests-dir": "tests",
+            "src-dir": ["src"],
+            "static-check": sc_config,
+        }
+        self.write_global_config(payload)
+
+    def _run_static_check(self) -> tuple[int, MagicMock, MagicMock]:
+        from usereq import cli
+        with patch("usereq.cli.maybe_notify_newer_version", return_value=None):
+            with (
+                patch("usereq.static_check.dispatch_static_check_for_directory", return_value=0) as mock_dir,
+                patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_file,
+                patch("builtins.print"),
+            ):
+                rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
+        return rc, mock_dir, mock_file
+
+    def test_dir_capable_entry_dispatches_once_per_root(self) -> None:
+        """!
+        @brief Pylance dispatches one directory invocation per root containing Python files (SRS-588).
+        """
+        _make_temp_file(self.tmp / "src", "main.py")
+        _make_temp_file(self.tmp / "tests", "test_main.py")
+        self._write_config({"Python": [{"module": "Pylance"}]})
+        rc, mock_dir, mock_file = self._run_static_check()
+        self.assertEqual(rc, 0)
+        self.assertEqual(mock_dir.call_count, 2)
+        self.assertEqual(
+            [call.args[0] for call in mock_dir.call_args_list],
+            [str((self.tmp / "src").resolve()), str((self.tmp / "tests").resolve())],
+        )
+        mock_file.assert_not_called()
+
+    def test_scan_by_dir_false_dispatches_per_file(self) -> None:
+        """!
+        @brief Explicit scan-by-dir false dispatches per selected file (SRS-587).
+        """
+        _make_temp_file(self.tmp / "src", "main.py")
+        _make_temp_file(self.tmp / "tests", "test_main.py")
+        self._write_config({"Python": [{"module": "Pylance", "scan-by-dir": False}]})
+        rc, mock_dir, mock_file = self._run_static_check()
+        self.assertEqual(rc, 0)
+        mock_dir.assert_not_called()
+        dispatched = "\n".join(call.args[0] for call in mock_file.call_args_list)
+        self.assertIn("main.py", dispatched)
+        self.assertIn("test_main.py", dispatched)
+
+    def test_dir_dispatch_excludes_tests_fixtures(self) -> None:
+        """!
+        @brief Existing tests/fixtures directory is passed as exclude_dirs for the tests root (SRS-590).
+        """
+        fixtures_dir = self.tmp / "tests" / "fixtures"
+        _make_temp_file(self.tmp / "src", "main.py")
+        _make_temp_file(self.tmp / "tests", "test_main.py")
+        _make_temp_file(fixtures_dir, "fixture_python.py")
+        self._write_config({"Python": [{"module": "Pylance"}]})
+        rc, mock_dir, mock_file = self._run_static_check()
+        self.assertEqual(rc, 0)
+        self.assertEqual(mock_dir.call_count, 2)
+        self.assertEqual(mock_dir.call_args_list[0].kwargs.get("exclude_dirs"), [])
+        self.assertEqual(
+            mock_dir.call_args_list[1].kwargs.get("exclude_dirs"),
+            [str(fixtures_dir.resolve())],
+        )
+
+
+class TestFilesStaticCheckIgnoresScanByDir(GlobalConfigIsolatedTestCase):
+    """!
+    @brief Level 2 tests for files-static-check ignoring scan-by-dir (SRS-591).
+    @details Explicit file lists always dispatch per file; directory dispatch is never invoked.
+    """
+
+    def test_files_static_check_ignores_scan_by_dir(self) -> None:
+        """!
+        @brief scan-by-dir true still dispatches per explicit input file (SRS-591).
+        """
+        from usereq import cli
+        self.tmp = TEMP_BASE / "files_sc_dir"
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        target = _make_temp_file(self.tmp, "one.py")
+        self.write_global_config(
+            {
+                "docs-dir": "docs",
+                "tests-dir": "tests",
+                "src-dir": ["src"],
+                "static-check": {"Python": [{"module": "Pylance", "scan-by-dir": True}]},
+            }
+        )
+        with patch("usereq.cli.maybe_notify_newer_version", return_value=None):
+            with (
+                patch("usereq.static_check.dispatch_static_check_for_directory", return_value=0) as mock_dir,
+                patch("usereq.static_check.dispatch_static_check_for_file", return_value=0) as mock_file,
+                patch("builtins.print"),
+            ):
+                rc = cli.main(
+                    ["files-static-check", str(target), "--prj-base", str(self.tmp)]
+                )
+        self.assertEqual(rc, 0)
+        self.assertEqual(mock_file.call_count, 1)
+        self.assertEqual(mock_file.call_args_list[0].args[0], str(target.resolve()))
+        mock_dir.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

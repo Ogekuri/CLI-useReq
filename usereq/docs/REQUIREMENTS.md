@@ -2,7 +2,7 @@
 title: "useReq Requirements"
 description: "Software Requirements Specification"
 date: "2026-11-12"
-version: 1.27
+version: 1.28
 author: "Ogekuri"
 scope:
   paths:
@@ -400,7 +400,10 @@ No explicit performance optimizations identified.
 - **SRS-250**: MUST implement the following behavior: `--enable-static-check` MUST accept a module name (case-insensitive) as the first comma-separated token after `=`: Dummy, Pylance, Ruff, or Command; for Command the second comma-separated token is the mandatory `cmd` binary; when parsed from command-line SPECs rather than persisted configuration, Command `cmd` MUST resolve to an executable program (`shutil.which`) or the command MUST fail with `ReqError` exit code 1 before any configuration is persisted; all subsequent comma-separated tokens are `params` stored as a JSON array, commas inside single-quoted or double-quoted tokens MUST NOT split parameters, and surrounding single or double quotes on each token MUST be stripped before persistence; unknown module names MUST produce a `ReqError` with exit code 1.
 - **SRS-251**: MUST implement the following behavior: When `--enable-static-check` is specified multiple times, entries MUST be preserved in insertion order per canonical language; an entry structurally identical (`module`, `cmd`, and `params` fields all equal) to an already-accumulated entry for the same canonical language MUST be silently discarded.
 - **SRS-301**: MUST implement the following behavior: When `--enable-static-check` is invoked against an existing global configuration file, the command MUST load and preserve all pre-existing `"static-check"` entries without removal; for each new CLI-specified entry, presence MUST be decided by exact tuple match `(canonical language, module, cmd, params)` in the loaded config; if present discard, otherwise append.
-- **SRS-252**: MUST implement the following behavior: When `--enable-static-check` is used during installation or update, the global configuration file key `"static-check"` MUST be a JSON object keyed by canonical language name, and each language value MUST be a non-empty JSON array of entry objects with required `"module"` and optional `"cmd"`/`"params"` fields.
+- **SRS-252**: MUST implement the following behavior: When `--enable-static-check` is used during installation or update, the global configuration file key `"static-check"` MUST be a JSON object keyed by canonical language name, and each language value MUST be a non-empty JSON array of entry objects with required `"module"` and optional `"cmd"`/`"params"`/`"scan-by-dir"` fields.
+- **SRS-584**: MUST resolve each static-check entry's directory-scan capability: `Pylance` and `Ruff` MUST be capable, `Dummy` MUST NOT be capable, and `Command` MUST be capable exactly when `cmd` is `cppcheck`, `eslint`, `ruff`, or `pyright`.
+- **SRS-585**: MUST persist optional boolean `"scan-by-dir"` per static-check entry; an absent value MUST resolve to true exactly for SRS-584-capable entries and to false otherwise.
+- **SRS-586**: MUST reject `"scan-by-dir": true` on an SRS-584-incapable entry with an English error and no configuration mutation.
 
 ### 5.4 Static Analysis Execution Commands
 - **SRS-253**: MUST support `files-static-check FILE [FILE ...]` as a subcommand per SRS-408 requiring `--prj-base`; for each FILE it MUST resolve the absolute path, detect the language, load the language array from `"static-check"`, and execute all configured entries sequentially with `fail_only` mode active and a dispatch context containing the mandatory `--prj-base` value.
@@ -414,6 +417,12 @@ No explicit performance optimizations identified.
 - **SRS-426**: MUST default language `JavaScript` to Command `node --check`, `TypeScript` to Command `eslint`, and `Python` to the `Pylance` and `Ruff` modules.
 - **SRS-427**: MUST pre-flight every static checker before execution: `Dummy` is always available, `Pylance` and `Ruff` require their module in the active interpreter, and `Command` requires `shutil.which(cmd)` resolution.
 - **SRS-428**: MUST report an unavailable checker as `Result: FAIL` with English evidence identifying the missing checker or binary, MUST NOT abort, and MUST continue executing the remaining checks.
+- **SRS-587**: MUST dispatch every `"scan-by-dir"`-false `static-check` entry per selected file under the SRS-256 selection semantics.
+- **SRS-588**: MUST dispatch every `"scan-by-dir"`-true `static-check` entry as one recursive checker invocation per configured root (`src-dir` entries plus `tests-dir`) containing selected files of the entry's language.
+- **SRS-589**: MUST pass the root directory as the checker target for directory invocations and MUST aggregate them under the SRS-257 exit-code semantics.
+- **SRS-590**: MUST exclude `<tests-dir>/fixtures` from directory invocations through `--exclude` for `Pylance` and `Ruff`, `-i` for `cppcheck`, and `--ignore-pattern` for `eslint`.
+- **SRS-591**: MUST ignore `"scan-by-dir"` in `files-static-check` and dispatch every configured entry per explicit input file.
+- **SRS-592**: MUST render directory-scan blocks with the SRS-241..SRS-244 header and result format, using the directory path in place of the filename.
 ### 5.5 Static Analysis Dispatch Implementation Requirements
 - **SRS-258**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_LANG_CANONICAL` dict in `src/usereq/static_check.py` mapping lowercase language identifiers (including common aliases: `cpp` for C++, `csharp` for C#, `js` for JavaScript, `ts` for TypeScript, `sh` for Shell) to canonical language names from SRS-249.
 - **SRS-259**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_EXT_TO_LANG` dict in `src/usereq/static_check.py` mapping file extensions to canonical language names, using the same 20-language extension set as SRS-131.

@@ -4235,8 +4235,9 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
       - For `Command` module entries, execution order is `<cmd> [params...] <filename>`.
       Dispatch context provides project root for checker runtime execution.
       All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-253).
+      The command ignores `"scan-by-dir"` and always dispatches per explicit input file (SRS-591).
       Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-253, SRS-255)
-    @see SRS-253, SRS-254, SRS-255, SRS-341, SRS-396, SRS-408
+    @see SRS-253, SRS-254, SRS-255, SRS-341, SRS-396, SRS-408, SRS-591
     """
     from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
 
@@ -4297,18 +4298,34 @@ def run_project_static_check_cmd(args: Namespace) -> int:
       diagnostics unrelated to project code quality gates.
       For each collected file:
       - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on lowercase extension.
+      - Groups files under ordered, deduplicated scan roots: the configured `src-dir`
+        entries followed by `tests-dir` (SRS-588).
+      Per scan root and language:
       - Looks up language in the `"static-check"` section of `~/.config/usereq/config.json`.
       - Skips silently when no tool is configured for the file's language.
-      - Executes each configured language entry sequentially via
-        `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`.
-      - For `Command` module entries, execution order is `<cmd> [params...] <filename>`.
+      - Resolves each configured entry's directory-scan mode through `entry_scan_by_dir`
+        (SRS-584, SRS-585).
+      - Dispatches `"scan-by-dir"`-false entries per selected file via
+        `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`
+        (SRS-587); for `Command` entries, execution order is `<cmd> [params...] <filename>`.
+      - Dispatches `"scan-by-dir"`-true entries as exactly one recursive
+        `dispatch_static_check_for_directory(root, lang_config, fail_only=True, project_base=...)`
+        invocation per root containing selected files of the entry's language (SRS-588, SRS-589);
+        for `Command` entries, execution order is `<cmd> [params...] <root>`.
+      - Excludes existing fixture-corpus directories from directory invocations through
+        module-native exclusion flags (SRS-590).
       Dispatch context provides project root for checker runtime execution.
       All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-256).
-      Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
+      Overall exit code: max of all dispatch codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
     @throws ReqError If no source files are found.
-    @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408
+    @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408, SRS-584, SRS-585, SRS-587, SRS-588, SRS-589, SRS-590, SRS-592
     """
-    from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
+    from .static_check import (
+        STATIC_CHECK_EXT_TO_LANG,
+        dispatch_static_check_for_directory,
+        dispatch_static_check_for_file,
+        entry_scan_by_dir,
+    )
 
     project_base, src_dirs = _resolve_project_src_dirs(args)
     sc_config = load_static_check_from_config()
@@ -4359,26 +4376,79 @@ def run_project_static_check_cmd(args: Namespace) -> int:
     if not files:
         raise ReqError("Error: no source files found in configured directories.", 1)
 
-    overall = 0
+    # SRS-588: ordered, deduplicated scan roots = configured src-dir entries plus tests-dir.
+    scan_roots: list[Path] = []
+    for rel_dir in selection_dirs:
+        root = (project_base / rel_dir).resolve()
+        if root not in scan_roots:
+            scan_roots.append(root)
+
+    files_by_root: dict[Path, list[str]] = {}
     for filepath in files:
-        ext = Path(filepath).suffix.lower()
-        lang = STATIC_CHECK_EXT_TO_LANG.get(ext)
-        if not lang:
-            vlog(f"Skipping {filepath}: no language mapping for extension '{ext}'")
+        candidate = Path(filepath)
+        for root in scan_roots:
+            if root in candidate.parents:
+                files_by_root.setdefault(root, []).append(filepath)
+                break
+
+    # SRS-590: existing fixture-corpus directories excluded from directory invocations.
+    exclude_by_root: dict[Path, list[str]] = {}
+    for fixture_root in fixture_roots:
+        fixtures_abs = (project_base / fixture_root).resolve()
+        if not fixtures_abs.is_dir():
             continue
-        lang_configs = sc_config.get(lang)
-        if not lang_configs:
-            vlog(f"Skipping {filepath}: no static-check config for language '{lang}'")
+        for root in scan_roots:
+            if root in fixtures_abs.parents:
+                exclude_by_root.setdefault(root, []).append(str(fixtures_abs))
+
+    overall = 0
+    for root in scan_roots:
+        root_files = files_by_root.get(root, [])
+        if not root_files:
             continue
-        for lang_config in lang_configs:
-            rc = dispatch_static_check_for_file(
-                filepath,
-                lang_config,
-                fail_only=True,
-                project_base=project_base,
-            )
-            if rc != 0:
-                overall = 1
+        languages = sorted(
+            {
+                lang
+                for lang in (
+                    STATIC_CHECK_EXT_TO_LANG.get(Path(filepath).suffix.lower())
+                    for filepath in root_files
+                )
+                if lang
+            }
+        )
+        for lang in languages:
+            lang_configs = sc_config.get(lang)
+            if not lang_configs:
+                vlog(f"Skipping {root}: no static-check config for language '{lang}'")
+                continue
+            lang_files = [
+                filepath
+                for filepath in root_files
+                if STATIC_CHECK_EXT_TO_LANG.get(Path(filepath).suffix.lower()) == lang
+            ]
+            for lang_config in lang_configs:
+                # SRS-587/SRS-588: per-file dispatch when scan-by-dir resolves false;
+                # one recursive directory invocation per root otherwise.
+                if entry_scan_by_dir(lang_config):
+                    rc = dispatch_static_check_for_directory(
+                        str(root),
+                        lang_config,
+                        fail_only=True,
+                        project_base=project_base,
+                        exclude_dirs=exclude_by_root.get(root, []),
+                    )
+                    if rc != 0:
+                        overall = 1
+                    continue
+                for filepath in lang_files:
+                    rc = dispatch_static_check_for_file(
+                        filepath,
+                        lang_config,
+                        fail_only=True,
+                        project_base=project_base,
+                    )
+                    if rc != 0:
+                        overall = 1
     return overall
 
 

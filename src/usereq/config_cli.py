@@ -35,6 +35,7 @@ from .config_schema import (
     ROOT_LABEL,
     SchemaNode,
     find_field,
+    static_check_dir_scan_default,
 )
 
 BRANCH = "├── "
@@ -178,7 +179,8 @@ def validate_node(node: SchemaNode, value: Any, path: str) -> None:
     @return {None} Function return value.
     @throws {ConfigError} Raised with an English diagnostic on any schema violation.
     @details Covers primitives, enums, arrays, map keys, fixed-field dictionaries, required
-    fields, and the Command `cmd` cross-field constraint (SRS-530, SRS-536).
+    fields, the Command `cmd` cross-field constraint, and the `scan-by-dir` capability
+    cross-field constraint (SRS-530, SRS-536, SRS-586).
     """
     if node.kind == KIND_STRING:
         if not isinstance(value, str):
@@ -251,6 +253,13 @@ def validate_node(node: SchemaNode, value: Any, path: str) -> None:
                 raise ConfigError(
                     f"Error: '{path}:cmd' is required when module is Command."
                 )
+        if value.get("scan-by-dir") is True and not static_check_dir_scan_default(
+            value.get("module"), value.get("cmd")
+        ):
+            raise ConfigError(
+                f"Error: '{path}:scan-by-dir' must be false or absent: this entry does "
+                "not support directory scanning."
+            )
         return
     if node.kind == KIND_SECTION:
         if not isinstance(value, dict):

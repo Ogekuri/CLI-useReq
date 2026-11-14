@@ -4,12 +4,15 @@
 @details Provides a class hierarchy for running static analysis tools against resolved file lists.
   Exposes `run_static_check(argv)` as the primary entry point for `--test-static-check` called
   from cli.py. Also exposes `parse_enable_static_check`, `dispatch_static_check_for_file`,
-  `STATIC_CHECK_LANG_CANONICAL`, and `STATIC_CHECK_EXT_TO_LANG` for `--enable-static-check`,
-  `files-static-check` and `static-check` subcommand support.
+  `dispatch_static_check_for_directory`, `entry_scan_by_dir`, `STATIC_CHECK_LANG_CANONICAL`,
+  and `STATIC_CHECK_EXT_TO_LANG` for `--enable-static-check`, `files-static-check`
+  and `static-check` subcommand support.
   Class hierarchy: StaticCheckBase (Dummy) -> StaticCheckPylance, StaticCheckRuff, StaticCheckCommand.
   File resolution supports: explicit file paths, glob patterns (with full `**` recursive expansion),
   and direct-children-only directory traversal. No custom `--recursive` flag; recursive traversal
   is expressed via `**` glob syntax (e.g., `src/**/*.py`).
+  Directory-scan execution (`scan-by-dir`) dispatches one recursive checker invocation per
+  configured root directory instead of one invocation per file (SRS-584..SRS-592).
 @author useReq
 @version 0.0.72
 """
@@ -22,9 +25,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Mapping, Optional, Sequence
 
 from .cli import ReqError
+from .config_schema import static_check_dir_scan_default
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +108,36 @@ _CANONICAL_MODULES: dict[str, str] = {
     "ruff": "Ruff",
     "command": "Command",
 }
+
+_DIR_SCAN_EXCLUDE_FLAGS: dict[str, tuple[str, ...]] = {
+    "cppcheck": ("-i",),
+    "eslint": ("--ignore-pattern",),
+    "ruff": ("--exclude",),
+    "pyright": ("--exclude",),
+}
+"""!
+@brief Maps directory-scan-capable Command binaries to their exclusion flag tokens.
+@details Drives the SRS-590 fixture-corpus exclusion arguments appended to directory-scan
+  invocations; capability membership mirrors `STATIC_CHECK_DIR_SCAN_COMMANDS`.
+@see SRS-584, SRS-590
+"""
+
+
+def entry_scan_by_dir(lang_config: Mapping[str, object]) -> bool:
+    """!
+    @brief Resolve the effective directory-scan mode of one static-check entry.
+    @param lang_config {Mapping[str, object]} Entry mapping with optional boolean `"scan-by-dir"`.
+    @return {bool} Stored boolean when present, otherwise the SRS-584 capability default.
+    @details Non-boolean stored values fall back to the capability default resolved through
+      `static_check_dir_scan_default(module, cmd)`. Complexity: O(1). No side effects.
+    @satisfies SRS-584, SRS-585
+    """
+    stored = lang_config.get("scan-by-dir")
+    if isinstance(stored, bool):
+        return stored
+    return static_check_dir_scan_default(
+        lang_config.get("module"), lang_config.get("cmd")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +320,67 @@ def dispatch_static_check_for_file(
     return checker.run()
 
 
+def dispatch_static_check_for_directory(
+    dirpath: str,
+    lang_config: dict,
+    *,
+    fail_only: bool = False,
+    project_base: Optional[Path] = None,
+    exclude_dirs: Sequence[str] = (),
+) -> int:
+    """!
+    @brief Dispatch one recursive directory-scan static check for a language config dict.
+    @param dirpath {str} Absolute root directory path passed as the checker target.
+    @param lang_config {dict} Entry mapping with `"module"`, optional `"cmd"`, `"params"`,
+      and `"scan-by-dir"` keys.
+    @param fail_only {bool} When True, suppress all stdout output for passing scans.
+    @param project_base {Optional[Path]} Absolute project root forwarded to `StaticCheckPylance`.
+    @param exclude_dirs {Sequence[str]} Absolute directories excluded from the recursive scan
+      through module-native exclusion flags (SRS-590).
+    @return {int} Exit code: 0 on pass, 1 on fail.
+    @throws ReqError If module is unknown, or Command module is missing `"cmd"`.
+    @details Mirrors `dispatch_static_check_for_file` checker construction, then executes
+      exactly one `run_directory(...)` invocation with the root directory as target.
+      Directory-scan eligibility is decided by the caller through `entry_scan_by_dir`
+      (SRS-584, SRS-585, SRS-588).
+    @see dispatch_static_check_for_file, entry_scan_by_dir
+    @satisfies SRS-588, SRS-589, SRS-590
+    """
+    module = lang_config.get("module", "")
+    params: List[str] = lang_config.get("params", [])
+    cmd: Optional[str] = lang_config.get("cmd")
+
+    module_key = module.lower()
+    checker: StaticCheckBase
+    if module_key == "dummy":
+        checker = StaticCheckBase(inputs=[], extra_args=params, fail_only=fail_only)
+    elif module_key == "pylance":
+        checker = StaticCheckPylance(
+            inputs=[],
+            extra_args=params,
+            fail_only=fail_only,
+            project_base=project_base,
+        )
+    elif module_key == "ruff":
+        checker = StaticCheckRuff(inputs=[], extra_args=params, fail_only=fail_only)
+    elif module_key == "command":
+        if not cmd:
+            raise ReqError(
+                f"Error: Command module requires 'cmd' in static-check config for '{dirpath}'.",
+                1,
+            )
+        checker = StaticCheckCommand(
+            cmd=cmd, inputs=[], extra_args=params, fail_only=fail_only
+        )
+    else:
+        raise ReqError(
+            f"Error: unknown static-check module '{module}'. "
+            "Valid modules: Dummy, Pylance, Ruff, Command",
+            1,
+        )
+    return checker.run_directory(dirpath, exclude_dirs)
+
+
 # ---------------------------------------------------------------------------
 # File resolution helpers
 # ---------------------------------------------------------------------------
@@ -426,6 +521,90 @@ class StaticCheckBase:
             if not self._fail_only or rc != 0:
                 self._emit_line("")
         return overall
+
+    def run_directory(self, target: str, exclude_dirs: Sequence[str] = ()) -> int:
+        """!
+        @brief Execute one recursive directory-scan checker invocation.
+        @param target {str} Absolute root directory path scanned recursively by the checker.
+        @param exclude_dirs {Sequence[str]} Absolute directory paths excluded through
+          module-native flags (SRS-590).
+        @return {int} Exit code: 0 on pass, 1 on fail.
+        @details Runs the SRS-427 availability pre-flight; an unavailable checker or an
+          unsupported directory command emits header, `Result: FAIL`, English evidence, and
+          one trailing blank line in both fail_only modes, returns 1, and never raises (SRS-428).
+          Otherwise executes `_directory_command(...)` exactly once with the root directory as
+          target, aggregates the subprocess exit code, and renders the SRS-241..SRS-244 block
+          shape with the directory path in place of the filename (SRS-592); when `fail_only`
+          is True a passing scan produces no output.
+        @satisfies SRS-427, SRS-428, SRS-588, SRS-589, SRS-592
+        """
+        available, reason = self.is_available()
+        if not available:
+            self._emit_line(self._header_line(target))
+            self._emit_line("Result: FAIL")
+            self._emit_line("Evidence:")
+            self._emit_line(
+                f"Error: static checker {self.LABEL} is not available: {reason}"
+            )
+            self._emit_line("")
+            return 1
+        exclude_args: List[str] = []
+        for exclude_dir in exclude_dirs:
+            exclude_args.extend(self._dir_exclude_tokens(exclude_dir))
+        cmd = self._directory_command(target, exclude_args)
+        if cmd is None:
+            self._emit_line(self._header_line(target))
+            self._emit_line("Result: FAIL")
+            self._emit_line("Evidence:")
+            self._emit_line(
+                f"Error: static checker {self.LABEL} does not support directory scanning."
+            )
+            self._emit_line("")
+            return 1
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        except FileNotFoundError:
+            self._emit_line(self._header_line(target))
+            self._emit_line("Result: FAIL")
+            self._emit_line("Evidence:")
+            self._emit_line("  checker executable not available for directory scanning")
+            self._emit_line("")
+            return 1
+        if result.returncode == 0:
+            if not self._fail_only:
+                self._emit_line(self._header_line(target))
+                self._emit_line("Result: OK")
+                self._emit_line("")
+            return 0
+        self._emit_line(self._header_line(target))
+        self._emit_line("Result: FAIL")
+        self._emit_line("Evidence:")
+        evidence = (result.stdout or "") + (result.stderr or "")
+        self._emit_line(evidence.rstrip())
+        self._emit_line("")
+        return 1
+
+    def _directory_command(
+        self, target: str, exclude_args: Sequence[str]
+    ) -> Optional[List[str]]:
+        """!
+        @brief Build the checker command for one recursive directory-scan invocation.
+        @param target {str} Absolute root directory path passed as the checker target.
+        @param exclude_args {Sequence[str]} SRS-590 exclusion argument tokens.
+        @return {Optional[List[str]]} Full subprocess argument vector; None when the module
+          does not support directory scanning.
+        @details Base implementation (Dummy): directory scanning is unsupported (SRS-584).
+        """
+        return None
+
+    def _dir_exclude_tokens(self, exclude_dir: str) -> List[str]:
+        """!
+        @brief Build the module-native exclusion tokens for one excluded directory.
+        @param exclude_dir {str} Absolute directory path excluded from the recursive scan.
+        @return {List[str]} Exclusion flag and path tokens appended before the target.
+        @details Built-in module checkers exclude through `--exclude` (SRS-590).
+        """
+        return ["--exclude", exclude_dir]
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -573,6 +752,31 @@ class StaticCheckPylance(StaticCheckBase):
             self._emit_line(evidence.rstrip())
             return 1
 
+    def _directory_command(
+        self, target: str, exclude_args: Sequence[str]
+    ) -> Optional[List[str]]:
+        """!
+        @brief Build the pyright command for one recursive directory-scan invocation.
+        @param target {str} Absolute root directory path passed as the pyright target.
+        @param exclude_args {Sequence[str]} SRS-590 `--exclude` tokens.
+        @return {Optional[List[str]]} `[sys.executable, '-m', 'pyright', '--pythonpath',
+          sys.executable, <extra_args>..., <exclude_args>..., <target>]`.
+        @details Uses the active runtime interpreter without external PATH resolution or
+          `.venv` discovery and passes the root directory as the final target so pyright
+          performs its own recursive discovery (SRS-339, SRS-588).
+        @satisfies SRS-339, SRS-588
+        """
+        return [
+            sys.executable,
+            "-m",
+            "pyright",
+            "--pythonpath",
+            sys.executable,
+            *self._extra_args,
+            *exclude_args,
+            target,
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Ruff checker
@@ -648,6 +852,30 @@ class StaticCheckRuff(StaticCheckBase):
             evidence = (result.stdout or "") + (result.stderr or "")
             self._emit_line(evidence.rstrip())
             return 1
+
+    def _directory_command(
+        self, target: str, exclude_args: Sequence[str]
+    ) -> Optional[List[str]]:
+        """!
+        @brief Build the ruff command for one recursive directory-scan invocation.
+        @param target {str} Absolute root directory path passed as the ruff target.
+        @param exclude_args {Sequence[str]} SRS-590 `--exclude` tokens.
+        @return {Optional[List[str]]} `[sys.executable, '-m', 'ruff', 'check',
+          <extra_args>..., <exclude_args>..., <target>]`.
+        @details Uses the package-installed ruff module without external PATH resolution
+          and passes the root directory as the final target so ruff performs its own
+          recursive discovery (SRS-339, SRS-588).
+        @satisfies SRS-339, SRS-588
+        """
+        return [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            *self._extra_args,
+            *exclude_args,
+            target,
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -739,6 +967,31 @@ class StaticCheckCommand(StaticCheckBase):
             evidence = (result.stdout or "") + (result.stderr or "")
             self._emit_line(evidence.rstrip())
             return 1
+
+    def _dir_exclude_tokens(self, exclude_dir: str) -> List[str]:
+        """!
+        @brief Build the cmd-native exclusion tokens for one excluded directory.
+        @param exclude_dir {str} Absolute directory path excluded from the recursive scan.
+        @return {List[str]} Exclusion flag and path tokens; empty for unknown `cmd` binaries.
+        @details Flags: `cppcheck` -> `-i`, `eslint` -> `--ignore-pattern`,
+          `ruff`/`pyright` -> `--exclude` (SRS-590).
+        """
+        flag = _DIR_SCAN_EXCLUDE_FLAGS.get(self._cmd.strip().lower())
+        return [*flag, exclude_dir] if flag else []
+
+    def _directory_command(
+        self, target: str, exclude_args: Sequence[str]
+    ) -> Optional[List[str]]:
+        """!
+        @brief Build the external command for one recursive directory-scan invocation.
+        @param target {str} Absolute root directory path passed as the command target.
+        @param exclude_args {Sequence[str]} SRS-590 exclusion tokens for this `cmd`.
+        @return {Optional[List[str]]} `[<cmd>, <extra_args>..., <exclude_args>..., <target>]`.
+        @details Execution order keeps the per-file form `<cmd> [params...] <target>` with the
+          root directory replacing the filename (SRS-588).
+        @satisfies SRS-588
+        """
+        return [self._cmd, *self._extra_args, *exclude_args, target]
 
 
 # ---------------------------------------------------------------------------

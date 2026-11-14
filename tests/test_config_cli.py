@@ -546,6 +546,30 @@ class TestConfigurationCommands(HomeTestCase):
         self.assertEqual(code, 1)
         self.assertIn("empty token", err)
 
+    def test_set_scan_by_dir_true_on_capable_entry(self) -> None:
+        """!
+        @brief SRS-585/SRS-586: `scan-by-dir` true persists on a directory-scan-capable entry.
+        """
+        self.write_payload({"static-check": {"Python": [{"module": "Ruff"}]}})
+        code, _, err = self.run_cli(
+            ["--set", "Configuration:static-check:Python:0:scan-by-dir", "true"]
+        )
+        self.assertEqual(code, 0, err)
+        self.assertIs(self.read_config()["static-check"]["Python"][0]["scan-by-dir"], True)
+
+    def test_set_scan_by_dir_true_on_incapable_entry_rejected(self) -> None:
+        """!
+        @brief SRS-586: `scan-by-dir` true on an incapable entry fails without mutation.
+        """
+        before = self.write_payload({"static-check": {"Python": [{"module": "Dummy"}]}})
+        code, out, err = self.run_cli(
+            ["--set", "Configuration:static-check:Python:0:scan-by-dir", "true"]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertIn("does not support directory scanning", err)
+        self.assertEqual(self.config_path.read_bytes(), before)
+
 
 if __name__ == "__main__":
     unittest.main()

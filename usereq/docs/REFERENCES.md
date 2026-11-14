@@ -83,7 +83,7 @@ import sys
 
 ---
 
-# cli.py | Python | 4641L | 173 symbols | 36 imports | 224 comments
+# cli.py | Python | 4711L | 173 symbols | 36 imports | 228 comments
 > Path: `src/usereq/cli.py`
 - @brief CLI entry point implementing the useReq initialization flow.
 - @details Handles argument parsing, configuration management, and execution of useReq commands.
@@ -125,7 +125,7 @@ from .generate_markdown import generate_markdown
 from .compress_files import compress_files
 from .find_constructs import find_constructs_in_files
 from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
-from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
+from .static_check import (
 from .static_check import run_static_check
 import traceback
 ```
@@ -1187,23 +1187,23 @@ emitted with Unicode line-drawing characters and bright-red ANSI styling
 - @exception ReqError Raised when no canonical documentation file exists in configured docs-dir.
 - @satisfies SRS-387, SRS-392, SRS-396, SRS-408
 
-### fn `def run_files_static_check_cmd(files: list[str], args: Namespace) -> int` (L4218-4284)
+### fn `def run_files_static_check_cmd(files: list[str], args: Namespace) -> int` (L4218-4285)
 - @brief Execute `files-static-check`: run static analysis on an explicit file list.
-- @details Static-check configuration is loaded from `~/.config/usereq/config.json`. When the global configuration file cannot be located, emits a warning to stderr and continues with the SRS-424 default static-check configuration (SRS-254). Project base for dispatch context is the mandatory `--prj-base` value (SRS-253). For each file: - Resolves absolute path; skips with warning if not a regular file. - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on the lowercase extension. - Looks up language in the `"static-check"` config section; skips silently if absent. - Executes each configured language entry sequentially via `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`. - For `Command` module entries, execution order is `<cmd> [params...] <filename>`. Dispatch context provides project root for checker runtime execution. All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-253). Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-253, SRS-255)
+- @details Static-check configuration is loaded from `~/.config/usereq/config.json`. When the global configuration file cannot be located, emits a warning to stderr and continues with the SRS-424 default static-check configuration (SRS-254). Project base for dispatch context is the mandatory `--prj-base` value (SRS-253). For each file: - Resolves absolute path; skips with warning if not a regular file. - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on the lowercase extension. - Looks up language in the `"static-check"` config section; skips silently if absent. - Executes each configured language entry sequentially via `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`. - For `Command` module entries, execution order is `<cmd> [params...] <filename>`. Dispatch context provides project root for checker runtime execution. All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-253). The command ignores `"scan-by-dir"` and always dispatches per explicit input file (SRS-591). Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-253, SRS-255)
 - @param files List of raw file paths supplied by the user.
 - @param args Parsed CLI namespace; the mandatory `--prj-base` resolves the dispatch context.
 - @return Exit code: 0 if all checked files pass (or none are checked), 1 if any fail.
-- @see SRS-253, SRS-254, SRS-255, SRS-341, SRS-396, SRS-408
+- @see SRS-253, SRS-254, SRS-255, SRS-341, SRS-396, SRS-408, SRS-591
 
-### fn `def run_project_static_check_cmd(args: Namespace) -> int` (L4285-4384)
+### fn `def run_project_static_check_cmd(args: Namespace) -> int` (L4286-4454)
 - @brief Execute `static-check`: run static analysis on project source and test files.
-- @details Collects files from configured `src-dir` directories and the `tests-dir` directory (SRS-256, SRS-336), applies `EXCLUDED_DIRS` filtering and `SUPPORTED_EXTENSIONS` matching. If `tests-dir` is missing or invalid in the global configuration file, test directory inclusion is skipped silently without error (SRS-336). Files under `<tests-dir>/fixtures/` are excluded from static-check selection because they are fixture corpus inputs for parser/static-check tests and can intentionally contain diagnostics unrelated to project code quality gates. For each collected file: - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on lowercase extension. - Looks up language in the `"static-check"` section of `~/.config/usereq/config.json`. - Skips silently when no tool is configured for the file's language. - Executes each configured language entry sequentially via `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`. - For `Command` module entries, execution order is `<cmd> [params...] <filename>`. Dispatch context provides project root for checker runtime execution. All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-256). Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
+- @details Collects files from configured `src-dir` directories and the `tests-dir` directory (SRS-256, SRS-336), applies `EXCLUDED_DIRS` filtering and `SUPPORTED_EXTENSIONS` matching. If `tests-dir` is missing or invalid in the global configuration file, test directory inclusion is skipped silently without error (SRS-336). Files under `<tests-dir>/fixtures/` are excluded from static-check selection because they are fixture corpus inputs for parser/static-check tests and can intentionally contain diagnostics unrelated to project code quality gates. For each collected file: - Detects language via `STATIC_CHECK_EXT_TO_LANG` keyed on lowercase extension. - Groups files under ordered, deduplicated scan roots: the configured `src-dir` entries followed by `tests-dir` (SRS-588). Per scan root and language: - Looks up language in the `"static-check"` section of `~/.config/usereq/config.json`. - Skips silently when no tool is configured for the file's language. - Resolves each configured entry's directory-scan mode through `entry_scan_by_dir` (SRS-584, SRS-585). - Dispatches `"scan-by-dir"`-false entries per selected file via `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)` (SRS-587); for `Command` entries, execution order is `<cmd> [params...] <filename>`. - Dispatches `"scan-by-dir"`-true entries as exactly one recursive `dispatch_static_check_for_directory(root, lang_config, fail_only=True, project_base=...)` invocation per root containing selected files of the entry's language (SRS-588, SRS-589); for `Command` entries, execution order is `<cmd> [params...] <root>`. - Excludes existing fixture-corpus directories from directory invocations through module-native exclusion flags (SRS-590). Dispatch context provides project root for checker runtime execution. All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-256). Overall exit code: max of all dispatch codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
 - @param args Parsed CLI namespace; requires the mandatory `--prj-base` argument.
 - @return Exit code: 0 if all checked files pass (or none are checked), 1 if any fail.
 - @throws ReqError If no source files are found.
-- @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408
+- @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408, SRS-584, SRS-585, SRS-587, SRS-588, SRS-589, SRS-590, SRS-592
 
-### fn `def _resolve_project_base(args: Namespace) -> Path` `priv` (L4385-4397)
+### fn `def _resolve_project_base(args: Namespace) -> Path` `priv` (L4455-4467)
 - @brief Resolve the mandatory project base path for project-level commands.
 - @details The project base is never derived from the current working directory and is never loaded from configuration (SRS-392, SRS-394, SRS-395, SRS-396).
 - @param args Parsed CLI arguments namespace.
@@ -1211,7 +1211,7 @@ emitted with Unicode line-drawing characters and bright-red ANSI styling
 - @throws ReqError If `--prj-base` is missing or the resolved path does not exist.
 - @satisfies SRS-392, SRS-394, SRS-395, SRS-396
 
-### fn `def _resolve_project_src_dirs(args: Namespace) -> tuple[Path, list[str]]` `priv` (L4398-4428)
+### fn `def _resolve_project_src_dirs(args: Namespace) -> tuple[Path, list[str]]` `priv` (L4468-4498)
 - @brief Resolve project base and src-dirs for project source commands.
 - @details Loads the `src-dir` list from the user-global configuration file (`~/.config/usereq/config.json`) and resolves it against the mandatory `--prj-base` project base (SRS-392, SRS-396).
 - @param args Input parameter `args`.
@@ -1219,33 +1219,33 @@ emitted with Unicode line-drawing characters and bright-red ANSI styling
 - @throws ReqError If `--prj-base` is missing or `src-dir` is invalid.
 - @satisfies SRS-392, SRS-396
 
-### fn `def _is_config_schema_command(args: Namespace) -> bool` `priv` (L4429-4446)
+### fn `def _is_config_schema_command(args: Namespace) -> bool` `priv` (L4499-4516)
 - @brief Detect the canonical configuration CLI command path.
 - @details Configuration schema commands are `--print`, `--info`, `--print-raw`, `--get`, `--set`, and `--unset` (SRS-519); they never trigger provider installation.
 - @param args {Namespace} Parsed CLI namespace.
 - @return {bool} True when any configuration schema command flag is present.
 
-### fn `def run_config_schema_command(args: Namespace) -> int` (L4447-4507)
+### fn `def run_config_schema_command(args: Namespace) -> int` (L4517-4577)
 - @brief Execute one configuration schema command.
 - @details Dispatches `--print`, `--info`, `--print-raw`, `--get`, `--set`, and `--unset` against the user-global configuration file, writes payloads to stdout, and reports every diagnostic on stderr (SRS-519, SRS-532).
 - @param args {Namespace} Parsed CLI namespace carrying the configuration flag values.
 - @return {int} Process exit code: 0 on success, 1 on any configuration failure.
 - @satisfies SRS-519, SRS-527, SRS-528, SRS-529, SRS-530, SRS-531, SRS-532
 
-### fn `def main(argv: Optional[list[str]] = None) -> int` (L4508-4639)
+### fn `def main(argv: Optional[list[str]] = None) -> int` (L4578-4709)
 - @brief CLI entry point for console_scripts and `-m` execution.
 - @details Returns an exit code (0 success, non-zero on error).
 - @param argv Input parameter `argv`.
 - @return {int} Function return value.
 
-- var `FORCE_ONLINE_RELEASE_CHECK = force_online_release_check` (L4522)
+- var `FORCE_ONLINE_RELEASE_CHECK = force_online_release_check` (L4592)
 - @brief CLI entry point for console_scripts and `-m` execution.
 - @details Returns an exit code (0 success, non-zero on error).
 - @param argv Input parameter `argv`.
 - @return {int} Function return value.
-- var `FORCE_ONLINE_RELEASE_CHECK = previous_force_online_release_check` (L4529)
-- var `VERBOSE = getattr(args, "verbose", False)` (L4546)
-- var `DEBUG = getattr(args, "debug", False)` (L4547)
+- var `FORCE_ONLINE_RELEASE_CHECK = previous_force_online_release_check` (L4599)
+- var `VERBOSE = getattr(args, "verbose", False)` (L4616)
+- var `DEBUG = getattr(args, "debug", False)` (L4617)
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
@@ -1411,17 +1411,17 @@ emitted with Unicode line-drawing characters and bright-red ANSI styling
 |`run_compress_cmd`|fn|pub|4134-4156|def run_compress_cmd(args: Namespace) -> None|
 |`run_find`|fn|pub|4157-4187|def run_find(args: Namespace) -> None|
 |`run_tokens`|fn|pub|4188-4217|def run_tokens(args: Namespace) -> None|
-|`run_files_static_check_cmd`|fn|pub|4218-4284|def run_files_static_check_cmd(files: list[str], args: Na...|
-|`run_project_static_check_cmd`|fn|pub|4285-4384|def run_project_static_check_cmd(args: Namespace) -> int|
-|`_resolve_project_base`|fn|priv|4385-4397|def _resolve_project_base(args: Namespace) -> Path|
-|`_resolve_project_src_dirs`|fn|priv|4398-4428|def _resolve_project_src_dirs(args: Namespace) -> tuple[P...|
-|`_is_config_schema_command`|fn|priv|4429-4446|def _is_config_schema_command(args: Namespace) -> bool|
-|`run_config_schema_command`|fn|pub|4447-4507|def run_config_schema_command(args: Namespace) -> int|
-|`main`|fn|pub|4508-4639|def main(argv: Optional[list[str]] = None) -> int|
-|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|4522||
-|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|4529||
-|`VERBOSE`|var|pub|4546||
-|`DEBUG`|var|pub|4547||
+|`run_files_static_check_cmd`|fn|pub|4218-4285|def run_files_static_check_cmd(files: list[str], args: Na...|
+|`run_project_static_check_cmd`|fn|pub|4286-4454|def run_project_static_check_cmd(args: Namespace) -> int|
+|`_resolve_project_base`|fn|priv|4455-4467|def _resolve_project_base(args: Namespace) -> Path|
+|`_resolve_project_src_dirs`|fn|priv|4468-4498|def _resolve_project_src_dirs(args: Namespace) -> tuple[P...|
+|`_is_config_schema_command`|fn|priv|4499-4516|def _is_config_schema_command(args: Namespace) -> bool|
+|`run_config_schema_command`|fn|pub|4517-4577|def run_config_schema_command(args: Namespace) -> int|
+|`main`|fn|pub|4578-4709|def main(argv: Optional[list[str]] = None) -> int|
+|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|4592||
+|`FORCE_ONLINE_RELEASE_CHECK`|var|pub|4599||
+|`VERBOSE`|var|pub|4616||
+|`DEBUG`|var|pub|4617||
 
 
 ---
@@ -1576,7 +1576,7 @@ import argparse
 
 ---
 
-# config_cli.py | Python | 1362L | 56 symbols | 12 imports | 59 comments
+# config_cli.py | Python | 1371L | 56 symbols | 12 imports | 59 comments
 > Path: `src/usereq/config_cli.py`
 - @brief Configuration CLI operations and deterministic tree rendering.
 - @details Implements the canonical configuration interface of the useReq CLI:
@@ -1605,18 +1605,18 @@ from .config_schema import (
 
 ## Definitions
 
-- var `BRANCH = "├── "` (L40)
-- var `LAST = "└── "` (L43)
+- var `BRANCH = "├── "` (L41)
+- var `LAST = "└── "` (L44)
 - @brief Structural marker for a configuration node with a later sibling (SRS-524)."""
-- var `INDENT = "    "` (L46)
+- var `INDENT = "    "` (L47)
 - @brief Structural marker for the final configuration sibling at its depth (SRS-524)."""
-- var `CONTINUE = "│   "` (L49)
+- var `CONTINUE = "│   "` (L50)
 - @brief Exact four-ASCII-space ancestor prefix segment (SRS-524)."""
-### class `class ConfigError(Exception)` : Exception (L56-73)
+### class `class ConfigError(Exception)` : Exception (L57-74)
 - @brief Sentinel marking an absent optional configuration value (SRS-527)."""
 - @brief Expected configuration CLI failure with an English diagnostic.
 - @details Carries the diagnostic text and the process exit code consumed by the CLI dispatcher so configuration failures never leak stack traces (SRS-532).
-- fn `def __init__(self, message: str, code: int = 1) -> None` `priv` (L63-73)
+- fn `def __init__(self, message: str, code: int = 1) -> None` `priv` (L64-74)
   - @brief Expected configuration CLI failure with an English diagnostic.
   - @brief Initialize one configuration failure payload.
   - @details Carries the diagnostic text and the process exit code consumed by the CLI
@@ -1624,54 +1624,54 @@ dispatcher so configuration failures never leak stack traces (SRS-532).
   - @param message {str} English diagnostic text written to stderr.
   - @param code {int} Process exit code bound to the failure category.
 
-### class `class RenderNode` `@dataclass` (L75-90)
+### class `class RenderNode` `@dataclass` (L76-91)
 - @brief One real configuration node of the rendered tree.
 - @details Holds the canonical token, canonical path, node kind, the finalized heading line, attached detail blocks, and real child nodes. Tree topology derives exclusively from `children`; details never create structural depth (SRS-524, SRS-525).
 
-### class `class Target` `@dataclass` (L92-106)
+### class `class Target` `@dataclass` (L93-107)
 - @brief Resolved configuration path describing the operation target.
 - @details `op` is one of `node`, `array_item`, `append`, `insert`, `dict_field`, or `map_key`. `container` is the mutable parent list/dictionary, `key` the list index or dictionary key, and `spec` the schema node governing the target value (SRS-533, SRS-534).
 
-### fn `def default_config() -> dict[str, Any]` (L107-121)
+### fn `def default_config() -> dict[str, Any]` (L108-122)
 - @brief Build the complete default configuration from the canonical schema.
 - @details Defaults are deep-copied so callers never mutate the shared schema objects (SRS-521, SRS-529).
 - @return {dict[str, Any]} Configuration payload holding every canonical key default.
 
-### fn `def read_raw_payload(config_path: Path) -> dict[str, Any]` (L122-152)
+### fn `def read_raw_payload(config_path: Path) -> dict[str, Any]` (L123-153)
 - @brief Read the raw configuration JSON payload without applying defaults.
 - @details Only the raw stored payload is returned; unknown keys are preserved here and dropped by the canonical writer (SRS-528, SRS-530).
 - @param config_path {Path} Absolute global configuration file path.
 - @return {dict[str, Any]} Parsed JSON object; empty dictionary when the file is absent.
 - @throws {ConfigError} Raised when the file is unreadable, not JSON, or not a JSON object.
 
-### fn `def _type_name(value: Any) -> str` `priv` (L153-171)
+### fn `def _type_name(value: Any) -> str` `priv` (L154-172)
 - @brief Return a stable English type name for one JSON value.
 - @param value {Any} Parsed JSON value.
 - @return {str} JSON type name used inside diagnostics.
 
-### fn `def validate_node(node: SchemaNode, value: Any, path: str) -> None` (L172-266)
+### fn `def validate_node(node: SchemaNode, value: Any, path: str) -> None` (L173-275)
 - @brief Validate one value against its schema node, including nested values.
-- @details Covers primitives, enums, arrays, map keys, fixed-field dictionaries, required fields, and the Command `cmd` cross-field constraint (SRS-530, SRS-536).
+- @details Covers primitives, enums, arrays, map keys, fixed-field dictionaries, required fields, the Command `cmd` cross-field constraint, and the `scan-by-dir` capability cross-field constraint (SRS-530, SRS-536, SRS-586).
 - @param node {SchemaNode} Schema node governing the value.
 - @param value {Any} Parsed JSON value to validate.
 - @param path {str} Canonical path used inside diagnostics.
 - @return {None} Function return value.
 - @throws {ConfigError} Raised with an English diagnostic on any schema violation.
 
-### fn `def normalize_config(payload: dict[str, Any]) -> dict[str, Any]` (L267-286)
+### fn `def normalize_config(payload: dict[str, Any]) -> dict[str, Any]` (L276-295)
 - @brief Merge a raw payload over the schema defaults and validate stored values.
 - @details Unknown top-level keys are outside the canonical schema and are therefore ignored here and dropped by `write_config` (SRS-288, SRS-530).
 - @param payload {dict[str, Any]} Raw stored JSON payload.
 - @return {dict[str, Any]} Effective configuration holding every canonical key.
 - @throws {ConfigError} Raised when a stored canonical value violates the schema.
 
-### fn `def load_effective_config(config_path: Path) -> dict[str, Any]` (L287-296)
+### fn `def load_effective_config(config_path: Path) -> dict[str, Any]` (L296-305)
 - @brief Load and validate the effective configuration for one configuration command.
 - @param config_path {Path} Absolute global configuration file path.
 - @return {dict[str, Any]} Effective configuration with defaults applied.
 - @throws {ConfigError} Raised when the file is unreadable or schema-invalid.
 
-### fn `def write_config(config_path: Path, config: dict[str, Any]) -> None` (L297-342)
+### fn `def write_config(config_path: Path, config: dict[str, Any]) -> None` (L306-351)
 - @brief Atomically persist the canonical configuration payload.
 - @details Creates missing parent directories, writes a same-directory temporary file, flushes and fsyncs it, preserves the existing file mode, atomically replaces the target, and fsyncs the parent directory (SRS-529, SRS-531).
 - @param config_path {Path} Absolute global configuration file path.
@@ -1679,28 +1679,28 @@ dispatcher so configuration failures never leak stack traces (SRS-532).
 - @return {None} Function return value.
 - @throws {ConfigError} Raised when the write fails; the original file is preserved.
 
-### fn `def ensure_config_file(config_path: Path) -> None` (L343-360)
+### fn `def ensure_config_file(config_path: Path) -> None` (L352-369)
 - @brief Bootstrap the global configuration file from schema defaults when absent.
 - @details Missing parent directories are created and the file is initialized from the canonical schema defaults; an existing file is never overwritten (SRS-529).
 - @param config_path {Path} Absolute global configuration file path.
 - @return {None} Function return value.
 - @throws {ConfigError} Raised when the path is a directory or the bootstrap write fails.
 
-### fn `def _parse_index(token: str, path: str) -> int` `priv` (L361-376)
+### fn `def _parse_index(token: str, path: str) -> int` `priv` (L370-385)
 - @brief Parse one non-negative decimal array index token.
 - @param token {str} Raw path token.
 - @param path {str} Canonical path used inside diagnostics.
 - @return {int} Parsed zero-based index.
 - @throws {ConfigError} Raised for negative, signed, or non-decimal tokens.
 
-### fn `def _out_of_range(owner_path: str, index: int, length: int) -> ConfigError` `priv` (L377-391)
+### fn `def _out_of_range(owner_path: str, index: int, length: int) -> ConfigError` `priv` (L386-400)
 - @brief Build the out-of-range diagnostic for an array access.
 - @param owner_path {str} Canonical path of the owning array parameter.
 - @param index {int} Rejected index.
 - @param length {int} Current array length.
 - @return {ConfigError} English diagnostic describing the valid range and append option.
 
-### fn `def _child_of_section(spec: SchemaNode, token: str, path: str) -> SchemaNode` `priv` (L392-408)
+### fn `def _child_of_section(spec: SchemaNode, token: str, path: str) -> SchemaNode` `priv` (L401-417)
 - @brief Resolve one section/dictionary field token or raise an unknown-token error.
 - @param spec {SchemaNode} Section or dictionary node holding candidate fields.
 - @param token {str} Exact canonical field token.
@@ -1708,7 +1708,7 @@ dispatcher so configuration failures never leak stack traces (SRS-532).
 - @return {SchemaNode} Matching field node.
 - @throws {ConfigError} Raised when the token is not a canonical schema token.
 
-### fn `def resolve_target(config: dict[str, Any], path: str) -> Target` (L409-539)
+### fn `def resolve_target(config: dict[str, Any], path: str) -> Target` (L418-548)
 - @brief Resolve a canonical colon-separated path against the configuration schema.
 - @details Paths are resolved token by token against the schema, never against displayed strings; `append`, `+`, and `insert:<Idx>` are recognized only inside array paths (SRS-520, SRS-533, SRS-534).
 - @param config {dict[str, Any]} Effective configuration used as the resolution root.
@@ -1716,9 +1716,9 @@ dispatcher so configuration failures never leak stack traces (SRS-532).
 - @return {Target} Resolved operation target.
 - @throws {ConfigError} Raised for empty tokens, unknown tokens, invalid indices, out-of-range indices, and missing dynamic map keys.
 
-### fn `def parse_cli_value(` (L540-541)
+### fn `def parse_cli_value(` (L549-550)
 
-### fn `def get_value(config: dict[str, Any], path: str) -> Any` (L588-609)
+### fn `def get_value(config: dict[str, Any], path: str) -> Any` (L597-618)
 - @brief Parse one CLI value into the schema type of the target node.
 - @brief Read the effective value addressed by one canonical path.
 - @details Plain strings are taken verbatim; booleans, arrays, maps, dictionaries, and
@@ -1735,7 +1735,7 @@ and objects supplied where exactly one item is required.
 - @throws {ConfigError} Raised for malformed JSON, invalid types, or schema violations.
 - @throws {ConfigError} Raised for invalid paths, absent values, and write-only operations.
 
-### fn `def apply_set(config: dict[str, Any], path: str, text: str) -> dict[str, Any]` (L610-651)
+### fn `def apply_set(config: dict[str, Any], path: str, text: str) -> dict[str, Any]` (L619-660)
 - @brief Apply one `--set` operation to a copy of the effective configuration.
 - @details Supports primitives, whole branches, whole arrays/maps, single array items, append and insert operations, dictionary fields, and dynamic map keys (SRS-530, SRS-533, SRS-534, SRS-535).
 - @param config {dict[str, Any]} Effective configuration.
@@ -1744,7 +1744,7 @@ and objects supplied where exactly one item is required.
 - @return {dict[str, Any]} New validated configuration payload.
 - @throws {ConfigError} Raised before mutation when the path or value is invalid.
 
-### fn `def apply_unset(config: dict[str, Any], path: str) -> dict[str, Any]` (L652-695)
+### fn `def apply_unset(config: dict[str, Any], path: str) -> dict[str, Any]` (L661-704)
 - @brief Apply one `--unset` operation to a copy of the effective configuration.
 - @details Restores declared schema defaults, deletes optional fields and map keys, and removes array elements while keeping indices contiguous (SRS-530, SRS-533, SRS-536).
 - @param config {dict[str, Any]} Effective configuration.
@@ -1752,24 +1752,24 @@ and objects supplied where exactly one item is required.
 - @return {dict[str, Any]} New validated configuration payload.
 - @throws {ConfigError} Raised for write-only operations, absent keys, and required fields.
 
-### fn `def _display_width(text: str) -> int` `priv` (L696-709)
+### fn `def _display_width(text: str) -> int` `priv` (L705-718)
 - @brief Measure the terminal display width of one table cell.
 - @param text {str} Sanitized cell text.
 - @return {int} Display column count honoring wide and combining characters.
 
-### fn `def _sanitize_cell(text: str) -> str` `priv` (L710-730)
+### fn `def _sanitize_cell(text: str) -> str` `priv` (L719-739)
 - @brief Escape control characters so one cell stays on one physical line.
 - @param text {str} Raw cell payload.
 - @return {str} Printable single-line cell text.
 
-### fn `def format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> list[str]` (L731-767)
+### fn `def format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> list[str]` (L740-776)
 - @brief Render one rectangular Unicode box-drawing table.
 - @details Column widths derive from the maximum display width of the header and every formatted cell; all borders share the same column boundaries (SRS-539).
 - @param headers {Sequence[str]} Column header labels.
 - @param rows {Sequence[Sequence[str]]} Cell values matching the header count.
 - @return {list[str]} Physical table lines without structural tree prefixes.
 
-### fn `def border(left: str, middle: str, right: str) -> str` (L750-753)
+### fn `def border(left: str, middle: str, right: str) -> str` (L759-762)
 - @brief Render one rectangular Unicode box-drawing table.
 - @brief Build one horizontal table border line.
 - @details Column widths derive from the maximum display width of the header and every
@@ -1778,18 +1778,18 @@ formatted cell; all borders share the same column boundaries (SRS-539).
 - @param rows {Sequence[Sequence[str]]} Cell values matching the header count.
 - @return {list[str]} Physical table lines without structural tree prefixes.
 
-### fn `def line(cells: Sequence[str]) -> str` (L754-761)
+### fn `def line(cells: Sequence[str]) -> str` (L763-770)
 - @brief Build one padded table content line.
 
-### fn `def render_tree(root: RenderNode) -> list[str]` (L768-783)
+### fn `def render_tree(root: RenderNode) -> list[str]` (L777-792)
 - @brief Render one configuration tree with the mandatory prefix algorithm.
 - @details The display root has no structural marker and attached root details use a four-space indent; every real child is emitted by `_emit_node` (SRS-524, SRS-525).
 - @param root {RenderNode} Display root of the requested tree.
 - @return {list[str]} Complete physical output lines.
 
-### fn `def _emit_node(` `priv` (L784-788)
+### fn `def _emit_node(` `priv` (L793-797)
 
-### fn `def render_text(root: RenderNode) -> str` (L816-824)
+### fn `def render_text(root: RenderNode) -> str` (L825-833)
 - @brief Emit one real configuration node and its attached details recursively.
 - @brief Render one configuration tree as newline-terminated text.
 - @details Heading prefix and detail prefix derive only from real sibling topology;
@@ -1802,34 +1802,34 @@ details never receive a structural marker or additional depth (SRS-524, SRS-525)
 - @return {None} Function return value.
 - @return {str} Complete output text without a trailing newline.
 
-### fn `def _json_value(value: Any) -> str` `priv` (L825-833)
+### fn `def _json_value(value: Any) -> str` `priv` (L834-842)
 - @brief Encode one value as JSON text for display.
 - @param value {Any} JSON-serializable value.
 - @return {str} JSON-encoded text with non-ASCII characters preserved.
 
-### fn `def _shell(value: str) -> str` `priv` (L834-842)
+### fn `def _shell(value: str) -> str` `priv` (L843-851)
 - @brief Shell-quote one literal value for a copyable command example.
 - @param value {str} Literal value.
 - @return {str} POSIX shell-quoted value.
 
-### fn `def _example_item(node: SchemaNode) -> str` `priv` (L843-853)
+### fn `def _example_item(node: SchemaNode) -> str` `priv` (L852-862)
 - @brief Choose a schema-valid example value for one collection item.
 - @param node {SchemaNode} Item schema node.
 - @return {str} Example value text.
 
-### fn `def _example_key(map_node: SchemaNode) -> str` `priv` (L854-864)
+### fn `def _example_key(map_node: SchemaNode) -> str` `priv` (L863-873)
 - @brief Choose a schema-valid example key for one dynamic map.
 - @param map_node {SchemaNode} Map schema node.
 - @return {str} Example key text.
 
-### fn `def _print_marker(spec: SchemaNode, value: Any) -> str` `priv` (L872-885)
+### fn `def _print_marker(spec: SchemaNode, value: Any) -> str` `priv` (L881-894)
 - @brief Schema-valid alternative example values for string parameters (SRS-541)."""
 - @brief Build the default/custom status marker of one primitive parameter.
 - @param spec {SchemaNode} Parameter schema node.
 - @param value {Any} Current typed value.
 - @return {str} Empty text for nodes without defaults, otherwise the status marker.
 
-### fn `def _collection_summary(spec: SchemaNode, value: Any, path: str) -> str` `priv` (L886-918)
+### fn `def _collection_summary(spec: SchemaNode, value: Any, path: str) -> str` `priv` (L895-927)
 - @brief Build the `--print` value summary of one collection parameter.
 - @details Empty collections emit a complete-path action hint instead of an empty table (SRS-537, SRS-539).
 - @param spec {SchemaNode} Collection schema node.
@@ -1837,20 +1837,20 @@ details never receive a structural marker or additional depth (SRS-524, SRS-525)
 - @param path {str} Canonical parameter path.
 - @return {str} Collection summary text.
 
-### fn `def _example_map_value(item: SchemaNode) -> str` `priv` (L919-933)
+### fn `def _example_map_value(item: SchemaNode) -> str` `priv` (L928-942)
 - @brief Build one schema-valid example JSON text for a map value.
 - @param item {SchemaNode} Map value schema node.
 - @return {str} JSON text accepted by the map value schema.
 
-### fn `def _value_cell(spec: SchemaNode, value: Any) -> str` `priv` (L934-948)
+### fn `def _value_cell(spec: SchemaNode, value: Any) -> str` `priv` (L943-957)
 - @brief Render one table cell value for a configuration value.
 - @param spec {SchemaNode} Schema node of the value.
 - @param value {Any} JSON-serializable value.
 - @return {str} Single-line cell text.
 
-### fn `def _print_parameter_details(` `priv` (L949-950)
+### fn `def _print_parameter_details(` `priv` (L958-959)
 
-### fn `def _dictionary_fields(spec: SchemaNode) -> tuple[SchemaNode, ...]` `priv` (L994-1006)
+### fn `def _dictionary_fields(spec: SchemaNode) -> tuple[SchemaNode, ...]` `priv` (L1003-1015)
 - @brief Build the attached `--print` details of one parameter node.
 - @brief Resolve the fixed field set documented by an `Item Schema` table.
 - @details Non-empty collections attach measured rectangular tables; scalars attach no
@@ -1862,26 +1862,26 @@ details (SRS-537, SRS-539).
 - @return {list[list[str]]} Attached detail blocks rendered with the owner prefix.
 - @return {tuple[SchemaNode, ...]} Fixed fields, or an empty tuple for primitives.
 
-### fn `def _item_schema_table(fields: Sequence[SchemaNode]) -> list[str]` `priv` (L1007-1036)
+### fn `def _item_schema_table(fields: Sequence[SchemaNode]) -> list[str]` `priv` (L1016-1045)
 - @brief Render the `Item Schema` table of one fixed-field dictionary.
 - @param fields {Sequence[SchemaNode]} Fixed field schema nodes.
 - @return {list[str]} Table lines.
 
-### fn `def _array_examples(spec: SchemaNode, path: str) -> list[list[str]]` `priv` (L1037-1073)
+### fn `def _array_examples(spec: SchemaNode, path: str) -> list[list[str]]` `priv` (L1046-1082)
 - @brief Build the attached `--info` command examples of one array parameter.
 - @details Single-item operations receive exactly one JSON item; the whole-array overwrite receives a JSON array (SRS-535, SRS-541).
 - @param spec {SchemaNode} Array schema node.
 - @param path {str} Canonical array path.
 - @return {list[list[str]]} Detail blocks with complete copyable commands.
 
-### fn `def _info_parameter_details(spec: SchemaNode, path: str) -> list[list[str]]` `priv` (L1074-1152)
+### fn `def _info_parameter_details(spec: SchemaNode, path: str) -> list[list[str]]` `priv` (L1083-1161)
 - @brief Build the attached `--info` details of one parameter node.
 - @details Required dictionary fields without defaults never advertise a reset command (SRS-536, SRS-538, SRS-541).
 - @param spec {SchemaNode} Parameter schema node.
 - @param path {str} Canonical parameter path.
 - @return {list[list[str]]} Attached detail blocks with defaults, commands, and tables.
 
-### fn `def _print_parameter_heading(spec: SchemaNode, value: Any, token: str, path: str) -> str` `priv` (L1153-1169)
+### fn `def _print_parameter_heading(spec: SchemaNode, value: Any, token: str, path: str) -> str` `priv` (L1162-1178)
 - @brief Build the `--print` heading of one parameter node.
 - @param spec {SchemaNode} Parameter schema node.
 - @param value {Any} Current typed value.
@@ -1889,15 +1889,15 @@ details (SRS-537, SRS-539).
 - @param path {str} Canonical node path.
 - @return {str} Heading text without structural prefix.
 
-### fn `def _info_parameter_heading(spec: SchemaNode, token: str) -> str` `priv` (L1170-1182)
+### fn `def _info_parameter_heading(spec: SchemaNode, token: str) -> str` `priv` (L1179-1191)
 - @brief Build the `--info` heading of one parameter node.
 - @param spec {SchemaNode} Parameter schema node.
 - @param token {str} Exact canonical node token.
 - @return {str} `Token - [Type: constraints] Description` heading text.
 
-### fn `def _build_node(` `priv` (L1183-1188)
+### fn `def _build_node(` `priv` (L1192-1197)
 
-### fn `def _section_heading(path: str, info: bool) -> str` `priv` (L1235-1247)
+### fn `def _section_heading(path: str, info: bool) -> str` `priv` (L1244-1256)
 - @brief Build one real configuration node for the requested display mode.
 - @brief Build the section heading carrying the canonical path badge.
 - @details Only sections expose real child nodes; metadata and tables stay attached
@@ -1912,13 +1912,13 @@ details (SRS-522, SRS-525, SRS-540).
 - @return {RenderNode} Renderable node with attached details and real children.
 - @return {str} `Token - [Path: <full canonical path>]` heading text.
 
-### fn `def build_full_tree(config: dict[str, Any], info: bool) -> RenderNode` (L1248-1268)
+### fn `def build_full_tree(config: dict[str, Any], info: bool) -> RenderNode` (L1257-1277)
 - @brief Build the complete configuration tree for `--print` or `--info`.
 - @param config {dict[str, Any]} Effective configuration.
 - @param info {bool} True for `--info`; False for `--print`.
 - @return {RenderNode} Virtual display root holding the `Configuration` section.
 
-### fn `def build_subtree(config: dict[str, Any], path: str, info: bool) -> RenderNode` (L1269-1292)
+### fn `def build_subtree(config: dict[str, Any], path: str, info: bool) -> RenderNode` (L1278-1301)
 - @brief Build the requested subtree or parameter display.
 - @details No ancestors are invented; the requested node becomes the display root with four-space-indented details and normally rendered real children (SRS-526).
 - @param config {dict[str, Any]} Effective configuration.
@@ -1927,14 +1927,14 @@ details (SRS-522, SRS-525, SRS-540).
 - @return {RenderNode} Requested node as the unconnected display root.
 - @throws {ConfigError} Raised for unknown paths and non-displayable collection elements.
 
-### fn `def handle_get(config_path: Path, path: str) -> str` (L1293-1304)
+### fn `def handle_get(config_path: Path, path: str) -> str` (L1302-1313)
 - @brief Execute one `--get` read and return JSON text.
 - @param config_path {Path} Absolute global configuration file path.
 - @param path {str} Canonical configuration path.
 - @return {str} JSON-encoded value text.
 - @throws {ConfigError} Raised for invalid paths or schema-invalid stored values.
 
-### fn `def handle_set(config_path: Path, path: str, text: str) -> None` (L1305-1318)
+### fn `def handle_set(config_path: Path, path: str, text: str) -> None` (L1314-1327)
 - @brief Execute one `--set` write.
 - @param config_path {Path} Absolute global configuration file path.
 - @param path {str} Canonical configuration path.
@@ -1942,21 +1942,21 @@ details (SRS-522, SRS-525, SRS-540).
 - @return {None} Function return value.
 - @throws {ConfigError} Raised before mutation when the operation is invalid.
 
-### fn `def handle_unset(config_path: Path, path: str) -> None` (L1319-1331)
+### fn `def handle_unset(config_path: Path, path: str) -> None` (L1328-1340)
 - @brief Execute one `--unset` write.
 - @param config_path {Path} Absolute global configuration file path.
 - @param path {str} Canonical configuration path.
 - @return {None} Function return value.
 - @throws {ConfigError} Raised before mutation when the operation is invalid.
 
-### fn `def handle_print_raw(config_path: Path) -> bytes` (L1332-1348)
+### fn `def handle_print_raw(config_path: Path) -> bytes` (L1341-1357)
 - @brief Return the unmodified on-disk configuration file bytes.
 - @details Never reformats, prepends a heading, or appends explanatory text (SRS-528).
 - @param config_path {Path} Absolute global configuration file path.
 - @return {bytes} Raw file bytes exactly as stored.
 - @throws {ConfigError} Raised when the bootstrapped file cannot be read.
 
-### fn `def handle_display(config_path: Path, path: Optional[str], info: bool) -> str` (L1349-1363)
+### fn `def handle_display(config_path: Path, path: Optional[str], info: bool) -> str` (L1358-1372)
 - @brief Execute one `--print` or `--info` display request.
 - @param config_path {Path} Absolute global configuration file path.
 - @param path {Optional[str]} Requested canonical path; None renders the full tree.
@@ -1967,67 +1967,67 @@ details (SRS-522, SRS-525, SRS-540).
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`BRANCH`|var|pub|40||
-|`LAST`|var|pub|43||
-|`INDENT`|var|pub|46||
-|`CONTINUE`|var|pub|49||
-|`ConfigError`|class|pub|56-73|class ConfigError(Exception)|
-|`ConfigError.__init__`|fn|priv|63-73|def __init__(self, message: str, code: int = 1) -> None|
-|`RenderNode`|class|pub|75-90|class RenderNode|
-|`Target`|class|pub|92-106|class Target|
-|`default_config`|fn|pub|107-121|def default_config() -> dict[str, Any]|
-|`read_raw_payload`|fn|pub|122-152|def read_raw_payload(config_path: Path) -> dict[str, Any]|
-|`_type_name`|fn|priv|153-171|def _type_name(value: Any) -> str|
-|`validate_node`|fn|pub|172-266|def validate_node(node: SchemaNode, value: Any, path: str...|
-|`normalize_config`|fn|pub|267-286|def normalize_config(payload: dict[str, Any]) -> dict[str...|
-|`load_effective_config`|fn|pub|287-296|def load_effective_config(config_path: Path) -> dict[str,...|
-|`write_config`|fn|pub|297-342|def write_config(config_path: Path, config: dict[str, Any...|
-|`ensure_config_file`|fn|pub|343-360|def ensure_config_file(config_path: Path) -> None|
-|`_parse_index`|fn|priv|361-376|def _parse_index(token: str, path: str) -> int|
-|`_out_of_range`|fn|priv|377-391|def _out_of_range(owner_path: str, index: int, length: in...|
-|`_child_of_section`|fn|priv|392-408|def _child_of_section(spec: SchemaNode, token: str, path:...|
-|`resolve_target`|fn|pub|409-539|def resolve_target(config: dict[str, Any], path: str) -> ...|
-|`parse_cli_value`|fn|pub|540-541|def parse_cli_value(|
-|`get_value`|fn|pub|588-609|def get_value(config: dict[str, Any], path: str) -> Any|
-|`apply_set`|fn|pub|610-651|def apply_set(config: dict[str, Any], path: str, text: st...|
-|`apply_unset`|fn|pub|652-695|def apply_unset(config: dict[str, Any], path: str) -> dic...|
-|`_display_width`|fn|priv|696-709|def _display_width(text: str) -> int|
-|`_sanitize_cell`|fn|priv|710-730|def _sanitize_cell(text: str) -> str|
-|`format_table`|fn|pub|731-767|def format_table(headers: Sequence[str], rows: Sequence[S...|
-|`border`|fn|pub|750-753|def border(left: str, middle: str, right: str) -> str|
-|`line`|fn|pub|754-761|def line(cells: Sequence[str]) -> str|
-|`render_tree`|fn|pub|768-783|def render_tree(root: RenderNode) -> list[str]|
-|`_emit_node`|fn|priv|784-788|def _emit_node(|
-|`render_text`|fn|pub|816-824|def render_text(root: RenderNode) -> str|
-|`_json_value`|fn|priv|825-833|def _json_value(value: Any) -> str|
-|`_shell`|fn|priv|834-842|def _shell(value: str) -> str|
-|`_example_item`|fn|priv|843-853|def _example_item(node: SchemaNode) -> str|
-|`_example_key`|fn|priv|854-864|def _example_key(map_node: SchemaNode) -> str|
-|`_print_marker`|fn|priv|872-885|def _print_marker(spec: SchemaNode, value: Any) -> str|
-|`_collection_summary`|fn|priv|886-918|def _collection_summary(spec: SchemaNode, value: Any, pat...|
-|`_example_map_value`|fn|priv|919-933|def _example_map_value(item: SchemaNode) -> str|
-|`_value_cell`|fn|priv|934-948|def _value_cell(spec: SchemaNode, value: Any) -> str|
-|`_print_parameter_details`|fn|priv|949-950|def _print_parameter_details(|
-|`_dictionary_fields`|fn|priv|994-1006|def _dictionary_fields(spec: SchemaNode) -> tuple[SchemaN...|
-|`_item_schema_table`|fn|priv|1007-1036|def _item_schema_table(fields: Sequence[SchemaNode]) -> l...|
-|`_array_examples`|fn|priv|1037-1073|def _array_examples(spec: SchemaNode, path: str) -> list[...|
-|`_info_parameter_details`|fn|priv|1074-1152|def _info_parameter_details(spec: SchemaNode, path: str) ...|
-|`_print_parameter_heading`|fn|priv|1153-1169|def _print_parameter_heading(spec: SchemaNode, value: Any...|
-|`_info_parameter_heading`|fn|priv|1170-1182|def _info_parameter_heading(spec: SchemaNode, token: str)...|
-|`_build_node`|fn|priv|1183-1188|def _build_node(|
-|`_section_heading`|fn|priv|1235-1247|def _section_heading(path: str, info: bool) -> str|
-|`build_full_tree`|fn|pub|1248-1268|def build_full_tree(config: dict[str, Any], info: bool) -...|
-|`build_subtree`|fn|pub|1269-1292|def build_subtree(config: dict[str, Any], path: str, info...|
-|`handle_get`|fn|pub|1293-1304|def handle_get(config_path: Path, path: str) -> str|
-|`handle_set`|fn|pub|1305-1318|def handle_set(config_path: Path, path: str, text: str) -...|
-|`handle_unset`|fn|pub|1319-1331|def handle_unset(config_path: Path, path: str) -> None|
-|`handle_print_raw`|fn|pub|1332-1348|def handle_print_raw(config_path: Path) -> bytes|
-|`handle_display`|fn|pub|1349-1363|def handle_display(config_path: Path, path: Optional[str]...|
+|`BRANCH`|var|pub|41||
+|`LAST`|var|pub|44||
+|`INDENT`|var|pub|47||
+|`CONTINUE`|var|pub|50||
+|`ConfigError`|class|pub|57-74|class ConfigError(Exception)|
+|`ConfigError.__init__`|fn|priv|64-74|def __init__(self, message: str, code: int = 1) -> None|
+|`RenderNode`|class|pub|76-91|class RenderNode|
+|`Target`|class|pub|93-107|class Target|
+|`default_config`|fn|pub|108-122|def default_config() -> dict[str, Any]|
+|`read_raw_payload`|fn|pub|123-153|def read_raw_payload(config_path: Path) -> dict[str, Any]|
+|`_type_name`|fn|priv|154-172|def _type_name(value: Any) -> str|
+|`validate_node`|fn|pub|173-275|def validate_node(node: SchemaNode, value: Any, path: str...|
+|`normalize_config`|fn|pub|276-295|def normalize_config(payload: dict[str, Any]) -> dict[str...|
+|`load_effective_config`|fn|pub|296-305|def load_effective_config(config_path: Path) -> dict[str,...|
+|`write_config`|fn|pub|306-351|def write_config(config_path: Path, config: dict[str, Any...|
+|`ensure_config_file`|fn|pub|352-369|def ensure_config_file(config_path: Path) -> None|
+|`_parse_index`|fn|priv|370-385|def _parse_index(token: str, path: str) -> int|
+|`_out_of_range`|fn|priv|386-400|def _out_of_range(owner_path: str, index: int, length: in...|
+|`_child_of_section`|fn|priv|401-417|def _child_of_section(spec: SchemaNode, token: str, path:...|
+|`resolve_target`|fn|pub|418-548|def resolve_target(config: dict[str, Any], path: str) -> ...|
+|`parse_cli_value`|fn|pub|549-550|def parse_cli_value(|
+|`get_value`|fn|pub|597-618|def get_value(config: dict[str, Any], path: str) -> Any|
+|`apply_set`|fn|pub|619-660|def apply_set(config: dict[str, Any], path: str, text: st...|
+|`apply_unset`|fn|pub|661-704|def apply_unset(config: dict[str, Any], path: str) -> dic...|
+|`_display_width`|fn|priv|705-718|def _display_width(text: str) -> int|
+|`_sanitize_cell`|fn|priv|719-739|def _sanitize_cell(text: str) -> str|
+|`format_table`|fn|pub|740-776|def format_table(headers: Sequence[str], rows: Sequence[S...|
+|`border`|fn|pub|759-762|def border(left: str, middle: str, right: str) -> str|
+|`line`|fn|pub|763-770|def line(cells: Sequence[str]) -> str|
+|`render_tree`|fn|pub|777-792|def render_tree(root: RenderNode) -> list[str]|
+|`_emit_node`|fn|priv|793-797|def _emit_node(|
+|`render_text`|fn|pub|825-833|def render_text(root: RenderNode) -> str|
+|`_json_value`|fn|priv|834-842|def _json_value(value: Any) -> str|
+|`_shell`|fn|priv|843-851|def _shell(value: str) -> str|
+|`_example_item`|fn|priv|852-862|def _example_item(node: SchemaNode) -> str|
+|`_example_key`|fn|priv|863-873|def _example_key(map_node: SchemaNode) -> str|
+|`_print_marker`|fn|priv|881-894|def _print_marker(spec: SchemaNode, value: Any) -> str|
+|`_collection_summary`|fn|priv|895-927|def _collection_summary(spec: SchemaNode, value: Any, pat...|
+|`_example_map_value`|fn|priv|928-942|def _example_map_value(item: SchemaNode) -> str|
+|`_value_cell`|fn|priv|943-957|def _value_cell(spec: SchemaNode, value: Any) -> str|
+|`_print_parameter_details`|fn|priv|958-959|def _print_parameter_details(|
+|`_dictionary_fields`|fn|priv|1003-1015|def _dictionary_fields(spec: SchemaNode) -> tuple[SchemaN...|
+|`_item_schema_table`|fn|priv|1016-1045|def _item_schema_table(fields: Sequence[SchemaNode]) -> l...|
+|`_array_examples`|fn|priv|1046-1082|def _array_examples(spec: SchemaNode, path: str) -> list[...|
+|`_info_parameter_details`|fn|priv|1083-1161|def _info_parameter_details(spec: SchemaNode, path: str) ...|
+|`_print_parameter_heading`|fn|priv|1162-1178|def _print_parameter_heading(spec: SchemaNode, value: Any...|
+|`_info_parameter_heading`|fn|priv|1179-1191|def _info_parameter_heading(spec: SchemaNode, token: str)...|
+|`_build_node`|fn|priv|1192-1197|def _build_node(|
+|`_section_heading`|fn|priv|1244-1256|def _section_heading(path: str, info: bool) -> str|
+|`build_full_tree`|fn|pub|1257-1277|def build_full_tree(config: dict[str, Any], info: bool) -...|
+|`build_subtree`|fn|pub|1278-1301|def build_subtree(config: dict[str, Any], path: str, info...|
+|`handle_get`|fn|pub|1302-1313|def handle_get(config_path: Path, path: str) -> str|
+|`handle_set`|fn|pub|1314-1327|def handle_set(config_path: Path, path: str, text: str) -...|
+|`handle_unset`|fn|pub|1328-1340|def handle_unset(config_path: Path, path: str) -> None|
+|`handle_print_raw`|fn|pub|1341-1357|def handle_print_raw(config_path: Path) -> bytes|
+|`handle_display`|fn|pub|1358-1372|def handle_display(config_path: Path, path: Optional[str]...|
 
 
 ---
 
-# config_schema.py | Python | 336L | 20 symbols | 3 imports | 27 comments
+# config_schema.py | Python | 379L | 21 symbols | 3 imports | 30 comments
 > Path: `src/usereq/config_schema.py`
 - @brief Canonical configuration schema for the user-global useReq configuration file.
 - @details Single source of truth for the persisted configuration parameter set: section and
@@ -2072,21 +2072,30 @@ from typing import Any, Optional
 - @brief Short English meaning rendered by the providers `Allowed Values` table (SRS-538)."""
 - var `STATIC_CHECK_MODULES = ("Dummy", "Pylance", "Ruff", "Command")` (L97)
 - @brief Canonical static-check language keys usable as `static-check` map keys (SRS-249, SRS-540)."""
-### class `class SchemaNode` `@dataclass(frozen=True)` (L135-166)
+### fn `def static_check_dir_scan_default(module: Any, cmd: Any = None) -> bool` (L109-134)
+- @brief Command `cmd` binaries supporting recursive directory-scan execution (SRS-584)."""
+- @brief Resolve the default directory-scan mode of one static-check entry.
+- @details Capability table: `Pylance` and `Ruff` are always capable, `Dummy` is never capable, and `Command` is capable exactly when `cmd` is `cppcheck`, `eslint`, `ruff`, or `pyright`. Non-string tokens are never capable. Complexity: O(1). No side effects.
+- @param module {Any} Raw module token; matched case-insensitively against `STATIC_CHECK_MODULES`.
+- @param cmd {Any} Raw Command `cmd` token; matched lowercased against `STATIC_CHECK_DIR_SCAN_COMMANDS`.
+- @return {bool} True exactly for SRS-584 directory-scan-capable entries, False otherwise.
+- @satisfies SRS-584, SRS-585
+
+### class `class SchemaNode` `@dataclass(frozen=True)` (L170-201)
 - @brief Typed schema node describing one configuration token or collection element.
 - @details Nodes form an ordered tree rooted at `CONFIG_SECTION`. A node carries the exact canonical token, the node kind, a concise English description, the textual type label and constraints used by `--info`, the typed default (or `NO_DEFAULT`), enumeration metadata, and the child collection definitions used by validation and rendering (SRS-521, SRS-522, SRS-538).
-- fn `def has_default(self) -> bool` (L162-166)
+- fn `def has_default(self) -> bool` (L197-201)
   - @brief Return True when the node declares a typed default value (SRS-536).
 
-### fn `def _entry_fields() -> tuple[SchemaNode, ...]` `priv` (L167-208)
+### fn `def _entry_fields() -> tuple[SchemaNode, ...]` `priv` (L202-251)
 - @brief Build the fixed field set of one static-check dictionary entry (SRS-540).
-- @return {tuple[SchemaNode, ...]} Ordered `module`, `cmd`, and `params` field nodes.
+- @return {tuple[SchemaNode, ...]} Ordered `module`, `cmd`, `params`, and `scan-by-dir` field nodes.
 
-- var `CONFIG_SECTION = SchemaNode(` (L229)
+- var `CONFIG_SECTION = SchemaNode(` (L272)
 - @brief Array of static-check entries stored under one canonical language key (SRS-540)."""
-- var `ROOT_LABEL = "Application_Configuration"` (L306)
+- var `ROOT_LABEL = "Application_Configuration"` (L349)
 - @brief Root schema section holding every persisted configuration parameter (SRS-521)."""
-### fn `def find_field(node: SchemaNode, token: str) -> Optional[SchemaNode]` (L313-327)
+### fn `def find_field(node: SchemaNode, token: str) -> Optional[SchemaNode]` (L356-370)
 - @brief Canonical persisted configuration keys in schema order (SRS-288, SRS-521)."""
 - @brief Look up one ordered child field of a section or dictionary node.
 - @details Matching is case-sensitive and byte-exact so path resolution never depends on displayed labels or decorative text (SRS-520, SRS-522).
@@ -2094,7 +2103,7 @@ from typing import Any, Optional
 - @param token {str} Exact canonical field token to resolve.
 - @return {Optional[SchemaNode]} Matching field node, or None when the token is unknown.
 
-### fn `def canonical_path(tokens: tuple[str, ...]) -> str` (L328-337)
+### fn `def canonical_path(tokens: tuple[str, ...]) -> str` (L371-380)
 - @brief Join canonical path tokens with the colon separator.
 - @details Empty tokens are rejected by the resolver, so joining never produces an ambiguous empty path segment (SRS-520).
 - @param tokens {tuple[str, ...]} Ordered canonical path tokens without the virtual root.
@@ -2116,13 +2125,14 @@ from typing import Any, Optional
 |`VALID_PROVIDER_NAMES`|var|pub|51||
 |`STATIC_CHECK_LANGUAGES`|var|pub|73||
 |`STATIC_CHECK_MODULES`|var|pub|97||
-|`SchemaNode`|class|pub|135-166|class SchemaNode|
-|`SchemaNode.has_default`|fn|pub|162-166|def has_default(self) -> bool|
-|`_entry_fields`|fn|priv|167-208|def _entry_fields() -> tuple[SchemaNode, ...]|
-|`CONFIG_SECTION`|var|pub|229||
-|`ROOT_LABEL`|var|pub|306||
-|`find_field`|fn|pub|313-327|def find_field(node: SchemaNode, token: str) -> Optional[...|
-|`canonical_path`|fn|pub|328-337|def canonical_path(tokens: tuple[str, ...]) -> str|
+|`static_check_dir_scan_default`|fn|pub|109-134|def static_check_dir_scan_default(module: Any, cmd: Any =...|
+|`SchemaNode`|class|pub|170-201|class SchemaNode|
+|`SchemaNode.has_default`|fn|pub|197-201|def has_default(self) -> bool|
+|`_entry_fields`|fn|priv|202-251|def _entry_fields() -> tuple[SchemaNode, ...]|
+|`CONFIG_SECTION`|var|pub|272||
+|`ROOT_LABEL`|var|pub|349||
+|`find_field`|fn|pub|356-370|def find_field(node: SchemaNode, token: str) -> Optional[...|
+|`canonical_path`|fn|pub|371-380|def canonical_path(tokens: tuple[str, ...]) -> str|
 
 
 ---
@@ -2718,18 +2728,21 @@ from usereq.doxygen_parser import format_doxygen_fields_as_markdown
 
 ---
 
-# static_check.py | Python | 812L | 25 symbols | 9 imports | 63 comments
+# static_check.py | Python | 1065L | 34 symbols | 10 imports | 73 comments
 > Path: `src/usereq/static_check.py`
 - @brief Static code analysis dispatch module implementing Dummy/Pylance/Ruff/Command check classes.
 - @details Provides a class hierarchy for running static analysis tools against resolved file lists.
 Exposes `run_static_check(argv)` as the primary entry point for `--test-static-check` called
 from cli.py. Also exposes `parse_enable_static_check`, `dispatch_static_check_for_file`,
-`STATIC_CHECK_LANG_CANONICAL`, and `STATIC_CHECK_EXT_TO_LANG` for `--enable-static-check`,
-`files-static-check` and `static-check` subcommand support.
+`dispatch_static_check_for_directory`, `entry_scan_by_dir`, `STATIC_CHECK_LANG_CANONICAL`,
+and `STATIC_CHECK_EXT_TO_LANG` for `--enable-static-check`, `files-static-check`
+and `static-check` subcommand support.
 Class hierarchy: StaticCheckBase (Dummy) -> StaticCheckPylance, StaticCheckRuff, StaticCheckCommand.
 File resolution supports: explicit file paths, glob patterns (with full `**` recursive expansion),
 and direct-children-only directory traversal. No custom `--recursive` flag; recursive traversal
 is expressed via `**` glob syntax (e.g., `src/**/*.py`).
+Directory-scan execution (`scan-by-dir`) dispatches one recursive checker invocation per
+configured root directory instead of one invocation per file (SRS-584..SRS-592).
 @author useReq
 @version 0.0.72
 
@@ -2742,20 +2755,32 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Mapping, Optional, Sequence
 from .cli import ReqError
+from .config_schema import static_check_dir_scan_default
 ```
 
 ## Definitions
 
-### fn `def _split_csv_like_tokens(spec_rhs: str) -> list[str]` `priv` (L113-147)
+### fn `def entry_scan_by_dir(lang_config: Mapping[str, object]) -> bool` (L126-142)
+- @brief Maps directory-scan-capable Command binaries to their exclusion flag tokens.
+- @brief Resolve the effective directory-scan mode of one static-check entry.
+- @details Drives the SRS-590 fixture-corpus exclusion arguments appended to directory-scan
+invocations; capability membership mirrors `STATIC_CHECK_DIR_SCAN_COMMANDS`.
+- @details Non-boolean stored values fall back to the capability default resolved through `static_check_dir_scan_default(module, cmd)`. Complexity: O(1). No side effects.
+- @param lang_config {Mapping[str, object]} Entry mapping with optional boolean `"scan-by-dir"`.
+- @return {bool} Stored boolean when present, otherwise the SRS-584 capability default.
+- @see SRS-584, SRS-590
+- @satisfies SRS-584, SRS-585
+
+### fn `def _split_csv_like_tokens(spec_rhs: str) -> list[str]` `priv` (L147-181)
 - @brief Split a comma-separated SPEC right-hand side with quote-aware token boundaries.
 - @details - Supported quote delimiters: single quote `'` and double quote `"`. - Commas split tokens only when parser is outside a quoted segment. - Quote delimiters are not included in output tokens. - Leading and trailing whitespace for each token is stripped.
 - @param spec_rhs Text after `LANG=` in `--enable-static-check`.
 - @return Token list where commas inside `'...'` or `"..."` do not split tokens.
 - @see SRS-260, SRS-250
 
-### fn `def parse_enable_static_check(spec: str) -> tuple[str, dict]` (L148-224)
+### fn `def parse_enable_static_check(spec: str) -> tuple[str, dict]` (L182-258)
 - @brief Parse a single `--enable-static-check` SPEC string into a (lang, config_dict) pair.
 - @details Parse steps: 1. Split on the first `=`; left side is LANG token, right side is `MODULE[,...]`. 2. Normalize LANG via `STATIC_CHECK_LANG_CANONICAL` (case-insensitive). 3. Parse right side as comma-separated tokens; first token is MODULE (case-insensitive, validated against `_CANONICAL_MODULES`). 4. For Command: next token is `cmd` (mandatory); all subsequent tokens are `params`. 5. For all other modules: all tokens after MODULE are `params`. 6. `params` key is omitted when the list is empty. 7. `cmd` key is omitted for non-Command modules. 8. Surrounding quote delimiters (`'` or `"`) are stripped from parsed tokens. Note: PARAM values containing `,` must be wrapped with `'` or `"` in SPEC.
 - @param spec Raw SPEC string in the format `LANG=MODULE[,CMD[,PARAM...]]`.
@@ -2763,55 +2788,95 @@ from .cli import ReqError
 - @throws ReqError If `=` separator is absent, language is unknown, or module is unknown.
 - @see SRS-260, SRS-248, SRS-249, SRS-250
 
-### fn `def dispatch_static_check_for_file(` (L229-234)
+### fn `def dispatch_static_check_for_file(` (L263-268)
 
-### fn `def _resolve_files(inputs: Sequence[str]) -> List[str]` `priv` (L293-335)
+### fn `def dispatch_static_check_for_directory(` (L323-329)
+- @brief Dispatch static-check for a single file based on a language config dict.
+- @details Module dispatch table:
+- `"Dummy"` (case-insensitive) -> `StaticCheckBase`
+- `"Pylance"` -> `StaticCheckPylance`
+- `"Ruff"` -> `StaticCheckRuff`
+- `"Command"` -> `StaticCheckCommand` (requires `"cmd"` key)
+Instantiates the checker with `inputs=[filepath]`, `extra_args=params`, and `fail_only`.
+For Pylance, forwards `project_base` runtime context.
+Delegates actual check to `checker.run()`.
+- @param filepath Absolute path of the file to analyse.
+- @param lang_config Dict with keys `"module"` (str), optional `"cmd"` (str, Command only),
+optional `"params"` (list[str]).
+- @param fail_only When True, suppress all stdout output for passing checks (SRS-253, SRS-256).
+- @param project_base Absolute project root used for checker runtime context.
+- @return Exit code: 0 on pass, 1 on fail.
+- @throws ReqError If module is unknown, or Command module is missing `"cmd"`.
+- @see SRS-261, SRS-253, SRS-256, SRS-341
+
+### fn `def _resolve_files(inputs: Sequence[str]) -> List[str]` `priv` (L388-430)
 - @brief Resolve a mixed list of paths, glob patterns, and directories into regular files.
 - @details Resolution order per element: 1. If the element contains a glob wildcard character (`*`, `?`, `[`) expand via `glob.glob(entry, recursive=True)`, enabling full `**` recursive expansion (e.g., `src/**/*.py` matches all `.py` files under `src/` at any depth). 2. If the element is an existing directory, iterate direct children only (flat traversal). 3. Otherwise treat as a literal file path; include if it is a regular file. Symlinks to regular files are included. Non-existent paths that do not match a glob produce a warning on stderr and are skipped.
 - @param inputs Sequence of raw path strings (file, directory, or glob pattern).
 - @return Sorted deduplicated list of resolved absolute file paths (regular files only).
 
-### class `class StaticCheckBase` (L340-469)
+### class `class StaticCheckBase` (L435-634)
 - @brief Dummy static-check class; base of the static analysis class hierarchy.
 - @details Iterates over resolved input files and emits a per-file header line plus `Result: OK`. Subclasses override `_check_file` to provide tool-specific logic. File resolution is delegated to `_resolve_files`. When `fail_only` is True, passing files produce no output (SRS-241, SRS-253, SRS-256).
-- fn `def __init__(` `priv` (L352-357)
+- fn `def __init__(` `priv` (L447-452)
   - @brief Dummy static-check class; base of the static analysis class hierarchy.
   - @details Iterates over resolved input files and emits a per-file header line plus `Result: OK`.
 Subclasses override `_check_file` to provide tool-specific logic.
 File resolution is delegated to `_resolve_files`.
 When `fail_only` is True, passing files produce no output (SRS-241, SRS-253, SRS-256).
-- fn `def is_available(self) -> tuple[bool, str]` (L377-386)
+- fn `def is_available(self) -> tuple[bool, str]` (L472-481)
   - @brief Probe checker availability before execution.
   - @details Base implementation (Dummy): always available. Subclasses override to verify tool module or binary availability (SRS-427).
   - @return {tuple[bool, str]} Tuple `(available, reason)`; `(True, "")` when available.
   - @satisfies SRS-427
-- fn `def run(self) -> int` (L387-429)
+- fn `def run(self) -> int` (L482-524)
   - @brief Execute the static check for all resolved files.
   - @details If the resolved file list is empty a warning is printed to stderr and 0 is returned. Before any file is checked the SRS-427 pre-flight availability probe runs; when the checker is unavailable every file emits header, `Result: FAIL`, English evidence identifying the missing checker or binary, and one trailing blank line in both `fail_only` modes, the overall exit code is 1, and no exception is raised (SRS-428). For each file `_check_file` is called; the overall return code is the maximum of all per-file return codes (0 = all OK, 1 = at least one FAIL). When `fail_only` is True, trailing blank separator lines are emitted only for failing files.
   - @return Exit code: 0 if all files pass (or file list is empty), 1 if any file fails.
   - @satisfies SRS-427, SRS-428
-- fn `def _header_line(self, filepath: str) -> str` `priv` (L434-444)
+- fn `def run_directory(self, target: str, exclude_dirs: Sequence[str] = ()) -> int` (L525-586)
+  - @brief Execute one recursive directory-scan checker invocation.
+  - @details Runs the SRS-427 availability pre-flight; an unavailable checker or an unsupported directory command emits header, `Result: FAIL`, English evidence, and one trailing blank line in both fail_only modes, returns 1, and never raises (SRS-428). Otherwise executes `_directory_command(...)` exactly once with the root directory as target, aggregates the subprocess exit code, and renders the SRS-241..SRS-244 block shape with the directory path in place of the filename (SRS-592); when `fail_only` is True a passing scan produces no output.
+  - @param target {str} Absolute root directory path scanned recursively by the checker.
+  - @param exclude_dirs {Sequence[str]} Absolute directory paths excluded through module-native flags (SRS-590).
+  - @return {int} Exit code: 0 on pass, 1 on fail.
+  - @satisfies SRS-427, SRS-428, SRS-588, SRS-589, SRS-592
+- fn `def _directory_command(` `priv` (L587-588)
+- fn `def _dir_exclude_tokens(self, exclude_dir: str) -> List[str]` `priv` (L600-608)
+  - @brief Build the checker command for one recursive directory-scan invocation.
+  - @brief Build the module-native exclusion tokens for one excluded directory.
+  - @details Base implementation (Dummy): directory scanning is unsupported (SRS-584).
+  - @details Built-in module checkers exclude through `--exclude` (SRS-590).
+  - @param target {str} Absolute root directory path passed as the checker target.
+  - @param exclude_args {Sequence[str]} SRS-590 exclusion argument tokens.
+  - @param exclude_dir {str} Absolute directory path excluded from the recursive scan.
+  - @return {Optional[List[str]]} Full subprocess argument vector; None when the module
+does not support directory scanning.
+  - @return {List[str]} Exclusion flag and path tokens appended before the target.
+- fn `def _header_line(self, filepath: str) -> str` `priv` (L613-623)
   - @brief Build the per-file header line for output.
   - @details Format: `# Static-Check(<LABEL>): <filepath> [<extra_args>]`. When `extra_args` is empty the bracket section is omitted.
   - @param filepath Absolute path of the file being checked.
   - @return Formatted header string including label, filename, and extra args.
-- fn `def _check_file(self, filepath: str) -> int` `priv` (L445-459)
-  - @brief Perform the static analysis for a single file.
-  - @details Base implementation (Dummy): always passes. When `fail_only` is False, prints the header and `Result: OK`. When `fail_only` is True, produces no output (SRS-241). Subclasses override this method to invoke external tools.
-  - @param filepath Absolute path of the file to check.
-  - @return 0 on pass, non-zero on failure.
-- fn `def _emit_line(self, line: str) -> None` `priv` (L460-469)
-  - @brief Emit one markdown output line.
-  - @details Emits `line` followed by a newline.
-  - @param line Line content to emit on stdout.
-  - @return {None} Function return value.
 
-### class `class StaticCheckPylance(StaticCheckBase)` : StaticCheckBase (L474-576)
+### fn `def _check_file(self, filepath: str) -> int` `priv` (L624-638)
+- @brief Perform the static analysis for a single file.
+- @details Base implementation (Dummy): always passes. When `fail_only` is False, prints the header and `Result: OK`. When `fail_only` is True, produces no output (SRS-241). Subclasses override this method to invoke external tools.
+- @param filepath Absolute path of the file to check.
+- @return 0 on pass, non-zero on failure.
+
+### fn `def _emit_line(self, line: str) -> None` `priv` (L639-648)
+- @brief Emit one markdown output line.
+- @details Emits `line` followed by a newline.
+- @param line Line content to emit on stdout.
+- @return {None} Function return value.
+
+### class `class StaticCheckPylance(StaticCheckBase)` : StaticCheckBase (L653-780)
 - @brief Pylance static-check class; runs pyright on each resolved file via `sys.executable -m pyright`.
 - @details Derived from `StaticCheckBase`; overrides `_check_file` to invoke `pyright` via `[sys.executable, '-m', 'pyright']` subprocess using the active runtime interpreter, without requiring external PATH availability, and parse its exit code. Header label: `Pylance`. Evidence block is emitted on failure by concatenating stdout and stderr from pyright.
 - @see StaticCheckBase
 - @satisfies SRS-242, SRS-339, SRS-341
-- var `LABEL = "Pylance"` (L486)
+- var `LABEL = "Pylance"` (L665)
   - @brief Pylance static-check class; runs pyright on each resolved file via `sys.executable -m pyright`.
   - @details Derived from `StaticCheckBase`; overrides `_check_file` to invoke `pyright`
 via `[sys.executable, '-m', 'pyright']` subprocess using the active runtime interpreter,
@@ -2820,13 +2885,13 @@ Header label: `Pylance`.
 Evidence block is emitted on failure by concatenating stdout and stderr from pyright.
   - @see StaticCheckBase
   - @satisfies SRS-242, SRS-339, SRS-341
-- fn `def is_available(self) -> tuple[bool, str]` (L488-503)
+- fn `def is_available(self) -> tuple[bool, str]` (L667-682)
   - @brief Probe pyright module availability in the active interpreter.
   - @details Availability matches the `[sys.executable, '-m', 'pyright']` dispatch exactly: the module must be importable by the running interpreter (SRS-427).
   - @return {tuple[bool, str]} `(False, reason)` when `importlib.util.find_spec('pyright')` is `None`; `(True, "")` otherwise.
   - @satisfies SRS-427
-- fn `def __init__(` `priv` (L504-510)
-- fn `def _check_file(self, filepath: str) -> int` `priv` (L525-576)
+- fn `def __init__(` `priv` (L683-689)
+- fn `def _check_file(self, filepath: str) -> int` `priv` (L704-754)
   - @brief Initialize Pylance checker with runtime context.
   - @brief Run pyright on `filepath` via `sys.executable -m pyright` and emit OK or FAIL with evidence.
   - @details Stores runtime context for uv-first pyright invocation. No `.venv` probing is used.
@@ -2841,13 +2906,14 @@ Evidence block is emitted on failure by concatenating stdout and stderr from pyr
   - @exception ReqError Not raised; subprocess errors are surfaced as FAIL evidence.
   - @satisfies SRS-242, SRS-339, SRS-341
   - @satisfies SRS-242, SRS-339, SRS-341
+- fn `def _directory_command(` `priv` (L755-756)
 
-### class `class StaticCheckRuff(StaticCheckBase)` : StaticCheckBase (L581-652)
+### class `class StaticCheckRuff(StaticCheckBase)` : StaticCheckBase (L785-880)
 - @brief Ruff static-check class; runs `ruff check` on each resolved file via `sys.executable -m ruff`.
 - @details Derived from `StaticCheckBase`; overrides `_check_file` to invoke `ruff check` via `[sys.executable, '-m', 'ruff', 'check']` subprocess using the package-installed ruff module, without requiring external PATH availability, and parse its exit code. Header label: `Ruff`. Evidence block is emitted on failure by concatenating stdout and stderr from ruff.
 - @see StaticCheckBase
 - @satisfies SRS-243, SRS-339
-- var `LABEL = "Ruff"` (L593)
+- var `LABEL = "Ruff"` (L797)
   - @brief Ruff static-check class; runs `ruff check` on each resolved file via `sys.executable -m ruff`.
   - @details Derived from `StaticCheckBase`; overrides `_check_file` to invoke `ruff check`
 via `[sys.executable, '-m', 'ruff', 'check']` subprocess using the package-installed ruff module,
@@ -2856,25 +2922,26 @@ Header label: `Ruff`.
 Evidence block is emitted on failure by concatenating stdout and stderr from ruff.
   - @see StaticCheckBase
   - @satisfies SRS-243, SRS-339
-- fn `def is_available(self) -> tuple[bool, str]` (L595-610)
+- fn `def is_available(self) -> tuple[bool, str]` (L799-814)
   - @brief Probe ruff module availability in the active interpreter.
   - @details Availability matches the `[sys.executable, '-m', 'ruff']` dispatch exactly: the module must be importable by the running interpreter (SRS-427).
   - @return {tuple[bool, str]} `(False, reason)` when `importlib.util.find_spec('ruff')` is `None`; `(True, "")` otherwise.
   - @satisfies SRS-427
-- fn `def _check_file(self, filepath: str) -> int` `priv` (L611-652)
+- fn `def _check_file(self, filepath: str) -> int` `priv` (L815-855)
   - @brief Run `ruff check` on `filepath` via `sys.executable -m ruff` and emit OK or FAIL with evidence.
   - @details Invokes `[sys.executable, '-m', 'ruff', 'check', <filepath>, <extra_args>...]` to use the package-installed ruff module without requiring external PATH availability. Captures combined stdout+stderr. When `fail_only` is False: prints header, then `Result: OK` or `Result: FAIL` with evidence. When `fail_only` is True: on pass produces no output; on fail emits header, FAIL, evidence (SRS-243).
   - @param filepath Absolute path of the file to analyse with ruff.
   - @return 0 when ruff exits 0, 1 otherwise.
   - @exception ReqError Not raised; subprocess errors are surfaced as FAIL evidence.
   - @satisfies SRS-243, SRS-339
+- fn `def _directory_command(` `priv` (L856-857)
 
-### class `class StaticCheckCommand(StaticCheckBase)` : StaticCheckBase (L657-743)
+### class `class StaticCheckCommand(StaticCheckBase)` : StaticCheckBase (L885-996)
 - @brief Command static-check class; runs an arbitrary external command on each resolved file.
 - @details Derived from `StaticCheckBase`; overrides `_check_file` to invoke the user-supplied `cmd` as a subprocess. Header label: `Command[<cmd>]`. `cmd` availability is resolved at execution time by the SRS-427 pre-flight via `shutil.which`; an unavailable `cmd` yields a per-file `Result: FAIL` outcome with English evidence and execution continues (SRS-428); the constructor does not raise.
 - @see StaticCheckBase
 - @satisfies SRS-427, SRS-428
-- fn `def __init__(` `priv` (L670-676)
+- fn `def __init__(` `priv` (L898-904)
   - @brief Command static-check class; runs an arbitrary external command on each resolved file.
   - @details Derived from `StaticCheckBase`; overrides `_check_file` to invoke the user-supplied
 `cmd` as a subprocess.
@@ -2884,7 +2951,7 @@ Header label: `Command[<cmd>]`.
 English evidence and execution continues (SRS-428); the constructor does not raise.
   - @see StaticCheckBase
   - @satisfies SRS-427, SRS-428
-- fn `def is_available(self) -> tuple[bool, str]` (L691-703)
+- fn `def is_available(self) -> tuple[bool, str]` (L919-931)
   - @brief Initialize the command checker.
   - @brief Probe the external command binary on PATH.
   - @details Stores `cmd` and sets `LABEL` dynamically to `Command[<cmd>]`.
@@ -2896,14 +2963,20 @@ English evidence and execution continues (SRS-428); the constructor does not rai
   - @return {None} Function return value.
   - @return {tuple[bool, str]} `(False, reason)` when `shutil.which(self._cmd)` is `None`; `(True, "")` otherwise.
   - @satisfies SRS-427, SRS-428
-- fn `def _check_file(self, filepath: str) -> int` `priv` (L704-743)
+- fn `def _check_file(self, filepath: str) -> int` `priv` (L932-970)
   - @brief Run the external command on `filepath` and emit OK or FAIL with evidence.
   - @details Invokes `<cmd> [extra_args...] <filepath>`. Captures combined stdout+stderr. When `fail_only` is False: prints header, then `Result: OK` or `Result: FAIL` with evidence. When `fail_only` is True: on pass produces no output; on fail emits header, FAIL, evidence (SRS-244).
   - @param filepath Absolute path of the file to analyse.
   - @return 0 when the command exits 0, 1 otherwise.
   - @satisfies SRS-244, SRS-253, SRS-256
+- fn `def _dir_exclude_tokens(self, exclude_dir: str) -> List[str]` `priv` (L971-981)
+  - @brief Build the cmd-native exclusion tokens for one excluded directory.
+  - @details Flags: `cppcheck` -> `-i`, `eslint` -> `--ignore-pattern`, `ruff`/`pyright` -> `--exclude` (SRS-590).
+  - @param exclude_dir {str} Absolute directory path excluded from the recursive scan.
+  - @return {List[str]} Exclusion flag and path tokens; empty for unknown `cmd` binaries.
+- fn `def _directory_command(` `priv` (L982-983)
 
-### fn `def run_static_check(argv: Sequence[str]) -> int` (L748-813)
+### fn `def run_static_check(argv: Sequence[str]) -> int` (L1001-1066)
 - @brief Parse `--test-static-check` sub-argv and dispatch to the appropriate checker class.
 - @details Expected argument format: - `dummy [FILES...]` - `pylance [FILES...]` - `ruff [FILES...]` - `command <cmd> [FILES...]` No custom `--recursive` flag is parsed; recursive traversal is expressed via `**` glob patterns in `[FILES]` (e.g., `src/**/*.py`). For `command`, the first token after `command` is treated as `<cmd>`. All remaining tokens (after subcommand and optional cmd) are treated as FILES. Dispatches to: - `dummy` -> `StaticCheckBase` - `pylance` -> `StaticCheckPylance` - `ruff` -> `StaticCheckRuff` - `command` -> `StaticCheckCommand`
 - @param argv Remaining argument tokens after `--test-static-check` (i.e. [subcommand, ...]).
@@ -2913,31 +2986,40 @@ English evidence and execution continues (SRS-428); the constructor does not rai
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`_split_csv_like_tokens`|fn|priv|113-147|def _split_csv_like_tokens(spec_rhs: str) -> list[str]|
-|`parse_enable_static_check`|fn|pub|148-224|def parse_enable_static_check(spec: str) -> tuple[str, dict]|
-|`dispatch_static_check_for_file`|fn|pub|229-234|def dispatch_static_check_for_file(|
-|`_resolve_files`|fn|priv|293-335|def _resolve_files(inputs: Sequence[str]) -> List[str]|
-|`StaticCheckBase`|class|pub|340-469|class StaticCheckBase|
-|`StaticCheckBase.__init__`|fn|priv|352-357|def __init__(|
-|`StaticCheckBase.is_available`|fn|pub|377-386|def is_available(self) -> tuple[bool, str]|
-|`StaticCheckBase.run`|fn|pub|387-429|def run(self) -> int|
-|`StaticCheckBase._header_line`|fn|priv|434-444|def _header_line(self, filepath: str) -> str|
-|`StaticCheckBase._check_file`|fn|priv|445-459|def _check_file(self, filepath: str) -> int|
-|`StaticCheckBase._emit_line`|fn|priv|460-469|def _emit_line(self, line: str) -> None|
-|`StaticCheckPylance`|class|pub|474-576|class StaticCheckPylance(StaticCheckBase)|
-|`StaticCheckPylance.LABEL`|var|pub|486||
-|`StaticCheckPylance.is_available`|fn|pub|488-503|def is_available(self) -> tuple[bool, str]|
-|`StaticCheckPylance.__init__`|fn|priv|504-510|def __init__(|
-|`StaticCheckPylance._check_file`|fn|priv|525-576|def _check_file(self, filepath: str) -> int|
-|`StaticCheckRuff`|class|pub|581-652|class StaticCheckRuff(StaticCheckBase)|
-|`StaticCheckRuff.LABEL`|var|pub|593||
-|`StaticCheckRuff.is_available`|fn|pub|595-610|def is_available(self) -> tuple[bool, str]|
-|`StaticCheckRuff._check_file`|fn|priv|611-652|def _check_file(self, filepath: str) -> int|
-|`StaticCheckCommand`|class|pub|657-743|class StaticCheckCommand(StaticCheckBase)|
-|`StaticCheckCommand.__init__`|fn|priv|670-676|def __init__(|
-|`StaticCheckCommand.is_available`|fn|pub|691-703|def is_available(self) -> tuple[bool, str]|
-|`StaticCheckCommand._check_file`|fn|priv|704-743|def _check_file(self, filepath: str) -> int|
-|`run_static_check`|fn|pub|748-813|def run_static_check(argv: Sequence[str]) -> int|
+|`entry_scan_by_dir`|fn|pub|126-142|def entry_scan_by_dir(lang_config: Mapping[str, object]) ...|
+|`_split_csv_like_tokens`|fn|priv|147-181|def _split_csv_like_tokens(spec_rhs: str) -> list[str]|
+|`parse_enable_static_check`|fn|pub|182-258|def parse_enable_static_check(spec: str) -> tuple[str, dict]|
+|`dispatch_static_check_for_file`|fn|pub|263-268|def dispatch_static_check_for_file(|
+|`dispatch_static_check_for_directory`|fn|pub|323-329|def dispatch_static_check_for_directory(|
+|`_resolve_files`|fn|priv|388-430|def _resolve_files(inputs: Sequence[str]) -> List[str]|
+|`StaticCheckBase`|class|pub|435-634|class StaticCheckBase|
+|`StaticCheckBase.__init__`|fn|priv|447-452|def __init__(|
+|`StaticCheckBase.is_available`|fn|pub|472-481|def is_available(self) -> tuple[bool, str]|
+|`StaticCheckBase.run`|fn|pub|482-524|def run(self) -> int|
+|`StaticCheckBase.run_directory`|fn|pub|525-586|def run_directory(self, target: str, exclude_dirs: Sequen...|
+|`StaticCheckBase._directory_command`|fn|priv|587-588|def _directory_command(|
+|`StaticCheckBase._dir_exclude_tokens`|fn|priv|600-608|def _dir_exclude_tokens(self, exclude_dir: str) -> List[str]|
+|`StaticCheckBase._header_line`|fn|priv|613-623|def _header_line(self, filepath: str) -> str|
+|`_check_file`|fn|priv|624-638|def _check_file(self, filepath: str) -> int|
+|`_emit_line`|fn|priv|639-648|def _emit_line(self, line: str) -> None|
+|`StaticCheckPylance`|class|pub|653-780|class StaticCheckPylance(StaticCheckBase)|
+|`StaticCheckPylance.LABEL`|var|pub|665||
+|`StaticCheckPylance.is_available`|fn|pub|667-682|def is_available(self) -> tuple[bool, str]|
+|`StaticCheckPylance.__init__`|fn|priv|683-689|def __init__(|
+|`StaticCheckPylance._check_file`|fn|priv|704-754|def _check_file(self, filepath: str) -> int|
+|`StaticCheckPylance._directory_command`|fn|priv|755-756|def _directory_command(|
+|`StaticCheckRuff`|class|pub|785-880|class StaticCheckRuff(StaticCheckBase)|
+|`StaticCheckRuff.LABEL`|var|pub|797||
+|`StaticCheckRuff.is_available`|fn|pub|799-814|def is_available(self) -> tuple[bool, str]|
+|`StaticCheckRuff._check_file`|fn|priv|815-855|def _check_file(self, filepath: str) -> int|
+|`StaticCheckRuff._directory_command`|fn|priv|856-857|def _directory_command(|
+|`StaticCheckCommand`|class|pub|885-996|class StaticCheckCommand(StaticCheckBase)|
+|`StaticCheckCommand.__init__`|fn|priv|898-904|def __init__(|
+|`StaticCheckCommand.is_available`|fn|pub|919-931|def is_available(self) -> tuple[bool, str]|
+|`StaticCheckCommand._check_file`|fn|priv|932-970|def _check_file(self, filepath: str) -> int|
+|`StaticCheckCommand._dir_exclude_tokens`|fn|priv|971-981|def _dir_exclude_tokens(self, exclude_dir: str) -> List[str]|
+|`StaticCheckCommand._directory_command`|fn|priv|982-983|def _directory_command(|
+|`run_static_check`|fn|pub|1001-1066|def run_static_check(argv: Sequence[str]) -> int|
 
 
 ---
