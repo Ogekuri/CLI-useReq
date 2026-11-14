@@ -1,7 +1,8 @@
 # Changelog
 
-## [0.75.14](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.14) - 2026-11-14
+## [0.75.15](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.15) - 2026-11-14
 ### ⛰️  Features
+- Update prompts with skills.
 - add --write-config command persisting missing schema defaults [useReq] *(config)*
   Add the --write-config configuration command (SRS-593..SRS-597) that
   persists the schema default of every canonical top-level parameter
@@ -31,6 +32,15 @@
 - Update prompts.
 
 ### 🐛  Bug Fixes
+- print git-check failure to stdout per SRS-312 [useReq] *(cli)*
+  SRS-312: run_git_check now prints 'ERROR: Git status unclear!' to
+  stdout before raising ReqError (stderr forwarding unchanged); test
+  updated to assert stdout output (tests/test_cli.py).
+  SRS-412: add parser-rejection tests for legacy --prefixed analysis
+  command forms in tests/test_files_commands.py.
+  SRS-247: add explicit no-.venv-probing tests for StaticCheckPylance
+  and StaticCheckRuff in tests/test_static_check.py.
+  Update WORKFLOW.md git-check node; regenerate REFERENCES.md.; Touched files re-emitted in ruff-format canonical form (AST-neutral).
 - Update workflow prompt.
 - switch non-PyPI install back to PyPI on --upgrade [useReq] *(upgrade)*
   run_upgrade probes the installed uv tool receipt through 'uv tool dir'
@@ -1618,7 +1628,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.14\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.14
+- \[0.75.15\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.15
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1694,4 +1704,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.14]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.14
+[0.75.15]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.15
