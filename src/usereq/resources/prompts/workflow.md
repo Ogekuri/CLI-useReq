@@ -30,7 +30,7 @@ usage: >
 Maintain an LLM-oriented runtime/workflow model (`{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`) derived from repository evidence so downstream LLM Agents MUST reason about execution units, communication edges, and internal call-traces during SRS-driven design/implementation.
 
 ## Scope
-In scope: static analysis of source under {{PRJ_BASE}}/%%SRC_PATHS%% to generate/overwrite only `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` in English only, following the mandated schema, then commit that doc change. Out of scope: changes to requirements, references, source code, or tests.
+In scope: static analysis of source under {{PRJ_BASE}}/%%SRC_PATHS%% to generate/overwrite only `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` in English only, following the mandated schema or, when no analyzable source files exist under {{PRJ_BASE}}/%%SRC_PATHS%%, the exact declared no-source directive content, then commit that doc change. Out of scope: changes to requirements, references, source code, or tests.
 
 
 ## Executive Skill Contract
@@ -106,6 +106,7 @@ In scope: static analysis of source under {{PRJ_BASE}}/%%SRC_PATHS%% to generate
   - `## Execution Units Index`
   - `## Execution Units` (one subsection per execution unit ID)
   - `## Communication Edges`
+- No-source exception: when Step 3 classifies the runtime model as no-source, the Step 4 no-source branch replaces this schema with the exact declared directive content.
 - The model MUST cover:
   - ALL processes and threads used at runtime (static analysis), including the main process.
   - For EACH execution unit: a complete internal call-trace tree from entrypoint(s) down to internal leaf functions (internal functions only).
@@ -213,6 +214,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
 
 3. Static analysis: build the runtime model from {{PRJ_BASE}}/%%SRC_PATHS%%
    - Analyze only files under {{PRJ_BASE}}/%%SRC_PATHS%%; treat all files outside {{PRJ_BASE}}/%%SRC_PATHS%% as out of scope and never document them.
+   - If the analysis finds no analyzable source files under {{PRJ_BASE}}/%%SRC_PATHS%% (no executable code constructs in any configured source directory), classify the runtime model as no-source and execute the Step 4 no-source branch.
    - Identify ALL execution units used at runtime:
       - OS processes (MUST include the main process).
       - OS threads (per process), including their entry functions/methods.
@@ -224,6 +226,22 @@ After successful pre-flight resolution, create internally a *check-list* for the
    - Identify ALL explicit communication edges between execution units and record for each edge:
       - Direction (source -> destination), mechanism (IPC/thread communication), endpoint/channel (queue/topic/path/socket/etc.), and payload/data-shape references.
 4. Generate and overwrite `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` document using declaration file paths only, excluding line numbers, line ranges, and internal file-reference pointers
+   - No-source branch: if Step 3 classified the runtime model as no-source, overwrite `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` with EXACTLY the literal content between the fence markers below, byte-identical and left-aligned, as the entire file content with no schema sections, headers, or trailing text, and then continue with Step 5:
+
+   ```text
+   <system_directive>
+   [STATUS]: NO_SOURCE_CODE_DETECTED
+   [FILE_CONTENT]: EMPTY_WORKFLOW
+
+   [CONTEXT_UPDATE]
+   This repository is structured exclusively for documentation or otherwise lacks analyzable source code. Consequently, this `WORKFLOW.md` file contains not contain a souce code workflow.
+
+   [AGENT_INSTRUCTIONS]
+   1. Do not attempt to search, extract, or create source code workflow within this project.
+   2. Update current context to reflect that the `req-workflow` skill and the `/req-workflow` command are **UNNECESSARY** and **DEPRECATED** for this specific repository.
+   3. Do not invoke or prompt the user to execute the `/req-workflow` command during any future interactions within this workspace.
+   </system_directive>
+   ```
    - Read any existing `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` to preserve stable IDs and minimize unnecessary churn, then update it to strictly conform to the Output Contract above.
    - Generate {{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md in English only using deterministic, machine-interpretable Markdown with the required schema and stable field order.
       - During generation/update, include declaration file paths only; MUST NOT include line numbers, line ranges, or internal file-reference pointers.
