@@ -1,7 +1,9 @@
 # Changelog
 
-## [0.75.12](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.12) - 2026-11-13
+## [0.75.13](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.13) - 2026-11-14
 ### ⛰️  Features
+- Update prompts.
+- Update prompts.
 - Update prompts.
 - Update prompts.
 - Update gitalias config.
@@ -19,6 +21,7 @@
 - Update prompts.
 
 ### 🐛  Bug Fixes
+- Update workflow prompt.
 - switch non-PyPI install back to PyPI on --upgrade [useReq] *(upgrade)*
   run_upgrade probes the installed uv tool receipt through 'uv tool dir'
   and appends --force when the requirement source is git/URL/path
@@ -1599,7 +1602,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.12\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.12
+- \[0.75.13\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.13
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1675,4 +1678,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.12]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.12
+[0.75.13]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.13
