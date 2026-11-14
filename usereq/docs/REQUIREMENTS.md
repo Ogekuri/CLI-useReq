@@ -177,7 +177,7 @@ No explicit performance optimizations identified.
 - **SRS-516**: MUST implement the following behavior: Guideline and template file-name lists MUST enumerate only non-hidden, non-symbolic-link regular files in deterministic sorted order.
 
 ### 3.2.1 Configuration Schema, CLI Access, and Tree Rendering
-- **SRS-519**: MUST expose configuration display and mutation exclusively through `--print [Path]`, `--info [Path]`, `--print-raw`, `--get Path`, `--set Path Value`, and `--unset Path`.
+- **SRS-519**: MUST expose configuration display and mutation exclusively through `--print [Path]`, `--info [Path]`, `--print-raw`, `--get Path`, `--set Path Value`, `--unset Path`, and `--write-config`.
 - **SRS-520**: MUST resolve canonical configuration paths as colon-separated case-sensitive schema tokens and MUST NOT accept the virtual root label `Application_Configuration` inside any CLI path.
 - **SRS-521**: MUST define one canonical schema for the `Configuration` section containing `docs-dir`, `tests-dir`, `src-dir`, `providers`, `static-check`, and `auto-install` that drives parsing, validation, defaults, display, and help.
 - **SRS-522**: MUST display every configuration node identifier as its exact canonical schema token, byte for byte, with descriptions and statuses appended after the token.
@@ -201,6 +201,11 @@ No explicit performance optimizations identified.
 - **SRS-540**: MUST document `static-check` entry fields through an `Item Schema` table and expose field-level `Configuration:static-check:<Language>:<Idx>:<Field>` write paths.
 - **SRS-541**: MUST render every published command example with shell quoting, a complete canonical path, and a value valid under the active schema.
 - **SRS-542**: MUST update the shared schema, CLI behavior, `--info` documentation, and tests together whenever configurable options, defaults, constraints, or storage change.
+- **SRS-593**: MUST support `--write-config` persisting into `~/.config/usereq/config.json` the schema default value of every canonical top-level parameter missing from the stored payload.
+- **SRS-594**: MUST implement the following behavior: `--write-config` MUST NOT alter the stored value of any parameter already present in `~/.config/usereq/config.json`.
+- **SRS-595**: MUST implement the following behavior: `--write-config` MUST validate the complete resulting configuration per SRS-530 and MUST persist it through the SRS-531 atomic writer.
+- **SRS-596**: MUST implement the following behavior: `--write-config` MUST bootstrap an absent `~/.config/usereq/config.json` from schema defaults per SRS-529 and MUST NOT require `--prj-base`.
+- **SRS-597**: MUST implement the following behavior: `--write-config` MUST emit no stdout payload and MUST exit with code 0 on success and 1 with an English stderr diagnostic on failure.
 
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
@@ -380,6 +385,7 @@ No explicit performance optimizations identified.
 - **SRS-565**: MUST include unit tests in `tests/test_build_script.py` verifying SRS-548 dist/ cleanup, SRS-566 git availability, SRS-567 and SRS-569 intermediate removal, SRS-568 git-tracked preservation warnings, and SRS-570 summary and exit-code semantics.
 - **SRS-573**: MUST include unit tests in `tests/test_release_workflow.py` verifying SRS-572 optional pre-built `dist/` consumption and absence of build, dependency-sync, test, and pre-release verification stages.
 - **SRS-583**: MUST include unit tests in `tests/test_files_commands.py` verifying that `references` prints the SRS-582 empty-reference payload and exits with code 0 when no supported source file exists.
+- **SRS-598**: MUST include unit tests in `tests/test_config_cli.py` verifying that `--write-config` adds only missing canonical defaults, preserves stored values, bootstraps an absent configuration file, rejects multi-command combinations, and reports failures on stderr with exit code 1.
 
 ## 5. Static Code Analysis Requirements
 

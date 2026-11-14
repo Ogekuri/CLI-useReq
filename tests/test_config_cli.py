@@ -2,8 +2,8 @@
 @file test_config_cli.py
 @brief Unit tests for the configuration CLI, tree renderer, and schema operations.
 @details Covers exact renderer output, structural tree invariants, rectangular table
-alignment, and command behavior of `--print`, `--info`, `--print-raw`, `--get`,
-`--set`, and `--unset` (SRS-543, SRS-544, SRS-545).
+alignment, and command behavior of `--print`, `--info`, `--print-raw`, `--write-config`,
+`--get`, `--set`, and `--unset` (SRS-543, SRS-544, SRS-545, SRS-598).
 """
 
 from __future__ import annotations
@@ -493,6 +493,81 @@ class TestConfigurationCommands(HomeTestCase):
         self.assertEqual(code, 1)
         self.assertEqual(out, "")
         self.assertIn("exactly one", err)
+
+    def test_write_config_adds_only_missing_defaults(self) -> None:
+        """! @brief SRS-593: missing canonical parameters receive schema defaults. """
+        self.write_payload({"docs-dir": "handbook"})
+        code, out, err = self.run_cli(["--write-config"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "", "no stdout payload on success")
+        payload = self.read_config()
+        self.assertEqual(payload["docs-dir"], "handbook")
+        self.assertEqual(payload["tests-dir"], "tests")
+        self.assertEqual(payload["src-dir"], ["src"])
+        self.assertIs(payload["auto-install"], True)
+        self.assertEqual(payload["providers"], [])
+        self.assertEqual(
+            payload["static-check"], config_cli.default_config()["static-check"]
+        )
+
+    def test_write_config_preserves_every_stored_value(self) -> None:
+        """! @brief SRS-594: stored parameter values are never altered. """
+        stored = {
+            "docs-dir": "documentation",
+            "tests-dir": "unit-tests",
+            "src-dir": ["alpha", "beta"],
+            "auto-install": False,
+            "providers": ["pi"],
+            "static-check": {"Python": [{"module": "Pylance"}]},
+        }
+        self.write_payload(stored)
+        code, out, err = self.run_cli(["--write-config"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        payload = self.read_config()
+        for key, value in stored.items():
+            self.assertEqual(payload[key], value, key)
+
+    def test_write_config_bootstraps_absent_file(self) -> None:
+        """! @brief SRS-596: absent configuration file initializes from defaults. """
+        self.assertFalse(self.config_path.exists())
+        code, out, err = self.run_cli(["--write-config"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(self.read_config(), config_cli.default_config())
+
+    def test_write_config_without_missing_keys_is_byte_stable(self) -> None:
+        """! @brief SRS-594: complete payloads are not rewritten. """
+        self.write_payload(
+            {
+                "docs-dir": "documentation",
+                "tests-dir": "tests",
+                "src-dir": ["src"],
+                "auto-install": True,
+                "providers": [],
+                "static-check": {},
+            }
+        )
+        self.assertEqual(self.run_cli(["--write-config"])[0], 0)
+        after_first = self.config_path.read_bytes()
+        self.assertEqual(self.run_cli(["--write-config"])[0], 0)
+        self.assertEqual(self.config_path.read_bytes(), after_first)
+
+    def test_write_config_rejects_combined_commands(self) -> None:
+        """! @brief SRS-519, SRS-597: exactly one configuration command per invocation. """
+        code, out, err = self.run_cli(["--write-config", "--print"])
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertIn("exactly one", err)
+
+    def test_write_config_invalid_stored_value_fails_without_mutation(self) -> None:
+        """! @brief SRS-595, SRS-597: validation failure reports stderr, no mutation. """
+        before = self.write_payload({"auto-install": "yes"})
+        code, out, err = self.run_cli(["--write-config"])
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertTrue(err.strip())
+        self.assertEqual(self.config_path.read_bytes(), before)
 
     def test_invalid_configuration_file_reports_error(self) -> None:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)

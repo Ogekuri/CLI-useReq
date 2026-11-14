@@ -406,7 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
     usage = (
         "req [-h] [--upgrade] [--develop] [--dev] [--force] [--uninstall] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
-        "[--print [PATH]] [--info [PATH]] [--print-raw] [--get PATH] [--set PATH VALUE] [--unset PATH] "
+        "[--print [PATH]] [--info [PATH]] [--print-raw] [--write-config] [--get PATH] [--set PATH VALUE] [--unset PATH] "
         "[--enable PROVIDER] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
         "[--enable-line-numbers] "
         "[--enable-static-check SPEC] [--disable-static-check SPEC] "
@@ -474,6 +474,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Print the raw bytes of ~/.config/usereq/config.json without tree "
             "formatting or headings."
+        ),
+    )
+    parser.add_argument(
+        "--write-config",
+        action="store_true",
+        default=False,
+        dest="config_write",
+        help=(
+            "Write the schema default of every configuration parameter missing "
+            "from ~/.config/usereq/config.json without altering stored values."
         ),
     )
     parser.add_argument(
@@ -4502,12 +4512,14 @@ def _is_config_schema_command(args: Namespace) -> bool:
     @param args {Namespace} Parsed CLI namespace.
     @return {bool} True when any configuration schema command flag is present.
     @details Configuration schema commands are `--print`, `--info`, `--print-raw`,
-    `--get`, `--set`, and `--unset` (SRS-519); they never trigger provider installation.
+    `--write-config`, `--get`, `--set`, and `--unset` (SRS-519, SRS-593); they never
+    trigger provider installation.
     """
     return (
         getattr(args, "config_print", None) is not None
         or getattr(args, "config_info", None) is not None
         or bool(getattr(args, "config_print_raw", False))
+        or bool(getattr(args, "config_write", False))
         or getattr(args, "config_get", None) is not None
         or getattr(args, "config_set", None) is not None
         or getattr(args, "config_unset", None) is not None
@@ -4519,23 +4531,28 @@ def run_config_schema_command(args: Namespace) -> int:
     @brief Execute one configuration schema command.
     @param args {Namespace} Parsed CLI namespace carrying the configuration flag values.
     @return {int} Process exit code: 0 on success, 1 on any configuration failure.
-    @details Dispatches `--print`, `--info`, `--print-raw`, `--get`, `--set`, and
-    `--unset` against the user-global configuration file, writes payloads to stdout,
-    and reports every diagnostic on stderr (SRS-519, SRS-532).
-    @satisfies SRS-519, SRS-527, SRS-528, SRS-529, SRS-530, SRS-531, SRS-532
+    @details Dispatches `--print`, `--info`, `--print-raw`, `--write-config`, `--get`,
+    `--set`, and `--unset` against the user-global configuration file, writes payloads
+    to stdout, and reports every diagnostic on stderr (SRS-519, SRS-532, SRS-597).
+    `--write-config` persists the schema default of every canonical top-level parameter
+    missing from the stored payload without altering stored values (SRS-593, SRS-594)
+    through the validated atomic writer (SRS-595, SRS-596).
+    @satisfies SRS-519, SRS-527, SRS-528, SRS-529, SRS-530, SRS-531, SRS-532, SRS-593,
+    SRS-594, SRS-595, SRS-596, SRS-597
     """
     enabled = [
         getattr(args, "config_print", None) is not None,
         getattr(args, "config_info", None) is not None,
         bool(getattr(args, "config_print_raw", False)),
+        bool(getattr(args, "config_write", False)),
         getattr(args, "config_get", None) is not None,
         getattr(args, "config_set", None) is not None,
         getattr(args, "config_unset", None) is not None,
     ]
     if sum(1 for flag in enabled if flag) > 1:
         print(
-            "Error: use exactly one of --print, --info, --print-raw, --get, "
-            "--set, or --unset.",
+            "Error: use exactly one of --print, --info, --print-raw, "
+            "--write-config, --get, --set, or --unset.",
             file=sys.stderr,
         )
         return 1
@@ -4549,6 +4566,9 @@ def run_config_schema_command(args: Namespace) -> int:
                 raw_stream.flush()
             else:
                 sys.stdout.write(payload.decode("utf-8"))
+            return 0
+        if getattr(args, "config_write", False):
+            config_cli.handle_write_config(config_path)
             return 0
         get_path = getattr(args, "config_get", None)
         if get_path is not None:

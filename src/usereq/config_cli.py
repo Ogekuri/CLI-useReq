@@ -1338,6 +1338,30 @@ def handle_unset(config_path: Path, path: str) -> None:
     write_config(config_path, updated)
 
 
+def handle_write_config(config_path: Path) -> None:
+    """!
+    @brief Persist schema defaults for canonical parameters missing from the stored payload.
+    @details Bootstraps an absent configuration file from schema defaults (SRS-529),
+    validates the complete resulting configuration before any write (SRS-530), writes the
+    merged payload through the SRS-531 atomic writer only when at least one canonical
+    top-level parameter is missing from the stored payload, and never alters the stored
+    value of any parameter already present (SRS-593, SRS-594, SRS-595, SRS-596, SRS-597).
+    Complexity: O(K) over K canonical top-level keys. Side effects: at most one atomic
+    configuration write; no write occurs when every canonical key is already present.
+    @param config_path {Path} Absolute global configuration file path.
+    @return {None} Function return value.
+    @throws {ConfigError} Raised when the file is unreadable, a stored canonical value
+    violates the schema, or the atomic write fails; the stored file is preserved.
+    @satisfies SRS-529, SRS-530, SRS-531, SRS-593, SRS-594, SRS-595, SRS-596, SRS-597
+    """
+    ensure_config_file(config_path)
+    raw = read_raw_payload(config_path)
+    missing = [key for key in CONFIG_KEYS if key not in raw]
+    if not missing:
+        return
+    write_config(config_path, normalize_config(raw))
+
+
 def handle_print_raw(config_path: Path) -> bytes:
     """!
     @brief Return the unmodified on-disk configuration file bytes.
