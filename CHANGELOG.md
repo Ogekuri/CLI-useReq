@@ -1,7 +1,17 @@
 # Changelog
 
-## [0.75.13](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.13) - 2026-11-14
+## [0.75.14](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.14) - 2026-11-14
 ### ⛰️  Features
+- add --write-config command persisting missing schema defaults [useReq] *(config)*
+  Add the --write-config configuration command (SRS-593..SRS-597) that
+  persists the schema default of every canonical top-level parameter
+  missing from ~/.config/usereq/config.json without ever altering stored
+  values, bootstraps an absent file from defaults, validates the merged
+  payload per SRS-530, and writes through the SRS-531 atomic writer only
+  when keys are missing.
+  Extend the SRS-519 exclusive command list, add config_cli
+  handle_write_config and CLI dispatch/help, add SRS-598 unit tests in
+  tests/test_config_cli.py, and update WORKFLOW.md/REFERENCES.md traces.
 - Update prompts.
 - Update prompts.
 - Update prompts.
@@ -48,6 +58,12 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- BREAKING CHANGE: add scan-by-dir recursive directory-scan mode [useReq] *(static-check)*
+  Add SRS-584..SRS-592: per-entry optional scan-by-dir flag with capability-based defaults (Pylance, Ruff, cppcheck, eslint, ruff, pyright).
+  static-check project scan dispatches one recursive checker invocation per configured root (src-dir entries plus tests-dir) for scan-by-dir-true entries; per-file dispatch otherwise.
+  Exclude tests fixtures from directory scans via module-native flags (--exclude, -i, --ignore-pattern).
+  files-static-check ignores scan-by-dir and always dispatches per explicit file.
+  Schema gains the scan-by-dir entry field with cross-field capability validation; requirements, workflow, references, and tests updated together (SRS-542).
 - emit empty-references directive when no source files [useReq] *(references)*
   add SRS-581/SRS-582 for the empty-references system-directive payload; add SRS-583 regression coverage in tests/test_files_commands.py; print the canonical directive and exit 0 when no supported source file is selected; document the empty-selection branch in WORKFLOW.md and regenerate REFERENCES.md
 - clean old-version dist artifacts before build [useReq] *(build-script)*
@@ -1602,7 +1618,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.13\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.13
+- \[0.75.14\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.14
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1678,4 +1694,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.13]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.13
+[0.75.14]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.14
