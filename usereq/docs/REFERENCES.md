@@ -6,8 +6,8 @@
         ├── __init__.py
         ├── __main__.py
         ├── cli.py
-        ├── compress.py
         ├── compress_files.py
+        ├── compress.py
         ├── config_cli.py
         ├── config_schema.py
         ├── doxygen_parser.py
@@ -1965,7 +1965,7 @@ details (SRS-522, SRS-525, SRS-540).
 - @return {bytes} Raw file bytes exactly as stored.
 - @throws {ConfigError} Raised when the bootstrapped file cannot be read.
 
-### fn `def handle_display(config_path: Path, path: Optional[str], info: bool) -> str` (L1382-1395)
+### fn `def handle_display(config_path: Path, path: Optional[str], info: bool) -> str` (L1382-1396)
 - @brief Execute one `--print` or `--info` display request.
 - @param config_path {Path} Absolute global configuration file path.
 - @param path {Optional[str]} Requested canonical path; None renders the full tree.
@@ -2032,7 +2032,7 @@ details (SRS-522, SRS-525, SRS-540).
 |`handle_unset`|fn|pub|1328-1340|def handle_unset(config_path: Path, path: str) -> None|
 |`handle_write_config`|fn|pub|1341-1364|def handle_write_config(config_path: Path) -> None|
 |`handle_print_raw`|fn|pub|1365-1381|def handle_print_raw(config_path: Path) -> bytes|
-|`handle_display`|fn|pub|1382-1395|def handle_display(config_path: Path, path: Optional[str]...|
+|`handle_display`|fn|pub|1382-1396|def handle_display(config_path: Path, path: Optional[str]...|
 
 
 ---
@@ -2113,7 +2113,7 @@ from typing import Any, Optional
 - @param token {str} Exact canonical field token to resolve.
 - @return {Optional[SchemaNode]} Matching field node, or None when the token is unknown.
 
-### fn `def canonical_path(tokens: tuple[str, ...]) -> str` (L371-379)
+### fn `def canonical_path(tokens: tuple[str, ...]) -> str` (L371-380)
 - @brief Join canonical path tokens with the colon separator.
 - @details Empty tokens are rejected by the resolver, so joining never produces an ambiguous empty path segment (SRS-520).
 - @param tokens {tuple[str, ...]} Ordered canonical path tokens without the virtual root.
@@ -2142,7 +2142,7 @@ from typing import Any, Optional
 |`CONFIG_SECTION`|var|pub|272||
 |`ROOT_LABEL`|var|pub|349||
 |`find_field`|fn|pub|356-370|def find_field(node: SchemaNode, token: str) -> Optional[...|
-|`canonical_path`|fn|pub|371-379|def canonical_path(tokens: tuple[str, ...]) -> str|
+|`canonical_path`|fn|pub|371-380|def canonical_path(tokens: tuple[str, ...]) -> str|
 
 
 ---
@@ -2189,7 +2189,7 @@ from typing import Dict, List
 - @param text Tag content with potentially irregular whitespace.
 - @return Whitespace-normalized content.
 
-### fn `def format_doxygen_fields_as_markdown(doxygen_fields: Dict[str, List[str]]) -> List[str]` (L155-172)
+### fn `def format_doxygen_fields_as_markdown(doxygen_fields: Dict[str, List[str]]) -> List[str]` (L155-173)
 - @brief Format extracted Doxygen fields as Markdown bulleted list.
 - @details Emits fields in fixed order (DOXYGEN_TAGS) preserving original Doxygen tag tokens with `@` prefix and no `:` suffix. Skips tags not present in input. Each extracted field occurrence is emitted as an independent markdown bullet.
 - @param doxygen_fields Dictionary of tag -> content list from parse_doxygen_comment().
@@ -2204,7 +2204,7 @@ from typing import Dict, List
 |`parse_doxygen_comment`|fn|pub|51-99|def parse_doxygen_comment(comment_text: str) -> Dict[str,...|
 |`_strip_comment_delimiters`|fn|priv|100-128|def _strip_comment_delimiters(text: str) -> str|
 |`_normalize_whitespace`|fn|priv|129-154|def _normalize_whitespace(text: str) -> str|
-|`format_doxygen_fields_as_markdown`|fn|pub|155-172|def format_doxygen_fields_as_markdown(doxygen_fields: Dic...|
+|`format_doxygen_fields_as_markdown`|fn|pub|155-173|def format_doxygen_fields_as_markdown(doxygen_fields: Dic...|
 
 
 ---
@@ -2986,7 +2986,7 @@ English evidence and execution continues (SRS-428); the constructor does not rai
   - @return {List[str]} Exclusion flag and path tokens; empty for unknown `cmd` binaries.
 - fn `def _directory_command(` `priv` (L982-983)
 
-### fn `def run_static_check(argv: Sequence[str]) -> int` (L1001-1065)
+### fn `def run_static_check(argv: Sequence[str]) -> int` (L1001-1066)
 - @brief Parse `--test-static-check` sub-argv and dispatch to the appropriate checker class.
 - @details Expected argument format: - `dummy [FILES...]` - `pylance [FILES...]` - `ruff [FILES...]` - `command <cmd> [FILES...]` No custom `--recursive` flag is parsed; recursive traversal is expressed via `**` glob patterns in `[FILES]` (e.g., `src/**/*.py`). For `command`, the first token after `command` is treated as `<cmd>`. All remaining tokens (after subcommand and optional cmd) are treated as FILES. Dispatches to: - `dummy` -> `StaticCheckBase` - `pylance` -> `StaticCheckPylance` - `ruff` -> `StaticCheckRuff` - `command` -> `StaticCheckCommand`
 - @param argv Remaining argument tokens after `--test-static-check` (i.e. [subcommand, ...]).
@@ -3029,7 +3029,7 @@ English evidence and execution continues (SRS-428); the constructor does not rai
 |`StaticCheckCommand._check_file`|fn|priv|932-970|def _check_file(self, filepath: str) -> int|
 |`StaticCheckCommand._dir_exclude_tokens`|fn|priv|971-981|def _dir_exclude_tokens(self, exclude_dir: str) -> List[str]|
 |`StaticCheckCommand._directory_command`|fn|priv|982-983|def _directory_command(|
-|`run_static_check`|fn|pub|1001-1065|def run_static_check(argv: Sequence[str]) -> int|
+|`run_static_check`|fn|pub|1001-1066|def run_static_check(argv: Sequence[str]) -> int|
 
 
 ---
@@ -3084,7 +3084,7 @@ import tiktoken  # pyright: ignore[reportMissingImports]
 - @param encoding_name The tiktoken encoding name.
 - @return List of dictionaries, each containing 'file', 'tokens', 'chars', and optionally 'error'.
 
-### fn `def format_pack_summary(results: list) -> str` (L95-123)
+### fn `def format_pack_summary(results: list) -> str` (L95-124)
 - @brief Format a pack summary string from a list of file metrics.
 - @details Generates a human-readable report including icons, per-file stats, and aggregate totals.
 - @param results List of metrics dictionaries from count_files_metrics().
@@ -3099,5 +3099,5 @@ import tiktoken  # pyright: ignore[reportMissingImports]
 |`TokenCounter.count_chars`|fn|pub|40-49|def count_chars(content: str) -> int|
 |`count_file_metrics`|fn|pub|50-65|def count_file_metrics(content: str,|
 |`count_files_metrics`|fn|pub|66-94|def count_files_metrics(file_paths: list,|
-|`format_pack_summary`|fn|pub|95-123|def format_pack_summary(results: list) -> str|
+|`format_pack_summary`|fn|pub|95-124|def format_pack_summary(results: list) -> str|
 

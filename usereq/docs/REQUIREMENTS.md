@@ -317,11 +317,17 @@ No explicit performance optimizations identified.
 ### 3.12 Bundled Prompts Update Script
 - **SRS-375**: `scripts/prompts-update.sh` MUST fully synchronize the upstream `src/prompts` directory of `https://github.com/Ogekuri/CLI-Prompts` into `src/usereq/resources/prompts`, overwriting existing files and removing files absent upstream.
 - **SRS-376**: `scripts/prompts-update.sh` MUST resolve the newest upstream release through the GitHub Releases API, falling back to the newest version-sorted tag reachable from `develop`, then the `develop` head.
-- **SRS-377**: `scripts/prompts-update.sh` MUST print the resolved release version and the stored version before modifications, and MUST require exact input `Y` to proceed; any other input MUST abort without modifications.
+- **SRS-377**: `scripts/prompts-update.sh` MUST print the resolved release version and the stored version before modifications and MUST proceed automatically without any interactive confirmation input.
 - **SRS-378**: `scripts/prompts-update.sh` MUST report `unknown` for a missing or empty version marker and MUST write the resolved release version to `src/usereq/resources/prompts-version.txt` only after successful synchronization.
 - **SRS-379**: `scripts/prompts-update.sh` MUST clone the upstream `develop` branch into a temporary directory using the `.git` URL first and the plain URL as fallback, and MUST remove temporary directories on every exit path.
 - **SRS-380**: `scripts/prompts-update.sh` MUST preserve upstream file timestamps during synchronization and MUST NOT modify any repository content outside `src/usereq/resources/prompts`, `src/usereq/resources/templates`, and `src/usereq/resources/prompts-version.txt`.
 - **SRS-496**: `scripts/prompts-update.sh` MUST fully synchronize the upstream `src/templates` directory of `https://github.com/Ogekuri/CLI-Prompts` into `src/usereq/resources/templates`, overwriting existing files and removing files absent upstream.
+- **SRS-599**: `scripts/prompts-update.sh` MUST abort without modifications when the resolved release version compares lower than the stored version, printing an English diagnostic to stderr.
+- **SRS-600**: `scripts/prompts-update.sh` MUST compare versions as numeric dot-separated component tuples after stripping one leading `v` prefix and MUST proceed when the stored version is `unknown`.
+- **SRS-601**: `scripts/prompts-update.sh` MUST create one git commit on the current branch after successful synchronization, staging only `src/usereq/resources/prompts`, `src/usereq/resources/templates`, and `src/usereq/resources/prompts-version.txt`.
+- **SRS-602**: The SRS-601 commit message MUST state that the bundled prompts were updated from the previous version to the new version and MUST include both version numbers.
+- **SRS-603**: `scripts/prompts-update.sh` MUST print an English notice and exit with code 0 when a successful synchronization produces no commit content.
+- **SRS-604**: `scripts/prompts-update.sh` MUST exit with a non-zero code when commit creation fails while commit content exists after a successful synchronization.
 
 ### 3.13 Pre-Release Verification Script
 - **SRS-471**: MUST implement the following behavior: `scripts/pre-release-check.sh` MUST resolve the repository root from its own filesystem location, MUST execute every stage from that root, and MUST NOT depend on the caller working directory.

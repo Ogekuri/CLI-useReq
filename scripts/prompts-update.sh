@@ -19,16 +19,28 @@
 #     modification, the updater prints the resolved latest CLI-Prompts release
 #     version and the stored version read from
 #     `src/usereq/resources/prompts-version.txt` (missing or empty files
-#     report `unknown`), then requires an explicit `Y` confirmation; any
-#     other input aborts without modifications. On success, the resolved
-#     version is written into `src/usereq/resources/prompts-version.txt`.
+#     report `unknown`), then proceeds automatically without any interactive
+#     confirmation input when the resolved version compares greater than or
+#     equal to the stored version as numeric dot-separated component tuples
+#     after stripping one leading `v` prefix (a stored `unknown` always
+#     proceeds) and aborts without modifications with one English `stderr`
+#     diagnostic when the resolved version is lower. On success, the resolved
+#     version is written into `src/usereq/resources/prompts-version.txt` and
+#     one commit is created on the current branch containing exactly the
+#     synchronized prompts directory, templates directory, and version marker
+#     file; the commit subject states that the bundled prompts were updated
+#     from the previous version to the new version including both version
+#     numbers. When the synchronization produces no commit content the updater
+#     prints an English notice and exits `0`; commit failures with commit
+#     content terminate the updater with exit code `1`.
 #     Runtime is dominated by one git clone plus one ref checkout and
 #     per-file copies. Side effects include temporary-directory creation,
 #     git subprocesses, one optional GitHub Releases API request,
 #     replacement of the bundled prompts target directory, replacement of the
-#     bundled document templates target directory, and overwrite of the one
-#     version marker file. No other repository content is modified.
-# @satisfies SRS-375, SRS-376, SRS-377, SRS-378, SRS-379, SRS-380, SRS-496
+#     bundled document templates target directory, overwrite of the one
+#     version marker file, index staging, and one git commit object. No other
+#     repository content is modified.
+# @satisfies SRS-375, SRS-376, SRS-377, SRS-378, SRS-379, SRS-380, SRS-496, SRS-599, SRS-600, SRS-601, SRS-602, SRS-603, SRS-604
 
 set -euo pipefail
 
@@ -183,28 +195,80 @@ resolve_release_version() {
   esac
 }
 
-## @brief Requests explicit user confirmation before any modification.
+## @brief Decides whether the updater proceeds with the synchronization.
 ## @details Prints the resolved latest CLI-Prompts release version plus the stored
-##     version and one English confirmation sentence, reads one line from
-##     `stdin`, and returns success only when the confirmation input is exactly
-##     `Y`; any other input, including end-of-stream input, returns failure so
-##     callers abort without modifications. Runtime is O(1) plus one user
-##     interaction. Side effects include `stdout` and `stderr` writes.
+##     version, strips one leading `v` prefix from both values, and compares them
+##     as numeric dot-separated component tuples through `sort -V`; returns
+##     success when the stored version is `unknown`, when the tuples are equal,
+##     or when the resolved version is greater than the stored version, and
+##     returns failure when the resolved version is lower so callers abort
+##     without modifications. No interactive input is read. Runtime is O(1).
+##     Side effects are limited to `stdout` writes.
 ## @param[in] latest_version {string} Resolved upstream release version.
 ## @param[in] stored_version {string} Stored version of `${PROMPTS_VERSION_REL}`.
-## @return {integer} `0` when the user confirmed with exactly `Y`; `1` otherwise.
-## @satisfies SRS-377
-confirm_update() {
+## @return {integer} `0` when the update must proceed; `1` when it must abort.
+## @satisfies SRS-377, SRS-599, SRS-600
+should_proceed_update() {
   local latest_version="$1"
   local stored_version="$2"
-  local answer=""
 
   log "Latest CLI-Prompts release : ${latest_version}"
   log "Stored version (${PROMPTS_VERSION_REL}): ${stored_version}"
-  log "This update replaces the bundled prompts in ${PROMPTS_TARGET_REL} and the bundled document templates in ${TEMPLATES_TARGET_REL} with the content of the latest CLI-Prompts release."
-  printf 'Proceed with the update? [Y/n] '
-  read -r answer || answer=""
-  [ "${answer}" = "Y" ]
+
+  if [ "${stored_version}" = "unknown" ]; then
+    return 0
+  fi
+  local latest_tuple="${latest_version#v}"
+  local stored_tuple="${stored_version#v}"
+  if [ "${latest_tuple}" = "${stored_tuple}" ]; then
+    return 0
+  fi
+  local lowest_tuple
+  lowest_tuple="$(printf '%s\n%s\n' "${latest_tuple}" "${stored_tuple}" | sort -V | head -n 1)"
+  [ "${lowest_tuple}" != "${latest_tuple}" ]
+}
+
+## @brief Creates the bundled-prompts update commit on the current branch.
+## @details Stages exactly `${PROMPTS_TARGET_REL}`, `${TEMPLATES_TARGET_REL}`, and
+##     `${PROMPTS_VERSION_REL}` through `git add -A --` executed with
+##     `git -C "${REPO_ROOT}"` so synchronized additions, modifications, and
+##     removals are all staged; detects commit content through
+##     `git diff --cached --quiet --` restricted to the three synchronized paths
+##     and prints one English notice before returning success when no commit
+##     content exists; otherwise creates one path-limited commit through
+##     `git commit -- <paths>` whose subject states that the bundled prompts
+##     were updated from the previous version to the new version including both
+##     version numbers. The path-limited commit keeps any pre-existing staged
+##     unrelated content outside the created commit. Runtime is dominated by
+##     git index and object-database operations. Side effects include index
+##     staging, one git commit object, and `stdout` progress output.
+## @param[in] previous_version {string} Stored version before the synchronization.
+## @param[in] new_version {string} Resolved version written by the synchronization.
+## @return {void} No return value.
+## @throws Exits through `fail(...)` when staging or commit creation fails while
+##     commit content exists.
+## @satisfies SRS-601, SRS-602, SRS-603, SRS-604
+commit_update() {
+  local previous_version="$1"
+  local new_version="$2"
+  local target_specs=(
+    "${PROMPTS_TARGET_REL}"
+    "${TEMPLATES_TARGET_REL}"
+    "${PROMPTS_VERSION_REL}"
+  )
+
+  git -C "${REPO_ROOT}" add -A -- "${target_specs[@]}" \
+    || fail "Unable to stage the synchronized bundled prompts paths."
+  if git -C "${REPO_ROOT}" diff --cached --quiet -- "${target_specs[@]}"; then
+    log "No bundled prompts changes to commit; the synchronization produced no differences."
+    return 0
+  fi
+  git -C "${REPO_ROOT}" commit \
+    -m "chore(prompts): update bundled prompts from ${previous_version} to ${new_version}" \
+    -m "Full synchronization of ${PROMPTS_TARGET_REL} and ${TEMPLATES_TARGET_REL} with the CLI-Prompts release ${new_version} (previous version: ${previous_version})." \
+    -- "${target_specs[@]}" \
+    || fail "Unable to create the bundled prompts update commit."
+  log "Created commit updating bundled prompts from ${previous_version} to ${new_version}."
 }
 
 ## @brief Clones the upstream CLI-Prompts develop branch into one target directory.
@@ -339,20 +403,24 @@ sync_directory() {
 ## @details Validates required tools, reads the stored CLI-Prompts version marker,
 ##     allocates the temporary upstream working tree, clones the CLI-Prompts
 ##     develop branch, resolves the newest release ref plus its release version,
-##     prints the resolved plus stored versions and requires an explicit `Y`
-##     confirmation, checks out the resolved release ref, synchronizes the
+##     prints the resolved plus stored versions and proceeds automatically
+##     without interactive confirmation when the resolved version compares
+##     greater than or equal to the stored version (aborting otherwise), checks
+##     out the resolved release ref, synchronizes the
 ##     upstream `${PROMPTS_SOURCE_REL}` directory into `${PROMPTS_TARGET_REL}`,
 ##     synchronizes the upstream `${TEMPLATES_SOURCE_REL}` directory into
-##     `${TEMPLATES_TARGET_REL}`, and writes the resolved version into the
-##     version marker file. Runtime is dominated by the upstream clone plus the
-##     directory synchronizations. Side effects include temporary-directory
+##     `${TEMPLATES_TARGET_REL}`, writes the resolved version into the version
+##     marker file, and creates the update commit through `commit_update(...)`.
+##     Runtime is dominated by the upstream clone plus the directory
+##     synchronizations. Side effects include temporary-directory
 ##     creation and removal, git subprocesses, one optional GitHub Releases API
 ##     request, replacement of the bundled prompts and document-templates
-##     target directories, and overwrite of the version marker file.
+##     target directories, overwrite of the version marker file, index staging,
+##     and one git commit object.
 ## @return {void} No return value.
-## @throws Exits through `fail(...)` when any required tool, clone, checkout, or
-##     synchronization step fails.
-## @satisfies SRS-375, SRS-376, SRS-377, SRS-378, SRS-379, SRS-380, SRS-496
+## @throws Exits through `fail(...)` when any required tool, clone, checkout,
+##     synchronization, or commit-creation step fails.
+## @satisfies SRS-375, SRS-376, SRS-377, SRS-378, SRS-379, SRS-380, SRS-496, SRS-599, SRS-600, SRS-601, SRS-602, SRS-603, SRS-604
 main() {
   require_tool git
   require_tool find
@@ -378,8 +446,8 @@ main() {
   local release_version
   release_version="$(resolve_release_version "${release_ref}")"
 
-  if ! confirm_update "${release_version}" "${prompts_version}"; then
-    log "Update aborted; no repository content was modified."
+  if ! should_proceed_update "${release_version}" "${prompts_version}"; then
+    printf 'Update aborted: resolved version %s is lower than stored version %s; no repository content was modified.\n' "${release_version}" "${prompts_version}" >&2
     return 0
   fi
 
@@ -391,6 +459,8 @@ main() {
   sync_directory "${repository}/${TEMPLATES_SOURCE_REL}" "${REPO_ROOT}/${TEMPLATES_TARGET_REL}"
 
   printf '%s\n' "${release_version}" > "${REPO_ROOT}/${PROMPTS_VERSION_REL}"
+
+  commit_update "${prompts_version}" "${release_version}"
 
   log "Bundled prompts and document templates updated to ${release_version}."
 }
