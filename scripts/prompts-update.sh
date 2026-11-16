@@ -20,11 +20,12 @@
 #     version and the stored version read from
 #     `src/usereq/resources/prompts-version.txt` (missing or empty files
 #     report `unknown`), then proceeds automatically without any interactive
-#     confirmation input when the resolved version compares greater than or
-#     equal to the stored version as numeric dot-separated component tuples
-#     after stripping one leading `v` prefix (a stored `unknown` always
+#     confirmation input only when the resolved version compares strictly
+#     greater than the stored version as numeric dot-separated component
+#     tuples after stripping one leading `v` prefix (a stored `unknown` always
 #     proceeds) and aborts without modifications with one English `stderr`
-#     diagnostic when the resolved version is lower. On success, the resolved
+#     diagnostic when the resolved version is lower than or equal to the
+#     stored version. On success, the resolved
 #     version is written into `src/usereq/resources/prompts-version.txt` and
 #     one commit is created on the current branch containing exactly the
 #     synchronized prompts directory, templates directory, and version marker
@@ -201,10 +202,11 @@ resolve_release_version() {
 ## @details Prints the resolved latest CLI-Prompts release version plus the stored
 ##     version, strips one leading `v` prefix from both values, and compares them
 ##     as numeric dot-separated component tuples through `sort -V`; returns
-##     success when the stored version is `unknown`, when the tuples are equal,
-##     or when the resolved version is greater than the stored version, and
-##     returns failure when the resolved version is lower so callers abort
-##     without modifications. No interactive input is read. Runtime is O(1).
+##     success when the stored version is `unknown` or when the resolved
+##     version is strictly greater than the stored version, and returns
+##     failure when the resolved version is lower than or equal to the stored
+##     version so callers abort without modifications. No interactive input is
+##     read. Runtime is O(1).
 ##     Side effects are limited to `stdout` writes.
 ## @param[in] latest_version {string} Resolved upstream release version.
 ## @param[in] stored_version {string} Stored version of `${PROMPTS_VERSION_REL}`.
@@ -222,9 +224,6 @@ should_proceed_update() {
   fi
   local latest_tuple="${latest_version#v}"
   local stored_tuple="${stored_version#v}"
-  if [ "${latest_tuple}" = "${stored_tuple}" ]; then
-    return 0
-  fi
   local lowest_tuple
   lowest_tuple="$(printf '%s\n%s\n' "${latest_tuple}" "${stored_tuple}" | sort -V | head -n 1)"
   [ "${lowest_tuple}" != "${latest_tuple}" ]
@@ -408,8 +407,8 @@ sync_directory() {
 ##     allocates the temporary upstream working tree, clones the CLI-Prompts
 ##     develop branch, resolves the newest release ref plus its release version,
 ##     prints the resolved plus stored versions and proceeds automatically
-##     without interactive confirmation when the resolved version compares
-##     greater than or equal to the stored version (aborting otherwise), checks
+##     without interactive confirmation only when the resolved version compares
+##     strictly greater than the stored version (aborting otherwise), checks
 ##     out the resolved release ref, synchronizes the
 ##     upstream `${PROMPTS_SOURCE_REL}` directory into `${PROMPTS_TARGET_REL}`,
 ##     synchronizes the upstream `${TEMPLATES_SOURCE_REL}` directory into
@@ -451,7 +450,7 @@ main() {
   release_version="$(resolve_release_version "${release_ref}")"
 
   if ! should_proceed_update "${release_version}" "${prompts_version}"; then
-    printf 'Update aborted: resolved version %s is lower than stored version %s; no repository content was modified.\n' "${release_version}" "${prompts_version}" >&2
+    printf 'Update aborted: resolved version %s is lower than or equal to stored version %s; no repository content was modified.\n' "${release_version}" "${prompts_version}" >&2
     return 0
   fi
 
