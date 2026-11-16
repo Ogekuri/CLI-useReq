@@ -28,9 +28,11 @@
 #     version is written into `src/usereq/resources/prompts-version.txt` and
 #     one commit is created on the current branch containing exactly the
 #     synchronized prompts directory, templates directory, and version marker
-#     file; the commit subject states that the bundled prompts were updated
-#     from the previous version to the new version including both version
-#     numbers. When the synchronization produces no commit content the updater
+#     file; the commit subject is the canonical repository line
+#     `change(prompts-update): auto-update bundled prompts and commit version
+#     bump [useReq]` and the commit message states that the bundled prompts
+#     were updated from the previous version to the new version including both
+#     version numbers. When the synchronization produces no commit content the updater
 #     prints an English notice and exits `0`; commit failures with commit
 #     content terminate the updater with exit code `1`.
 #     Runtime is dominated by one git clone plus one ref checkout and
@@ -236,7 +238,9 @@ should_proceed_update() {
 ##     `git diff --cached --quiet --` restricted to the three synchronized paths
 ##     and prints one English notice before returning success when no commit
 ##     content exists; otherwise creates one path-limited commit through
-##     `git commit -- <paths>` whose subject states that the bundled prompts
+##     `git commit -- <paths>` whose subject is the canonical repository line
+##     `change(prompts-update): auto-update bundled prompts and commit version
+##     bump [useReq]` and whose message body states that the bundled prompts
 ##     were updated from the previous version to the new version including both
 ##     version numbers. The path-limited commit keeps any pre-existing staged
 ##     unrelated content outside the created commit. Runtime is dominated by
@@ -264,8 +268,8 @@ commit_update() {
     return 0
   fi
   git -C "${REPO_ROOT}" commit \
-    -m "chore(prompts): update bundled prompts from ${previous_version} to ${new_version}" \
-    -m "Full synchronization of ${PROMPTS_TARGET_REL} and ${TEMPLATES_TARGET_REL} with the CLI-Prompts release ${new_version} (previous version: ${previous_version})." \
+    -m "change(prompts-update): auto-update bundled prompts and commit version bump [useReq]" \
+    -m "Updated bundled prompts and document templates from CLI-Prompts version ${previous_version} to ${new_version}." \
     -- "${target_specs[@]}" \
     || fail "Unable to create the bundled prompts update commit."
   log "Created commit updating bundled prompts from ${previous_version} to ${new_version}."
