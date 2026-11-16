@@ -16,7 +16,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPOSITORY_ROOT / "scripts" / "prompts-update.sh"
 
 EXPECTED_COMMIT_SUBJECT = (
-    "change(prompts-update): auto-update bundled prompts and commit version bump [useReq]"
+    "change(prompts): Update bundled prompts from"
+    " ${previous_version} to ${new_version} [useReq]"
 )
 EXPECTED_VERSION_STATEMENT = (
     "from CLI-Prompts version ${previous_version} to ${new_version}"
@@ -47,8 +48,9 @@ def _extract_commit_update_body() -> str:
 def test_commit_update_subject_uses_canonical_repository_format():
     """@brief Verify the update commit subject matches the canonical repository format.
     @details Arrange the script text and extract the `commit_update` body; assert the
-    exact canonical subject line `change(prompts-update): auto-update bundled prompts
-    and commit version bump [useReq]` is composed as a `-m` commit message argument.
+    exact canonical subject line `change(prompts): Update bundled prompts from
+    ${previous_version} to ${new_version} [useReq]` is composed as a `-m` commit
+    message argument.
     @return {None} Function return value.
     """
     body = _extract_commit_update_body()
