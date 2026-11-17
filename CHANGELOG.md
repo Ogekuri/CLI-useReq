@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.15](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.15) - 2026-11-14
+## [0.75.17](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.17) - 2026-11-17
 ### ⛰️  Features
 - Update prompts with skills.
 - add --write-config command persisting missing schema defaults [useReq] *(config)*
@@ -32,6 +32,22 @@
 - Update prompts.
 
 ### 🐛  Bug Fixes
+- remove obsolete option guidance [useReq] *(prompts)*
+- align update commit subject with canonical format and versions [useReq] *(prompts-update)*
+  Compose the bundled-prompts update commit subject as
+  "change(prompts): Update bundled prompts from <previous_version> to
+  <new_version> [useReq]" so the commit text carries the previous and new
+  CLI-Prompts version numbers directly in the subject line, preserving
+  SRS-601..SRS-604. Update tests/test_prompts_update.py contract
+  assertions and the WORKFLOW.md prompts-update runtime model.
+- compose update commit with canonical subject and version numbers [useReq] *(prompts-update)*
+  Compose the bundled-prompts update commit with the canonical repository
+  subject "change(prompts-update): auto-update bundled prompts and commit
+  version bump [useReq]" and state in the commit message that the bundled
+  prompts and document templates were updated from the previous CLI-Prompts
+  version to the new version, including both version numbers (SRS-601,
+  SRS-602 preserved). Add tests/test_prompts_update.py reproducer contract
+  tests; WORKFLOW.md prompts-update runtime model updated.
 - print git-check failure to stdout per SRS-312 [useReq] *(cli)*
   SRS-312: run_git_check now prints 'ERROR: Git status unclear!' to
   stdout before raising ReqError (stderr forwarding unchanged); test
@@ -68,6 +84,22 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- Update bundled prompts from v0.38.10 to v0.38.11 [useReq] *(prompts)*
+  Updated bundled prompts and document templates from CLI-Prompts version v0.38.10 to v0.38.11.
+- Update bundled prompts from v0.38.9 to v0.38.10 [useReq] *(prompts)*
+  Updated bundled prompts and document templates from CLI-Prompts version v0.38.9 to v0.38.10.
+- BREAKING CHANGE: always emit line numbers and extract find code as-is [useReq] *(compress-find)*
+  SRS-605..SRS-608: files-compress/compress/files-find/find unconditionally emit <n>: source line-number prefixes; the --enable-line-numbers option and all with/without numbering branches are removed from CLI parsers and from compress_source, compress_file, compress_files, format_construct, find_constructs_in_files.; SRS-609: files-find/find now copy matched construct lines as-is (comments, docstrings, whitespace preserved) instead of stripping comments; compress keeps its comment-removal pipeline.; SRS-610/SRS-611: README.md and CLI inline help document default line-numbered output; bundled prompt templates no longer reference the removed flag.; SRS-612/SRS-613: new and updated unit tests verify original line-number prefixes and as-is extraction.
+- require strictly greater upstream version for update [useReq] *(prompts-update)*
+  Tighten the bundled-prompts update gate to proceed only when the
+  resolved CLI-Prompts version compares strictly greater than the stored
+  marker; equal versions now abort without modifications (SRS-599
+  updated; SRS-600 tuple comparison and unknown-marker proceed preserved).
+  Add behavioral gate tests to tests/test_prompts_update.py; update
+  REQUIREMENTS.md and WORKFLOW.md runtime model.
+- auto-update bundled prompts and commit version bump [useReq] *(prompts-update)*
+  Replace the interactive Y confirmation with an automatic version gate proceeding when the resolved release version compares greater than or equal to the stored marker (numeric tuple comparison; abort with an English stderr diagnostic when lower).
+  After a successful synchronization, stage exactly the prompts directory, templates directory, and version marker and create one path-limited commit on the current branch stating the previous and new version numbers (English notice with exit 0 when no differences exist; non-zero exit when commit creation fails with content). Requirements: SRS-377 modified, SRS-599..SRS-604 added; WORKFLOW.md prompts-update unit updated.
 - BREAKING CHANGE: add scan-by-dir recursive directory-scan mode [useReq] *(static-check)*
   Add SRS-584..SRS-592: per-entry optional scan-by-dir flag with capability-based defaults (Pylance, Ruff, cppcheck, eslint, ruff, pyright).
   static-check project scan dispatches one recursive checker invocation per configured root (src-dir entries plus tests-dir) for scan-by-dir-true entries; per-file dispatch otherwise.
@@ -157,7 +189,11 @@
 - Harden sdist contents and package list [useReq] *(packaging)*
   pyproject.toml: explicit [tool.setuptools] packages covering usereq.resources, .guidelines, .prompts, .templates removes the four setuptools absent-package warnings.; MANIFEST.in: prune tests from the sdist (non-runtime) and include uv.lock for reproducible rebuilds (SRS-055).; setup.py retained: its SdistWithoutEggInfo override is required; without it SOURCES.txt leaks egg-info into the sdist.; Wheel file set unchanged (45 entries); sdist 79 -> 54 entries; no requirement changes.
 
+### 📚  Documentation
+- align req extraction guidance *(prompts)*
+
 ### ◀️  Revert
+- Roll back branch to 541472ba (541472babc4f5075d1a939f822fb9045c497f477).
 - Roll back branch to 2ee25abe (2ee25abebbda099e93687b152f6542ff2f57732a).
 
 ## [0.75.0](https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0) - 2026-11-09
@@ -1628,7 +1664,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.15\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.15
+- \[0.75.17\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.17
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1704,4 +1740,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.15]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.15
+[0.75.17]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.17
