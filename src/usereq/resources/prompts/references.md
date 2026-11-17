@@ -62,10 +62,6 @@ In scope: generate/update only `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` in Engl
 - Generate {{WORKTREE_NAME}} with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name`, retain the literal result for later steps, and use simple sequential execution with only linear shell commands compatible with restrictive filtering systems for all worktree operations in this workflow.
 
 
-## req Source-Extraction Output
-- `req files-compress`, `req compress`, `req files-find`, and `req find` prefix emitted source lines with their original line numbers by default.
-- Prefer `req files-find` or `req find` to extract source objects, functions, or data structures. Their selected construct text is preserved as-is, including comments.
-
 ## Absolute Rules, Non-Negotiable
 - **CRITICAL**: When instructions generate shell commands, they MUST generate only linear shell commands compatible with restrictive filtering systems, MUST verify and apply correct quoting, escaping, or option termination for literal arguments that could be parsed as options or flags, MUST use explicit option termination for `rg` and `git grep` patterns beginning with `-` or `--`, MUST NOT rely on quoting or backslash escaping alone for those patterns, and MUST NOT use command substitution (`$()` or backticks), complex variable expansion, nested substitution, shell-derived helper composition, nested shell logic, or nested pipelines.
 - **CRITICAL**: Every `req` invocation MUST carry the mandatory parameters `--prj-base={{PRJ_BASE}}` and `--git-base={{GIT_BASE}}` with the resolved values; the removed `--base` parameter MUST NOT be used.

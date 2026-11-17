@@ -1,8 +1,8 @@
 ---
 title: "useReq Requirements"
 description: "Software Requirements Specification"
-date: "2026-11-17"
-version: 1.29
+date: "2026-11-12"
+version: 1.28
 author: "Ogekuri"
 scope:
   paths:
@@ -304,10 +304,6 @@ No explicit performance optimizations identified.
 ### 3.9 Source Compression
 
 ### 3.10 Construct Extraction and Command Operations
-- **SRS-605**: Bundled LLM prompts MUST state that `files-compress` and `compress` emit original source line-number prefixes by default without requiring a line-number option.
-- **SRS-606**: Bundled LLM prompts MUST state that `files-find` and `find` emit original source line-number prefixes by default without requiring a line-number option.
-- **SRS-607**: Bundled LLM prompts MUST state that `files-find` and `find` emit matched construct source text as-is, including source comments.
-- **SRS-608**: Bundled LLM prompts MUST designate `files-find` and `find` as preferred methods for extracting source objects, functions, and data structures.
 - **SRS-177**: MUST implement the following behavior: The `references` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
 - **SRS-179**: MUST implement the following behavior: The `compress` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
 - **SRS-180**: MUST implement the following behavior: For `references`, `compress`, `find`, and `static-check`, `EXCLUDED_DIRS` MUST contain only directory names that are not already excluded by `.gitignore`.

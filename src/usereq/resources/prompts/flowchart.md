@@ -63,10 +63,6 @@ In scope: static analysis of source under {{PRJ_BASE}}/%%SRC_PATHS%% to generate
 - **CRITICAL**: All information declared in this `Pre-requisite: Execution Context` section MUST remain continuously available in the active execution context for the entire workflow and MUST NEVER be dropped, forgotten, or overwritten.
 - Generate {{WORKTREE_NAME}} with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name`, retain the literal result for later steps, and use simple sequential execution with only linear shell commands compatible with restrictive filtering systems for all worktree operations in this workflow.
 
-## req Source-Extraction Output
-- `req files-compress`, `req compress`, `req files-find`, and `req find` prefix emitted source lines with their original line numbers by default.
-- Prefer `req files-find` or `req find` to extract source objects, functions, or data structures. Their selected construct text is preserved as-is, including comments.
-
 ## Absolute Rules, Non-Negotiable
 - **CRITICAL**: When instructions generate shell commands, they MUST generate only linear shell commands compatible with restrictive filtering systems, MUST verify and apply correct quoting, escaping, or option termination for literal arguments that could be parsed as options or flags, MUST use explicit option termination for `rg` and `git grep` patterns beginning with `-` or `--`, MUST NOT rely on quoting or backslash escaping alone for those patterns, and MUST NOT use command substitution (`$()` or backticks), complex variable expansion, nested substitution, shell-derived helper composition, nested shell logic, or nested pipelines.
 - **CRITICAL**: Every `req` invocation MUST carry the mandatory parameters `--prj-base={{PRJ_BASE}}` and `--git-base={{GIT_BASE}}` with the resolved values; the removed `--base` parameter MUST NOT be used.
@@ -134,20 +130,24 @@ Structured index of all source-defined symbols (functions, classes, structs, obj
 Use to: identify candidate symbols by name, description, or `@satisfies` link; obtain exact file paths and line ranges; understand function signatures and contracts before extracting code. Cross-reference with WORKFLOW.md call-traces to narrow scope.
 
 ### 3. Code Extraction: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find` / `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`
-Extract actual source constructs as structured markdown with signatures, line ranges, and line-numbered source text. Use after pillars 1-2 to extract only targeted named source objects, functions, and data structures; this is the preferred extraction method because it preserves source text as-is, including comments.
+Extract actual source constructs as structured markdown with signatures, line ranges, and optional line-numbered code. Use after pillars 1-2 to extract only the targeted constructs identified during analysis.
 #### What these commands do (and what they don't)
 - Extract named constructs (e.g., CLASS, FUNCTION, STRUCT, INTERFACE, IMPORT, …) filtered by TAG and name-regex.
 - Regex (PATTERN) matches construct name only (not body). For body-content search, use rg/git grep (pillar 4).
 - Output per file: header `@@@ <filepath> | <language>`, per-construct blocks with:
     - `### <TAG>: <name>` + optional Signature + `Lines: <start>-<end>`
     - optional extracted Doxygen fields (if present in/around the construct)
-    - fenced code block with the complete construct slice preserved as-is, including comments; each source line is prefixed with its original line number
+    - fenced code block with the complete construct slice (comments stripped, strings preserved)
 #### Choose the right mode
 - Project-wide scan: use find (the mandatory `--prj-base`/`--git-base` prefix is required; `--base` is forbidden)
     - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find <TAG_FILTER> <NAME_REGEX>`
     - Note: find scans all files under configured source dirs; does not take a filename.
 - Target specific files: use files-find (standalone with the mandatory `--prj-base`/`--git-base` prefix)
     - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find <TAG_FILTER> <NAME_REGEX> <FILE1> [FILE2 ...]`
+#### Enable line-numbered code for evidence citation
+Add --enable-line-numbers (code lines prefixed as `<n>:`):
+- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers find "<TAG_FILTER>" "<NAME_REGEX>"`
+- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
 #### TAGs and filters
 - TAG_FILTER: pipe-separated, case-insensitive (e.g., `CLASS|FUNCTION|IMPORT`).
 - Tags are language-dependent; the per-language tag catalog is printed on invalid TAG or non-matching filter errors. Run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --help` for the full usage surface.
@@ -165,7 +165,7 @@ Use for: string/pattern searches inside code bodies, cross-file references, conf
 ### Recommended Analysis Workflow
 1. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`** (full read) → identify execution units, call-trace paths, and function names relevant to the task.
 2. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`** (full read or targeted search) → locate candidate symbols by name/description/`@satisfies`, obtain file paths and line ranges, understand function contracts.
-3. **Extract source objects, functions, or data structures** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX and file paths as files-find targets; output preserves comments and already includes original line numbers.
+3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX, file paths as files-find targets; enable --enable-line-numbers when citing evidence.
 4. **Search code bodies** via `rg`/`git grep` → find patterns, references, or values not captured by construct-level extraction.
 
 ## Execution Protocol (Global vs Local)
