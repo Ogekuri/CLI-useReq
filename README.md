@@ -269,18 +269,18 @@ The analysis commands are bare subcommands (no `--` prefix); the project-scan on
 | --- | --- |
 | `files-tokens FILE [FILE ...]` | Count tokens and chars for the given files |
 | `files-references FILE [FILE ...]` | Generate LLM reference markdown for the given files |
-| `files-compress [--enable-line-numbers] FILE [FILE ...]` | Generate compressed output for the given files |
-| `files-find [--enable-line-numbers] TAG PATTERN FILE [FILE ...]` | Find and extract specific constructs from the given files |
+| `files-compress FILE [FILE ...]` | Generate compressed output for the given files (lines prefixed with original `<n>:` line numbers) |
+| `files-find TAG PATTERN FILE [FILE ...]` | Find and extract specific constructs from the given files (as-is code, lines prefixed with original `<n>:` line numbers) |
 | `files-static-check --prj-base P FILE [FILE ...]` | Run static analysis on the given files |
 | `tokens --prj-base P` | Count tokens/chars for canonical docs (`REQUIREMENTS.md`, `WORKFLOW.md`, `REFERENCES.md`) in configured `docs-dir` |
 | `references --prj-base P` | Reference markdown for source files selected by `git ls-files --cached --others --exclude-standard` under configured `src-dir` |
-| `compress --prj-base P [--enable-line-numbers]` | Compressed output for the same project selection |
-| `find --prj-base P [--enable-line-numbers] TAG PATTERN` | Extract constructs from the same project selection |
+| `compress --prj-base P` | Compressed output for the same project selection (lines prefixed with original `<n>:` line numbers) |
+| `find --prj-base P TAG PATTERN` | Extract constructs from the same project selection (as-is code, lines prefixed with original `<n>:` line numbers) |
 | `static-check --prj-base P` | Static analysis on `src-dir` + `tests-dir` selections (excluding `fixtures/`) |
 
 Notes:
 
-- Add `--enable-line-numbers` (accepted before or after the subcommand token) to include `<n>:` prefixes in `files-compress`, `compress`, `files-find`, and `find` output.
+- `files-compress`, `compress`, `files-find`, and `find` always prefix code lines with `<n>:` original source line numbers; no option is needed or available (`--enable-line-numbers` is not accepted). `compress`/`files-compress` strip comments and blank lines; `find`/`files-find` emit extracted construct code as-is, preserving comments.
 - `files-static-check` and `static-check` exit with code 0 when all checked files pass (or none are checked) and 1 when at least one file fails; passing checks produce no output (`fail_only` mode).
 - `static-check` includes files from both `src-dir` and `tests-dir`; if `tests-dir` is missing or invalid, test-directory inclusion is skipped without error.
 

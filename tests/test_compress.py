@@ -41,57 +41,67 @@ class TestCompressSource:
     def test_removes_blank_lines(self):
         """CMP-001: Blank lines must be removed."""
         source = "x = 1\n\n\ny = 2\n"
-        result = compress_source(source, "python", include_line_numbers=False)
+        result = compress_source(source, "python")
         lines = result.strip().split("\n")
         assert all(line.strip() for line in lines)
 
     def test_preserves_python_indentation(self):
         """CMP-002: Python indentation must be preserved."""
         source = "def f():\n    x = 1\n    return x\n"
-        result = compress_source(source, "python", include_line_numbers=False)
+        result = compress_source(source, "python")
         assert "    x = 1" in result or "    return x" in result
 
     def test_line_number_prefix(self):
         """CMP-003: Line numbers must use <n>: format."""
         source = "x = 1\ny = 2\n"
-        result = compress_source(source, "python", include_line_numbers=True)
+        result = compress_source(source, "python")
         assert "1: x = 1" in result
 
-    def test_no_line_numbers(self):
+    def test_line_numbers_always_on(self):
         """CMP-003: Line numbers can be disabled."""
         source = "x = 1\n"
-        result = compress_source(source, "python", include_line_numbers=False)
-        assert "1: x = 1" not in result
+        result = compress_source(source, "python")
+        assert "1: x = 1" in result
 
     def test_preserves_shebang(self):
         """CMP-004: Shebang lines must be preserved."""
         source = "#!/usr/bin/env python3\nx = 1\n"
-        result = compress_source(source, "python", include_line_numbers=False)
+        result = compress_source(source, "python")
         assert "#!/usr/bin/env python3" in result
 
     def test_comments_in_strings_preserved(self):
         """CMP-005: Comments inside strings must not be removed."""
         source = 'x = "has # inside"\n'
-        result = compress_source(source, "python", include_line_numbers=False)
+        result = compress_source(source, "python")
         assert "# inside" in result
 
     def test_multiline_comment_removal(self):
         """CMP-012: Multi-line comments must be removed."""
         source = '/* block comment */\nint x = 1;\n'
-        result = compress_source(source, "c", include_line_numbers=False)
+        result = compress_source(source, "c")
         assert "block comment" not in result
         assert "int x = 1;" in result
 
     def test_python_docstring_removal(self):
         """CMP-012: Python docstrings must be removed."""
         source = '"""This is a docstring."""\nx = 1\n'
-        result = compress_source(source, "python", include_line_numbers=False)
+        result = compress_source(source, "python")
         assert "docstring" not in result
 
     def test_unsupported_language_raises(self):
         """CMP-001: Unsupported language must raise ValueError."""
         with pytest.raises(ValueError, match="Unsupported language"):
             compress_source("x = 1", "brainfuck")
+
+    def test_line_numbers_match_original_positions(self):
+        """SRS-612: Prefixes must carry original source line numbers after removals."""
+        source = "# header comment\nx = 1\n\ndef foo():\n    return 1\n"
+        result = compress_source(source, "python")
+        lines = result.split("\n")
+        assert "2: x = 1" in lines
+        assert "4: def foo():" in lines
+        assert "5:     return 1" in lines
+        assert "1: # header comment" not in result
 
 
 class TestCompressFile:

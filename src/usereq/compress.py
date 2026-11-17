@@ -153,29 +153,23 @@ def _is_python_docstring_line(line: str) -> bool:
     return False
 
 
-def _format_result(entries: list[tuple[int, str]],
-                   include_line_numbers: bool) -> str:
+def _format_result(entries: list[tuple[int, str]]) -> str:
     """!
-    @brief Format compressed entries, optionally prefixing original line numbers.
-        @param entries List of tuples (line_number, text).
-        @param include_line_numbers Boolean flag to enable line prefixes.
-        @return Formatted string.
-    @details Implements the _format_result function behavior with deterministic control flow.
+    @brief Format compressed entries with unconditional original line-number prefixes.
+        @param entries {List[Tuple[int, str]]} Tuples of (original_line_number, compressed_text).
+        @return {str} Compressed payload where every line is `<n>: <text>` with the original source line number.
+    @details Deterministic one-to-one mapping; no line-number branch exists because numbering is unconditional (SRS-605, SRS-607).
     """
-    if not include_line_numbers:
-        return '\n'.join(text for _, text in entries)
     return '\n'.join(f"{lineno}: {text}" for lineno, text in entries)
 
 
-def compress_source(source: str, language: str,
-                    include_line_numbers: bool = True) -> str:
+def compress_source(source: str, language: str) -> str:
     """! @brief Compress source code by removing comments, blank lines, and extra whitespace.
     @param source The source code string.
-    @param language Language identifier (e.g. "python", "javascript").
-    @param include_line_numbers If True (default), prefix each line with <n>: format.
-    @return Compressed source code string.
+    @param language {str} Language identifier (e.g. "python", "javascript").
+    @return {str} Compressed payload with every line prefixed as `<n>:` carrying the original source line number (SRS-605, SRS-607).
     @throws ValueError If language is unsupported.
-    @details Preserves indentation for indent-significant languages (Python, Haskell, Elixir).
+    @details Preserves indentation for indent-significant languages (Python, Haskell, Elixir). Comment, docstring, blank-line, and whitespace removal are unconditional (SRS-608); line-number prefixes reference pre-compression source positions.
     """
     specs = _get_specs()
     lang_key = language.lower().strip().lstrip(".")
@@ -332,19 +326,17 @@ def compress_source(source: str, language: str,
 
         i += 1
 
-    return _format_result(result, include_line_numbers)
+    return _format_result(result)
 
 
-def compress_file(filepath: str, language: str | None = None,
-                  include_line_numbers: bool = True) -> str:
+def compress_file(filepath: str, language: str | None = None) -> str:
     """!
-    @brief Compress a source file by removing comments and extra whitespace.
-        @param filepath Path to the source file.
-        @param language Optional language override. Auto-detected if None.
-        @param include_line_numbers If True (default), prefix each line with <n>: format.
-        @return Compressed source code string.
-        @throws ValueError If language cannot be detected.
-    @details Implements the compress_file function behavior with deterministic control flow.
+    @brief Compress a source file by removing comments and extra whitespace, always emitting line numbers.
+        @param filepath {str} Path to the source file.
+        @param language {str | None} Optional language override. Auto-detected from extension when None.
+        @return {str} Compressed source code string with `<n>:` original line-number prefixes (SRS-605, SRS-607).
+        @throws ValueError If language cannot be detected or is unsupported.
+    @details Delegates to compress_source; line-number prefixes are unconditional (SRS-607).
     """
     if language is None:
         language = detect_language(filepath)
@@ -356,13 +348,13 @@ def compress_file(filepath: str, language: str | None = None,
     with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
         source = f.read()
 
-    return compress_source(source, language, include_line_numbers)
+    return compress_source(source, language)
 
 
 def main():
     """!
     @brief Execute the standalone compression CLI.
-        @details Parses command-line arguments and invokes `compress_file`, printing the result to stdout or errors to stderr.
+        @details Parses command-line arguments and invokes `compress_file`, printing the line-numbered result to stdout or errors to stderr. No line-number option is defined (SRS-606); output is always line-numbered (SRS-605).
     @return {None} Function return value.
     """
     import argparse
@@ -371,9 +363,6 @@ def main():
     parser.add_argument("file", help="Source file to compress.")
     parser.add_argument("--lang", default=None,
                         help="Language override (auto-detected from extension).")
-    parser.add_argument("--enable-line-numbers", action="store_true",
-                        default=False,
-                        help="Enable line number prefixes (<n>:) in output.")
     args = parser.parse_args()
 
     if not os.path.isfile(args.file):
@@ -381,8 +370,7 @@ def main():
         sys.exit(1)
 
     try:
-        compressed = compress_file(args.file, args.lang,
-                                   args.enable_line_numbers)
+        compressed = compress_file(args.file, args.lang)
         print(compressed)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)

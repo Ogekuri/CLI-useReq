@@ -16,8 +16,8 @@ from .compress import compress_file, detect_language
 
 def _extract_line_range(compressed_with_line_numbers: str) -> tuple[int, int]:
     """! @brief Extract source line interval from compressed output with <n>: prefixes.
-    @param compressed_with_line_numbers Compressed payload generated with include_line_numbers=True.
-    @return Tuple (line_start, line_end) derived from preserved <n>: prefixes; returns (0, 0) when no prefixed lines exist.
+    @param compressed_with_line_numbers {str} Line-numbered compressed payload emitted by compress_file (SRS-605).
+    @return {Tuple[int, int]} Tuple (line_start, line_end) derived from preserved `<n>:` prefixes; returns (0, 0) when no prefixed lines exist.
     @details Parses the first token of each line as an integer line number.
     """
     line_numbers: list[int] = []
@@ -47,17 +47,15 @@ def _format_output_path(filepath: str, output_base: Path | None) -> str:
 
 
 def compress_files(filepaths: list[str],
-                   include_line_numbers: bool = True,
                    verbose: bool = False,
                    output_base: Path | None = None) -> str:
-    """! @brief Compress multiple source files and concatenate with identifying headers.
-    @param filepaths List of source file paths.
-    @param include_line_numbers If True (default), keep <n>: prefixes in code block lines.
-    @param verbose If True, emits progress status messages on stderr.
-    @param output_base Project-home base used to render header paths as relative paths.
-    @return Concatenated compressed output string.
+    """! @brief Compress multiple source files and concatenate with identifying headers, always emitting line numbers.
+    @param filepaths {List[str]} List of source file paths.
+    @param verbose {bool} If True, emits progress status messages on stderr.
+    @param output_base {Path | None} Project-home base used to render header paths as relative paths.
+    @return {str} Concatenated line-numbered compressed output string (SRS-605, SRS-607).
     @throws ValueError If no files could be processed.
-    @details Each file is compressed and emitted as: header line `@@@ <path> | <lang>`, line-range metadata `> Lines: <start>-<end>`, and fenced code block delimited by triple backticks. Line range is derived from the already computed <n>: prefixes to preserve existing numbering logic. Files are separated by a blank line.
+    @details Each file is compressed with unconditional comment removal (SRS-608) and emitted as: header line `@@@ <path> | <lang>`, line-range metadata `> Lines: <start>-<end>`, and a fenced code block whose lines carry `<n>:` original line-number prefixes. No line-number toggle parameter exists (SRS-607). Files are separated by a blank line.
     """
     parts = []
     ok_count = 0
@@ -77,13 +75,8 @@ def compress_files(filepaths: list[str],
             continue
 
         try:
-            compressed_with_line_numbers = compress_file(fpath, lang, True)
-            line_start, line_end = _extract_line_range(compressed_with_line_numbers)
-            compressed = (
-                compressed_with_line_numbers
-                if include_line_numbers
-                else compress_file(fpath, lang, False)
-            )
+            compressed = compress_file(fpath, lang)
+            line_start, line_end = _extract_line_range(compressed)
             output_path = _format_output_path(fpath, resolved_output_base)
             header = f"@@@ {output_path} | {lang}"
             parts.append(
@@ -110,20 +103,17 @@ def compress_files(filepaths: list[str],
 def main():
     """!
     @brief Execute the multi-file compression CLI command.
-        @details Parses command-line arguments, calls `compress_files`, and prints output or errors.
+        @details Parses command-line arguments, calls `compress_files`, and prints the line-numbered output or errors. No line-number option is defined (SRS-606); output is always line-numbered (SRS-605).
     @return {None} Function return value.
     """
     import argparse
     parser = argparse.ArgumentParser(
         description="Compress and concatenate source files for LLM context.")
     parser.add_argument("files", nargs="+", help="Source files to compress.")
-    parser.add_argument("--enable-line-numbers", action="store_true",
-                        default=False,
-                        help="Enable line number prefixes (<n>:) in output.")
     args = parser.parse_args()
 
     try:
-        output = compress_files(args.files, args.enable_line_numbers)
+        output = compress_files(args.files)
         print(output)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)

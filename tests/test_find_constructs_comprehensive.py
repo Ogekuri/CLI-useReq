@@ -673,9 +673,9 @@ class TestFindConstructsComprehensive:
         fixture = str(self.get_fixture_path(fixtures_dir, "python"))
         output = find_constructs_in_files([fixture], "CLASS", "^Config$")
 
-        # Verify complete extraction: class should include fields/methods while code comments are stripped
+        # Verify complete as-is extraction: fields/methods and comments are preserved
         assert "class Config:" in output, "Missing class declaration"
-        assert "Configuration data holder" not in output, "Class docstring comment must be stripped"
+        assert "Configuration data holder" in output, "As-is extraction must preserve the class docstring"
         assert "name: str" in output, "Missing first field"
         assert "debug: bool = False" in output, "Missing last field"
         assert "def get(self, key: str" in output, "Missing get method"
@@ -714,17 +714,18 @@ class TestFindConstructsComprehensive:
     def test_line_numbers_included_by_default(self, fixtures_dir):
         """! @brief Test that line numbers are included in output by default."""
         fixture = str(self.get_fixture_path(fixtures_dir, "python"))
-        output = find_constructs_in_files([fixture], "CLASS", "MyClass", include_line_numbers=True)
+        output = find_constructs_in_files([fixture], "CLASS", "MyClass")
 
         assert "1:" in output  # Check for <n>: format
 
-    def test_line_numbers_disabled(self, fixtures_dir):
-        """! @brief Test that line numbers can be disabled."""
+    def test_extraction_preserves_comments_as_is(self, fixtures_dir):
+        """! @brief SRS-609: extraction must reproduce source lines as-is, comments included."""
         fixture = str(self.get_fixture_path(fixtures_dir, "python"))
-        output = find_constructs_in_files([fixture], "CLASS", "MyClass", include_line_numbers=False)
+        output = find_constructs_in_files([fixture], "CLASS", "MyClass")
 
-        # Should not have <n>: prefixes
-        assert "1:" not in output and "2:" not in output
+        # As-is extraction keeps the docstring content and original line numbers
+        assert "Class docstring for MyClass." in output
+        assert "62: class MyClass:" in output
 
     # ── Error and edge case tests ─────────────────────────────────────────────
 
