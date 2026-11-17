@@ -67,7 +67,7 @@ In scope: static analysis of source under {{PRJ_BASE}}/%%SRC_PATHS%% to generate
 
 
 ## req Source-Extraction Output
-- `req files-compress`, `req compress`, `req files-find`, and `req find` prefix emitted source lines with their original line numbers by default. `--enable-line-numbers` is unavailable and MUST NOT be used.
+- `req files-compress`, `req compress`, `req files-find`, and `req find` prefix emitted source lines with their original line numbers by default.
 - Prefer `req files-find` or `req find` to extract source objects, functions, or data structures. Their selected construct text is preserved as-is, including comments.
 
 ## Absolute Rules, Non-Negotiable
