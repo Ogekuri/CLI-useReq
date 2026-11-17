@@ -80,7 +80,7 @@ def test_construct_matches():
     # Mock source lines (lines 1-12, with function at lines 10-12)
     source_lines = [""] * 9 + ["def foo():\n", "    return 42\n", "\n"]
 
-    output = format_construct(elem, source_lines, include_line_numbers=True)
+    output = format_construct(elem, source_lines)
     assert "### FUNCTION: `foo`" in output
     assert "> Signature: `def foo()`" in output
     assert "> Lines: 10-12" in output
@@ -88,7 +88,7 @@ def test_construct_matches():
     assert "11:     return 42" in output
 
 
-def test_format_construct_without_line_numbers():
+def test_format_construct_as_is_preserves_comments():
     """! @brief Test construct formatting without line numbers."""
     elem = SourceElement(
         element_type=ElementType.CLASS,
@@ -98,14 +98,36 @@ def test_format_construct_without_line_numbers():
         name="Bar",
     )
 
-    # Mock source lines (lines 1-3)
-    source_lines = ["class Bar:\n", "    pass\n", "\n"]
+    # Mock source lines (lines 1-3); line 2 is a comment preserved as-is
+    source_lines = ["class Bar:\n", "    # comment line\n", "    pass\n"]
 
-    output = format_construct(elem, source_lines, include_line_numbers=False)
+    output = format_construct(elem, source_lines)
     assert "### CLASS: `Bar`" in output
     assert "> Lines: 1-3" in output
-    assert "1: class Bar:" not in output
-    assert "class Bar:" in output
+    assert "1: class Bar:" in output
+    assert "2:     # comment line" in output
+    assert "3:     pass" in output
+
+
+def test_find_constructs_as_is_extraction_with_line_numbers(repo_temp_dir):
+    """! @brief SRS-605/SRS-609/SRS-613: extraction emits as-is code with original line numbers."""
+    test_file = repo_temp_dir / "asis.py"
+    test_file.write_text(
+        "def compute(value):\n"
+        "    # internal comment\n"
+        "    return value * 2\n"
+        "\n"
+        "def other():\n"
+        "    return 0\n"
+    )
+
+    output = find_constructs_in_files([str(test_file)], "FUNCTION", "compute")
+
+    assert "> Lines: 1-" in output
+    assert "1: def compute(value):" in output
+    assert "2:     # internal comment" in output
+    assert "3:     return value * 2" in output
+    assert "def other" not in output
 
 
 def test_find_constructs_basic(repo_temp_dir):
@@ -129,7 +151,7 @@ class TestClass:
 
     # Find all test_ functions
     output = find_constructs_in_files(
-        [str(test_file)], "FUNCTION", "test_.*", include_line_numbers=True
+        [str(test_file)], "FUNCTION", "test_.*"
     )
 
     assert "test_foo" in output
@@ -154,7 +176,7 @@ MY_CONSTANT = 42
 
     # Find classes and functions with "my" prefix
     output = find_constructs_in_files(
-        [str(test_file)], "CLASS|FUNCTION", "(?i)my.*", include_line_numbers=False
+        [str(test_file)], "CLASS|FUNCTION", "(?i)my.*"
     )
 
     assert "MyClass" in output
@@ -189,20 +211,16 @@ def test_find_constructs_skip_missing_file():
         find_constructs_in_files(["/nonexistent/file.py"], "FUNCTION", ".*")
 
 
-def test_find_constructs_toggle_line_numbers(repo_temp_dir):
-    """! @brief Test line number prefix toggling."""
+def test_find_constructs_always_line_numbers(repo_temp_dir):
+    """! @brief SRS-607: line-number prefixes are unconditional."""
     test_file = repo_temp_dir / "test.py"
     test_file.write_text("def foo():\n    pass")
 
-    output_with = find_constructs_in_files(
-        [str(test_file)], "FUNCTION", "foo", include_line_numbers=True
-    )
-    output_without = find_constructs_in_files(
-        [str(test_file)], "FUNCTION", "foo", include_line_numbers=False
+    output = find_constructs_in_files(
+        [str(test_file)], "FUNCTION", "foo"
     )
 
-    assert "1: def foo():" in output_with
-    assert "1: def foo():" not in output_without
+    assert "1: def foo():" in output
 
 
 def test_find_constructs_no_progress_without_verbose(repo_temp_dir, capsys):
@@ -321,8 +339,8 @@ def test_find_constructs_parse_args_uses_only_local_doxygen_fields():
     assert "- @brief Builds the CLI argument parser." not in output
 
 
-def test_format_construct_strips_comments_and_keeps_doxygen_fields():
-    """! @brief Verify extracted construct code strips comments and keeps Doxygen bullets."""
+def test_format_construct_as_is_keeps_doxygen_fields():
+    """! @brief SRS-609: extracted code is copied as-is; Doxygen bullets stay."""
     elem = SourceElement(
         element_type=ElementType.FUNCTION,
         line_start=2,
@@ -342,19 +360,13 @@ def test_format_construct_strips_comments_and_keeps_doxygen_fields():
         "}\n",
     ]
 
-    output = format_construct(
-        elem,
-        source_lines,
-        include_line_numbers=False,
-        language="c",
-    )
+    output = format_construct(elem, source_lines)
 
     assert "- @brief Increment value by one." in output
-    assert "single-line comment" not in output
-    assert "inline block" not in output
-    assert "multi-line" not in output
-    assert "int result = value + 1;" in output
-    assert "return result;" in output
+    assert "3:     // single-line comment" in output
+    assert "4:     int result = value + 1; /* inline block */" in output
+    assert "5:     /* multi-line" in output
+    assert "7:     return result;" in output
 
 
 def test_format_construct_preserves_absolute_line_numbers_after_comment_strip():
@@ -373,17 +385,12 @@ def test_format_construct_preserves_absolute_line_numbers_after_comment_strip():
         "    return value\n",
     ]
 
-    output = format_construct(
-        elem,
-        source_lines,
-        include_line_numbers=True,
-        language="python",
-    )
+    output = format_construct(elem, source_lines)
 
     assert "10: def foo():" in output
-    assert "12:     value = 1" in output
+    assert "11:     # drop comment" in output
+    assert "12:     value = 1  # inline" in output
     assert "13:     return value" in output
-    assert "11:" not in output
 
 
 if __name__ == "__main__":

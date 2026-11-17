@@ -13,7 +13,7 @@ import sys
 
 from .doxygen_parser import format_doxygen_fields_as_markdown, parse_doxygen_comment
 from .source_analyzer import SourceAnalyzer
-from .compress import compress_source, detect_language
+from .compress import detect_language
 
 
 # ── Language-specific TAG support map ────────────────────────────────────────
@@ -159,59 +159,15 @@ def _extract_file_level_doxygen_fields(elements: list) -> dict[str, list[str]]:
     return {}
 
 
-def _strip_construct_comments(
-    code_lines: list[str],
-    language: str,
-    line_start: int,
-    include_line_numbers: bool,
-) -> str:
-    """! @brief Remove comments from extracted construct code while preserving source line mapping.
-    @param code_lines Raw construct code lines sliced by SourceElement line range.
-    @param language Normalized language key used by the compression parser.
-    @param line_start Absolute start line number of the construct in the original file.
-    @param include_line_numbers If True, emit `<n>:` prefixes with absolute source line numbers.
-    @return Comment-stripped construct code string.
-    @details Delegates comment stripping to `compress_source()` to remove inline, single-line, and multi-line comments while preserving string literals. When line numbers are enabled, remaps local compressed line indices back to absolute file line numbers using `line_start`.
-    """
-    raw_source = "".join(code_lines)
-    stripped_with_local_numbers = compress_source(
-        raw_source,
-        language,
-        include_line_numbers=True,
-    )
-    stripped_lines = stripped_with_local_numbers.splitlines()
-
-    if not include_line_numbers:
-        return "\n".join(
-            line.split(": ", 1)[1] if ": " in line else line
-            for line in stripped_lines
-        )
-
-    remapped_lines: list[str] = []
-    for line in stripped_lines:
-        match = re.match(r"^(\d+):\s(.*)$", line)
-        if not match:
-            remapped_lines.append(line)
-            continue
-        local_line = int(match.group(1))
-        absolute_line = line_start + local_line - 1
-        remapped_lines.append(f"{absolute_line}: {match.group(2)}")
-    return "\n".join(remapped_lines)
-
-
 def format_construct(
     element,
     source_lines: list[str],
-    include_line_numbers: bool,
-    language: str = "python",
 ) -> str:
     """! @brief Format a single matched construct for markdown output with complete code extraction.
     @param element SourceElement instance containing line range indices.
-    @param source_lines Complete source file content as list of lines.
-    @param include_line_numbers If True, prefix code lines with <n>: format.
-    @param language Normalized source language key used for comment stripping.
-    @return Formatted markdown block for the construct with complete code from line_start to line_end.
-    @details Extracts construct code directly from source_lines using element.line_start and element.line_end indices, removes inline/single-line/multi-line comments from the extracted block, and inserts Doxygen metadata before the code fence when available.
+    @param source_lines {List[str]} Complete source file content as list of lines.
+    @return {str} Formatted markdown block reproducing source lines element.line_start..element.line_end as-is, each prefixed with its absolute `<n>:` line number (SRS-605, SRS-609).
+    @details Copies matched source lines verbatim: comments, docstrings, indentation, and whitespace are preserved (SRS-609); only each line's terminating newline is dropped so one source line maps to exactly one prefixed output line. Inserts Doxygen metadata bullets before the code fence when available.
     """
     lines = []
     lines.append(f"### {element.type_label}: `{element.name}`")
@@ -225,14 +181,14 @@ def format_construct(
         dox_lines = format_doxygen_fields_as_markdown(doxygen_fields)
         lines.extend(dox_lines)
 
-    # Extract COMPLETE code block from source file and strip comments
+    # Extract COMPLETE code block from source file as-is (SRS-609: no comment stripping)
     code_lines = source_lines[element.line_start - 1:element.line_end]
-    formatted = _strip_construct_comments(
-        code_lines=code_lines,
-        language=language,
-        line_start=element.line_start,
-        include_line_numbers=include_line_numbers,
-    )
+    numbered_lines = []
+    for offset, line in enumerate(code_lines):
+        if line.endswith("\n"):
+            line = line[:-1]
+        numbered_lines.append(f"{element.line_start + offset}: {line}")
+    formatted = "\n".join(numbered_lines)
 
     lines.append("```")
     lines.append(formatted)
@@ -245,18 +201,16 @@ def find_constructs_in_files(
     filepaths: list[str],
     tag_filter: str,
     pattern: str,
-    include_line_numbers: bool = True,
     verbose: bool = False,
 ) -> str:
-    """! @brief Find and extract constructs matching tag filter and regex pattern from multiple files.
-    @param filepaths List of source file paths.
-    @param tag_filter Pipe-separated TAG identifiers (e.g., "CLASS|FUNCTION").
-    @param pattern Regex pattern for construct name matching.
-    @param include_line_numbers If True (default), prefix code lines with <n>: format.
-    @param verbose If True, emits progress status messages on stderr.
-    @return Concatenated markdown output string.
+    """! @brief Find and extract constructs matching tag filter and regex pattern from multiple files, emitting as-is line-numbered code.
+    @param filepaths {List[str]} List of source file paths.
+    @param tag_filter {str} Pipe-separated TAG identifiers (e.g., "CLASS|FUNCTION").
+    @param pattern {str} Regex pattern for construct name matching.
+    @param verbose {bool} If True, emits progress status messages on stderr.
+    @return {str} Concatenated markdown output string with `<n>:` line-numbered as-is construct extracts (SRS-605, SRS-609).
     @throws ValueError If no files could be processed or no constructs found.
-    @details Analyzes each file with SourceAnalyzer, filters elements by tag and name pattern, formats results as markdown with file headers.
+    @details Analyzes each file with SourceAnalyzer, filters elements by tag and name pattern, formats results as markdown with file headers. No line-number toggle parameter exists (SRS-607); no comment stripping is performed (SRS-609).
     """
     tag_set = parse_tag_filter(tag_filter)
     if not tag_set:
@@ -311,13 +265,7 @@ def find_constructs_in_files(
                         file_level_doxygen_fields
                     )
                 constructs_md = "\n\n".join(
-                    format_construct(
-                        el,
-                        source_lines,
-                        include_line_numbers,
-                        language=lang,
-                    )
-                    for el in matches
+                    format_construct(el, source_lines) for el in matches
                 )
                 if file_level_doxygen_lines:
                     file_level_block = "\n".join(file_level_doxygen_lines)
@@ -372,17 +320,11 @@ def main():
         help="Regex pattern for construct name matching.",
     )
     parser.add_argument("files", nargs="+", help="Source files to search.")
-    parser.add_argument(
-        "--enable-line-numbers",
-        action="store_true",
-        default=False,
-        help="Enable line number prefixes (<n>:) in output.",
-    )
     args = parser.parse_args()
 
     try:
         output = find_constructs_in_files(
-            args.files, args.tag, args.pattern, args.enable_line_numbers
+            args.files, args.tag, args.pattern
         )
         print(output)
     except ValueError as e:

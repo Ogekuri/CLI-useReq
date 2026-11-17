@@ -966,7 +966,7 @@ class TestFilesCompressCommand:
         finally:
             os.unlink(path)
 
-    def test_files_compress_no_line_numbers_by_default(self, capsys):
+    def test_files_compress_line_numbers_by_default(self, capsys):
         """CMD-017: Must suppress <n>: prefixes by default."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("x = 1\n")
@@ -975,22 +975,35 @@ class TestFilesCompressCommand:
             rc = main(["files-compress", path])
             assert rc == 0
             captured = capsys.readouterr()
-            assert "1: x = 1" not in captured.out
-            assert "x = 1" in captured.out
+            assert "1: x = 1" in captured.out
         finally:
             os.unlink(path)
 
-    def test_files_compress_enable_line_numbers(self, capsys):
+    def test_files_compress_line_numbers_match_original_positions(self, capsys):
         """CMD-017: Must include <n>: prefixes when flag is present."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("# header comment\nx = 1\n\ndef foo():\n    return 1\n")
+            path = f.name
+        try:
+            rc = main(["files-compress", path])
+            assert rc == 0
+            captured = capsys.readouterr()
+            assert "2: x = 1" in captured.out
+            assert "4: def foo():" in captured.out
+            assert "5:     return 1" in captured.out
+            assert "1: # header comment" not in captured.out
+        finally:
+            os.unlink(path)
+
+    def test_files_compress_rejects_enable_line_numbers_flag(self, capsys):
+        """CMD-017/SRS-606: --enable-line-numbers must not be parsed."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("x = 1\n")
             path = f.name
         try:
-            rc = main(["files-compress", path, "--enable-line-numbers"])
-            assert rc == 0
-            captured = capsys.readouterr()
-            assert "1: x = 1" in captured.out
-            assert "x = 1" in captured.out
+            with pytest.raises(SystemExit) as excinfo:
+                main(["files-compress", path, "--enable-line-numbers"])
+            assert excinfo.value.code == 2
         finally:
             os.unlink(path)
 
@@ -1300,7 +1313,7 @@ class TestCompressCommand:
         assert "> Lines: 2-4" in captured.out
         assert "```" in captured.out
 
-    def test_compress_no_line_numbers_by_default(
+    def test_compress_line_numbers_by_default(
         self, capsys, repo_temp_dir, monkeypatch
     ):
         """CMD-017: Must suppress <n>: prefixes by default."""
@@ -1315,30 +1328,46 @@ class TestCompressCommand:
         rc = main(["compress", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
-        assert "1: x = 1" not in captured.out
-        assert "x = 1" in captured.out
+        assert "1: x = 1" in captured.out
         assert "> Lines: 1-1" in captured.out
         assert "```" in captured.out
 
-    def test_compress_enable_line_numbers(self, capsys, repo_temp_dir, monkeypatch):
-        """CMD-017: Must include <n>: prefixes when flag is present."""
+    def test_compress_line_numbers_match_original_positions(
+        self, capsys, repo_temp_dir, monkeypatch
+    ):
+        """SRS-612: compress prefixes must carry original source line numbers."""
         src = repo_temp_dir / "cfg_mylib"
         src.mkdir()
-        (src / "main.py").write_text("x = 1\n")
+        (src / "main.py").write_text(
+            "# header comment\nx = 1\n\ndef foo():\n    return 1\n", encoding="utf-8"
+        )
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_mylib"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
-        rc = main(
-            ["compress", "--prj-base", str(repo_temp_dir), "--enable-line-numbers"]
-        )
+        rc = main(["compress", "--prj-base", str(repo_temp_dir)])
         assert rc == 0
         captured = capsys.readouterr()
-        assert "1: x = 1" in captured.out
-        assert "x = 1" in captured.out
-        assert "> Lines: 1-1" in captured.out
-        assert "```" in captured.out
+        assert "2: x = 1" in captured.out
+        assert "4: def foo():" in captured.out
+        assert "5:     return 1" in captured.out
+        assert "1: # header comment" not in captured.out
+
+    def test_compress_rejects_enable_line_numbers_flag(
+        self, capsys, repo_temp_dir, monkeypatch
+    ):
+        """SRS-606: --enable-line-numbers must not be parsed."""
+        monkeypatch.setattr(
+            cli_module,
+            "maybe_notify_newer_version",
+            lambda timeout_seconds=2.0: None,
+        )
+        with pytest.raises(SystemExit) as excinfo:
+            main(
+                ["compress", "--prj-base", str(repo_temp_dir), "--enable-line-numbers"]
+            )
+        assert excinfo.value.code == 2
 
 
 class TestTokensCommand:
@@ -1414,7 +1443,7 @@ class TestFindCommandVerbose:
         assert rc == 0
         captured = capsys.readouterr()
         assert "foo" in captured.out
-        assert "1: def foo():" not in captured.out
+        assert "1: def foo():" in captured.out
         assert captured.err == ""
 
     def test_files_find_verbose_outputs_progress(self, capsys, repo_temp_dir):
@@ -1426,13 +1455,17 @@ class TestFindCommandVerbose:
         assert "OK" in captured.err
         assert "Found:" in captured.err
 
-    def test_files_find_enable_line_numbers(self, capsys, repo_temp_dir):
+    def test_files_find_as_is_extraction_line_numbers(self, capsys, repo_temp_dir):
         src = repo_temp_dir / "a.py"
-        src.write_text("def foo():\n    return 1\n", encoding="utf-8")
-        rc = main(["files-find", "FUNCTION", "foo", str(src), "--enable-line-numbers"])
+        src.write_text(
+            "def foo():\n    # internal comment\n    return 1\n", encoding="utf-8"
+        )
+        rc = main(["files-find", "FUNCTION", "foo", str(src)])
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: def foo():" in captured.out
+        assert "2:     # internal comment" in captured.out
+        assert "3:     return 1" in captured.out
 
     def test_find_verbose_outputs_progress(self, capsys, repo_temp_dir, monkeypatch):
         src_dir = repo_temp_dir / "cfg_src"
@@ -1450,30 +1483,29 @@ class TestFindCommandVerbose:
         captured = capsys.readouterr()
         assert "OK" in captured.err
         assert "Found:" in captured.err
-        assert "1: def foo():" not in captured.out
+        assert "1: def foo():" in captured.out
 
-    def test_find_enable_line_numbers(self, capsys, repo_temp_dir, monkeypatch):
+    def test_find_as_is_extraction_line_numbers(
+        self, capsys, repo_temp_dir, monkeypatch
+    ):
         src_dir = repo_temp_dir / "cfg_src"
         src_dir.mkdir()
-        (src_dir / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+        (src_dir / "a.py").write_text(
+            "def foo():\n    # internal comment\n    return 1\n", encoding="utf-8"
+        )
         req_dir = cli_module.get_global_config_path().parent
         req_dir.mkdir(parents=True, exist_ok=True)
         config = {"docs-dir": "docs/", "tests-dir": "tests/", "src-dir": ["cfg_src"]}
         (req_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
         monkeypatch.chdir(repo_temp_dir)
         rc = main(
-            [
-                "find",
-                "--prj-base",
-                str(repo_temp_dir),
-                "FUNCTION",
-                "foo",
-                "--enable-line-numbers",
-            ]
+            ["find", "--prj-base", str(repo_temp_dir), "FUNCTION", "foo"]
         )
         assert rc == 0
         captured = capsys.readouterr()
         assert "1: def foo():" in captured.out
+        assert "2:     # internal comment" in captured.out
+        assert "3:     return 1" in captured.out
 
     def test_find_requires_prj_base(self, capsys, repo_temp_dir):
         """CMD-029/SRS-410: find must require --prj-base."""
@@ -1557,12 +1589,12 @@ class TestFindCommandsDoxygen:
         for label in DOXYGEN_TAG_LABELS_IN_ORDER:
             assert f"- {label}" not in metadata_section
 
-    def test_files_find_strips_comments_from_code_and_keeps_doxygen_header(
+    def test_files_find_as_is_code_and_keeps_doxygen_header(
         self,
         capsys,
         repo_temp_dir,
     ):
-        """FND-005/FND-006/DOX-010: files-find strips code comments while keeping Doxygen metadata."""
+        """FND-005/FND-006/DOX-010/SRS-609: files-find emits as-is code with comments and keeps Doxygen metadata."""
         source_file = repo_temp_dir / "sample.c"
         source_file.write_text(
             "/** @brief Increment value */\n"
@@ -1585,10 +1617,11 @@ class TestFindCommandsDoxygen:
         code_end = block.rfind("```")
         assert code_start != -1 and code_end > code_start
         code_payload = block[code_start:code_end]
-        assert "//" not in code_payload
-        assert "/*" not in code_payload
-        assert "single-line comment" not in code_payload
-        assert "inline block" not in code_payload
+        assert "2: int inc(int value) {" in code_payload
+        assert "3:     // single-line comment" in code_payload
+        assert "4:     int out = value + 1; /* inline block */" in code_payload
+        assert "5:     return out;" in code_payload
+        assert "6: }" in code_payload
 
     def test_files_find_cmd_major_extracts_all_expected_doxygen_fields(
         self,
@@ -1711,7 +1744,7 @@ class TestFindCommandsDoxygen:
         for label in DOXYGEN_TAG_LABELS_IN_ORDER:
             assert f"- {label}" not in metadata_section
 
-    def test_find_strips_comments_from_code_and_keeps_doxygen_header(
+    def test_find_as_is_code_and_keeps_doxygen_header(
         self,
         capsys,
         repo_temp_dir,
@@ -1752,10 +1785,11 @@ class TestFindCommandsDoxygen:
         code_end = block.rfind("```")
         assert code_start != -1 and code_end > code_start
         code_payload = block[code_start:code_end]
-        assert "//" not in code_payload
-        assert "/*" not in code_payload
-        assert "single-line comment" not in code_payload
-        assert "inline block" not in code_payload
+        assert "2: int inc(int value) {" in code_payload
+        assert "3:     // single-line comment" in code_payload
+        assert "4:     int out = value + 1; /* inline block */" in code_payload
+        assert "5:     return out;" in code_payload
+        assert "6: }" in code_payload
 
     def test_find_cmd_major_extracts_all_expected_doxygen_fields(
         self,

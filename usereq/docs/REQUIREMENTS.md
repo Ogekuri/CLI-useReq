@@ -96,6 +96,8 @@ No explicit performance optimizations identified.
 - **SRS-056**: MUST implement the following behavior: `scripts/req.sh` MUST execute the CLI via `uv run python -m usereq.cli` from repository root, MUST forward all user-provided CLI arguments unchanged, and MUST rely on uv-managed runtime environments.
 - **SRS-342**: MUST implement the following behavior: `README.md` MUST include a `Requirements` section stating that Astral `uv` tool is required for `scripts/req.sh` and recommended project CLI execution workflows.
 - **SRS-352**: MUST implement the following behavior: `README.md` MUST describe only currently supported CLI flags and provider syntax, and MUST NOT describe removed standalone flags or `--enable SPEC` syntax superseded by `--enable PROVIDER`.
+- **SRS-610**: MUST document in `README.md` that `files-compress`, `compress`, `files-find`, and `find` emit `<n>:`-prefixed lines by default and MUST NOT document `--enable-line-numbers`.
+- **SRS-611**: MUST document in CLI inline help that `files-compress`, `compress`, `files-find`, and `find` emit `<n>:`-prefixed lines by default without any enabling option.
 - **SRS-264**: MUST implement the following behavior: Runtime dependency declarations in `pyproject.toml` `[project].dependencies` MUST be present in the locked package set defined by `uv.lock`; `[project].dependencies` MUST include `ruff` and `pyright`; `[build-system].requires` MAY be outside `uv.lock`.
 - **SRS-064**: MUST load persisted `providers` from `~/.config/usereq/config.json` for the `install` command and the implicit installation flow; if no provider remains enabled, it MUST raise a config-invalid error.
 - **SRS-275**: MUST implement the following behavior: The CLI MUST accept a repeatable `--enable PROVIDER` argument as the sole mechanism for provider enablement, accepting only the provider CLI name exactly like `--disable PROVIDER`.
@@ -302,6 +304,10 @@ No explicit performance optimizations identified.
 ### 3.8 Reference Markdown Generation
 
 ### 3.9 Source Compression
+- **SRS-605**: MUST prefix every emitted code line of the `files-compress`, `compress`, `files-find`, and `find` subcommands with `<n>:` carrying the original source line number; line numbering MUST be unconditional.
+- **SRS-606**: MUST define no line-number option for the `files-compress`, `compress`, `files-find`, and `find` subcommands; line-numbered output MUST be produced without any option.
+- **SRS-607**: MUST implement the following behavior: `compress_source`, `compress_file`, `compress_files`, `format_construct`, and `find_constructs_in_files` MUST expose no line-number toggle parameter and MUST emit line numbers unconditionally.
+- **SRS-608**: MUST keep the `files-compress` and `compress` compression pipeline removing comments, docstrings, blank lines, and extra whitespace from emitted code blocks.
 
 ### 3.10 Construct Extraction and Command Operations
 - **SRS-177**: MUST implement the following behavior: The `references` command MUST select candidate files from `git ls-files` output under `src-dir` values loaded from `~/.config/usereq/config.json`, then keep only supported extensions from SRS-131.
@@ -310,6 +316,7 @@ No explicit performance optimizations identified.
 - **SRS-181**: MUST implement the following behavior: Source-file selection for `references` and `compress` MUST be derived from `git ls-files` relative paths and MUST NOT rely on recursive filesystem walking.
 - **SRS-581**: MUST implement the following behavior: When `references` selects zero supported source files, it MUST print the canonical empty-references system-directive payload to stdout and MUST exit with code 0.
 - **SRS-582**: MUST implement the following behavior: The SRS-581 payload MUST emit the literal lines `<system_directive>`, `[STATUS]: NO_SOURCE_CODE_DETECTED`, `[FILE_CONTENT]: EMPTY_REFERENCES`, `[CONTEXT_UPDATE]`, `[AGENT_INSTRUCTIONS]`, and `</system_directive>` with no source-file mapping output.
+- **SRS-609**: MUST emit `files-find` and `find` construct code blocks by copying matched source lines as-is, preserving comments, docstrings, and whitespace without comment stripping.
 
 ### 3.11 Doxygen Parsing and Field Emission
 - **SRS-213**: MUST implement the following behavior: The parser MUST recognize these Doxygen tags: @brief, @details, @param, @param[in], @param[out], @param[in,out], @return, @retval, @exception, @throws, @warning, @deprecated, @note, @see, @sa, @satisfies, @pre, @post.
@@ -392,6 +399,8 @@ No explicit performance optimizations identified.
 - **SRS-573**: MUST include unit tests in `tests/test_release_workflow.py` verifying SRS-572 optional pre-built `dist/` consumption and absence of build, dependency-sync, test, and pre-release verification stages.
 - **SRS-583**: MUST include unit tests in `tests/test_files_commands.py` verifying that `references` prints the SRS-582 empty-reference payload and exits with code 0 when no supported source file exists.
 - **SRS-598**: MUST include unit tests in `tests/test_config_cli.py` verifying that `--write-config` adds only missing canonical defaults, preserves stored values, bootstraps an absent configuration file, rejects multi-command combinations, and reports failures on stderr with exit code 1.
+- **SRS-612**: MUST include unit tests verifying that `compress` and `files-compress` output prefixes match the original source line numbers of extracted functions.
+- **SRS-613**: MUST include unit tests verifying that `files-find` and `find` output line numbers match original source positions and construct code equals the as-is source lines including comments.
 
 ## 5. Static Code Analysis Requirements
 

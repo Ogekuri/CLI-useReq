@@ -417,7 +417,6 @@ def build_parser() -> argparse.ArgumentParser:
         "[--set-docs-dir DOCS_DIR] [--set-src-dir SRC_DIR] [--set-tests-dir TESTS_DIR] [--verbose] [--debug] "
         "[--print [PATH]] [--info [PATH]] [--print-raw] [--write-config] [--get PATH] [--set PATH VALUE] [--unset PATH] "
         "[--enable PROVIDER] [--disable PROVIDER] [--enable-auto-install] [--disable-auto-install] "
-        "[--enable-line-numbers] "
         "[--enable-static-check SPEC] [--disable-static-check SPEC] "
         "[--test-static-check {dummy,pylance,ruff,command} [FILES...]] "
         "[--git-check] [--docs-check] [--git-wt-name] [--git-wt-create WT_NAME] [--git-wt-delete WT_NAME] "
@@ -622,12 +621,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip automatic provider reinstallation after a successful --upgrade.",
     )
     parser.add_argument(
-        "--enable-line-numbers",
-        action="store_true",
-        default=False,
-        help="Enable line number prefixes (<n>:) in output for files-compress, compress, files-find, and find subcommands (disabled by default).",
-    )
-    parser.add_argument(
         "--test-static-check",
         nargs=argparse.REMAINDER,
         metavar="ARG",
@@ -736,14 +729,6 @@ def build_parser() -> argparse.ArgumentParser:
         dest="git_base",
         help="Absolute git repository base directory; optional runtime context for analysis subcommands.",
     )
-    line_number_options = argparse.ArgumentParser(add_help=False)
-    line_number_options.add_argument(
-        "--enable-line-numbers",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        dest="enable_line_numbers",
-        help="Enable line number prefixes (<n>:) in output (disabled by default).",
-    )
     # SRS-447: the install subparser does not define or consume --prj-base; install
     # is fully user-level and performs no project-side operations (SRS-448).
     install_options = argparse.ArgumentParser(add_help=False)
@@ -780,20 +765,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = subparsers.add_parser(
         "files-compress",
-        parents=[base_options, line_number_options],
-        usage="req files-compress [--enable-line-numbers] FILE [FILE ...]",
-        help="Generate compressed output for the given files.",
+        parents=[base_options],
+        usage="req files-compress FILE [FILE ...]",
+        help=(
+            "Generate compressed output for the given files; code lines carry "
+            "`<n>:` source line-number prefixes by default."
+        ),
     )
     sub.add_argument("files_compress", nargs="+", metavar="FILE")
 
     sub = subparsers.add_parser(
         "files-find",
-        parents=[base_options, line_number_options],
-        usage="req files-find [--enable-line-numbers] TAG PATTERN FILE [FILE ...]",
+        parents=[base_options],
+        usage="req files-find TAG PATTERN FILE [FILE ...]",
         help=(
             "Find and extract specific constructs: files-find TAG PATTERN FILE ... "
             "TAG accepts pipe-separated tags; the per-language tag catalog is "
-            "printed on invalid TAG or non-matching filter errors."
+            "printed on invalid TAG or non-matching filter errors. Extracted code "
+            "is emitted as-is with `<n>:` source line-number prefixes."
         ),
     )
     sub.add_argument("files_find", nargs="+", metavar="ARG")
@@ -820,22 +809,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = subparsers.add_parser(
         "compress",
-        parents=[base_options, line_number_options],
-        usage="req compress --prj-base PRJ_BASE [--enable-line-numbers]",
+        parents=[base_options],
+        usage="req compress --prj-base PRJ_BASE",
         help=(
             "Generate compressed output for all source files in the configured "
-            "src-dir directories."
+            "src-dir directories; code lines carry `<n>:` source line-number "
+            "prefixes by default."
         ),
     )
 
     sub = subparsers.add_parser(
         "find",
-        parents=[base_options, line_number_options],
-        usage=("req find --prj-base PRJ_BASE [--enable-line-numbers] TAG PATTERN"),
+        parents=[base_options],
+        usage="req find --prj-base PRJ_BASE TAG PATTERN",
         help=(
             "Find and extract specific constructs from the configured src-dir: "
             "find TAG PATTERN. TAG accepts pipe-separated tags; the per-language "
-            "tag catalog is printed on invalid TAG or non-matching filter errors."
+            "tag catalog is printed on invalid TAG or non-matching filter errors. "
+            "Extracted code is emitted as-is with `<n>:` source line-number "
+            "prefixes."
         ),
     )
     sub.add_argument("find", nargs=2, metavar=("TAG", "PATTERN"))
@@ -4060,34 +4052,31 @@ def run_files_references(files: list[str]) -> None:
     print(md)
 
 
-def run_files_compress(files: list[str], enable_line_numbers: bool = False) -> None:
+def run_files_compress(files: list[str]) -> None:
     """!
-    @brief Execute files-compress: compress arbitrary files.
-        @param files List of source file paths to compress.
-        @param enable_line_numbers If True, emits <n>: prefixes in compressed entries.
-        @details Renders output header paths relative to current working directory.
+    @brief Execute files-compress: compress arbitrary files with line-numbered output.
+        @param files {List[str]} List of source file paths to compress.
+        @details Renders output header paths relative to current working directory. Line numbers are always emitted (SRS-605); no line-number option exists (SRS-606).
     @return {None} Function return value.
-    @satisfies SRS-408
+    @satisfies SRS-408, SRS-605, SRS-606
     """
     from .compress_files import compress_files
 
     output = compress_files(
         files,
-        include_line_numbers=enable_line_numbers,
         verbose=VERBOSE,
         output_base=Path.cwd().resolve(),
     )
     print(output)
 
 
-def run_files_find(args_list: list[str], enable_line_numbers: bool = False) -> None:
+def run_files_find(args_list: list[str]) -> None:
     """!
-    @brief Execute files-find: find constructs in arbitrary files.
-        @param args_list Combined list: [TAG, PATTERN, FILE1, FILE2, ...].
-        @param enable_line_numbers If True, emits <n>: prefixes in output.
-    @details Implements the run_files_find function behavior with deterministic control flow.
+    @brief Execute files-find: find constructs in arbitrary files with as-is line-numbered extracts.
+        @param args_list {List[str]} Combined list: [TAG, PATTERN, FILE1, FILE2, ...].
+    @details Line numbers are always emitted (SRS-605); extracted code is copied as-is without comment stripping (SRS-609).
     @return {None} Function return value.
-    @satisfies SRS-236, SRS-408
+    @satisfies SRS-236, SRS-408, SRS-605, SRS-609
     """
     from .find_constructs import find_constructs_in_files
 
@@ -4104,7 +4093,6 @@ def run_files_find(args_list: list[str], enable_line_numbers: bool = False) -> N
         files,
         tag_filter,
         pattern,
-        include_line_numbers=enable_line_numbers,
         verbose=VERBOSE,
     )
     print(output)
@@ -4152,7 +4140,6 @@ def run_compress_cmd(args: Namespace) -> None:
         raise ReqError("Error: no source files found in configured directories.", 1)
     output = compress_files(
         files,
-        include_line_numbers=getattr(args, "enable_line_numbers", False),
         verbose=VERBOSE,
         output_base=project_base,
     )
@@ -4182,7 +4169,6 @@ def run_find(args: Namespace) -> None:
             files,
             tag_filter,
             pattern,
-            include_line_numbers=getattr(args, "enable_line_numbers", False),
             verbose=VERBOSE,
         )
         print(output)
@@ -4665,15 +4651,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             elif command == "files-references":
                 run_files_references(args.files_references)
             elif command == "files-compress":
-                run_files_compress(
-                    args.files_compress,
-                    enable_line_numbers=getattr(args, "enable_line_numbers", False),
-                )
+                run_files_compress(args.files_compress)
             elif command == "files-find":
-                run_files_find(
-                    args.files_find,
-                    enable_line_numbers=getattr(args, "enable_line_numbers", False),
-                )
+                run_files_find(args.files_find)
             elif command == "files-static-check":
                 return run_files_static_check_cmd(args.files_static_check, args)
             elif command == "references":
