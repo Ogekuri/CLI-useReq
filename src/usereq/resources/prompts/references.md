@@ -128,6 +128,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
       - Set `<DESCRIPTION>` to a short, clear summary in **English language** of what changed, including (when applicable) updates to: requirements/specs, source code, tests. Use present tense, avoid vague wording, and keep it under ~80 characters if possible.
       - Set `<BREAKING>` to `!` if a breaking change was implemented (a modification to an API, library, or system that breaks backward compatibility, causing dependent client applications or code to fail or behave incorrectly), set empty otherwise.
       - Include main features added, requirements changes, or a bug-fix description adding a multi-line comment (maximum 10 lines).
+         - MUST NOT insert carriage-return (`\r`) or line-feed (`\n`) characters solely to wrap or align paragraph text at a fixed width.
          - Do not include the 'Co-authored-by' trailer or any AI attribution. A GPG-signed commit is not required.
    - Confirm the repo is clean with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-check`. If the command returns an error code or prints any text containing "ERROR", set `Outcome` to failure, print EXACTLY "WARNING: References request completed with unclean git repository!" within `## **Outcome**`, and keep `STATUS_ERROR` as the terminal status line.
 5. **CRITICAL**: Merge Conflict Management

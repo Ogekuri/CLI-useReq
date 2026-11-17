@@ -154,10 +154,10 @@ Extract actual source constructs as structured markdown with signatures, line ra
     - Note: find scans all files under configured source dirs; does not take a filename.
 - Target specific files: use files-find (standalone with the mandatory `--prj-base`/`--git-base` prefix)
     - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find <TAG_FILTER> <NAME_REGEX> <FILE1> [FILE2 ...]`
-#### Line-numbered code for evidence citation
-find and files-find output lines carry `<n>:` source line-number prefixes by default:
-- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find "<TAG_FILTER>" "<NAME_REGEX>"`
-- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
+#### Enable line-numbered code for evidence citation
+Add --enable-line-numbers (code lines prefixed as `<n>:`):
+- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers find "<TAG_FILTER>" "<NAME_REGEX>"`
+- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
 #### TAGs and filters
 - TAG_FILTER: pipe-separated, case-insensitive (e.g., `CLASS|FUNCTION|IMPORT`).
 - Tags are language-dependent; the per-language tag catalog is printed on invalid TAG or non-matching filter errors. Run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --help` for the full usage surface.
@@ -175,7 +175,7 @@ Use for: string/pattern searches inside code bodies, cross-file references, conf
 ### Recommended Analysis Workflow
 1. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`** (full read) → identify execution units, call-trace paths, and function names relevant to the task.
 2. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`** (full read or targeted search) → locate candidate symbols by name/description/`@satisfies`, obtain file paths and line ranges, understand function contracts.
-3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX, file paths as files-find targets; output lines carry `<n>:` source line-number prefixes by default.
+3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX, file paths as files-find targets; enable --enable-line-numbers when citing evidence.
 4. **Search code bodies** via `rg`/`git grep` → find patterns, references, or values not captured by construct-level extraction.
 
 
@@ -269,6 +269,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
       - Set `<DESCRIPTION>` to a short, clear summary in **English language** of what changed, including (when applicable) updates to: requirements/specs, source code, tests. Use present tense, avoid vague wording, and keep it under ~80 characters if possible.
       - Set `<BREAKING>` to `!` if a breaking change was implemented (a modification to an API, library, or system that breaks backward compatibility, causing dependent client applications or code to fail or behave incorrectly), set empty otherwise.
       - Include main features added, requirements changes, or a bug-fix description adding a multi-line comment (maximum 10 lines).
+         - MUST NOT insert carriage-return (`\r`) or line-feed (`\n`) characters solely to wrap or align paragraph text at a fixed width.
          - Do not include the 'Co-authored-by' trailer or any AI attribution. A GPG-signed commit is not required.
    - Confirm the repo is clean with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-check`. If the command returns an error code or prints any text containing "ERROR", set `Outcome` to failure, print EXACTLY "WARNING: Workflow request completed with unclean git repository!" within `## **Outcome**`, and keep `STATUS_ERROR` as the terminal status line.
 6. **CRITICAL**: Merge Conflict Management
