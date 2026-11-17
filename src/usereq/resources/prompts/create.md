@@ -59,6 +59,10 @@ In scope: static analysis of source under {{PRJ_BASE}}/%%SRC_PATHS%% (and target
 - **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
 - **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
 
+## req Source-Extraction Output
+- `req files-compress`, `req compress`, `req files-find`, and `req find` prefix emitted source lines with their original line numbers by default. `--enable-line-numbers` is unavailable and MUST NOT be used.
+- Prefer `req files-find` or `req find` to extract source objects, functions, or data structures. Their selected construct text is preserved as-is, including comments.
+
 ## Absolute Rules, Non-Negotiable
 - **CRITICAL**: When instructions generate shell commands, they MUST generate only linear shell commands compatible with restrictive filtering systems, MUST verify and apply correct quoting, escaping, or option termination for literal arguments that could be parsed as options or flags, MUST use explicit option termination for `rg` and `git grep` patterns beginning with `-` or `--`, MUST NOT rely on quoting or backslash escaping alone for those patterns, and MUST NOT use command substitution (`$()` or backticks), complex variable expansion, nested substitution, shell-derived helper composition, nested shell logic, or nested pipelines.
 - **CRITICAL**: Every `req` invocation MUST carry the mandatory parameters `--prj-base={{PRJ_BASE}}` and `--git-base={{GIT_BASE}}` with the resolved values; the removed `--base` parameter MUST NOT be used.
