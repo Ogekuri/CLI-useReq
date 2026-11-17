@@ -56,7 +56,7 @@ In scope: read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` (and related docs), r
 - **CRITICAL**: Reuse injected or previously read file evidence only when repository, worktree, project-area, path, and revision identity match the active binding; do not re-read matching content. Refresh stale or unverified evidence under the pre-flight context-reuse rules.
 - **CRITICAL**: MUST NOT restate requirement text, prior tool output, or unchanged file contents into the context; cite them by file path, symbol, and line range, quoting only the minimal changed snippet.
 - **CRITICAL**: MUST add only information required by the active Step, a requirement ID, or explicit user-request text; omit narration, filler, restatements, and speculative commentary.
-- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
+- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then preferred `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` extraction with source-as-is output including comments and default line numbers, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
 - **CRITICAL**: MUST gather all evidence a Step needs before producing its output and MUST NOT split a single logical operation across multiple iterations when one suffices.
 - **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
 - **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
@@ -114,24 +114,20 @@ Structured index of all source-defined symbols (functions, classes, structs, obj
 Use to: identify candidate symbols by name, description, or `@satisfies` link; obtain exact file paths and line ranges; understand function signatures and contracts before extracting code. Cross-reference with WORKFLOW.md call-traces to narrow scope.
 
 ### 3. Code Extraction: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find` / `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`
-Extract actual source constructs as structured markdown with signatures, line ranges, and optional line-numbered code. Use after pillars 1-2 to extract only the targeted constructs identified during analysis.
+Extract actual source constructs as source-as-is blocks, including comments, with default line numbers. Use `find`/`files-find` as the preferred method for extracting source objects, functions, and data structures after pillars 1-2.
 #### What these commands do (and what they don't)
 - Extract named constructs (e.g., CLASS, FUNCTION, STRUCT, INTERFACE, IMPORT, …) filtered by TAG and name-regex.
 - Regex (PATTERN) matches construct name only (not body). For body-content search, use rg/git grep (pillar 4).
 - Output per file: header `@@@ <filepath> | <language>`, per-construct blocks with:
     - `### <TAG>: <name>` + optional Signature + `Lines: <start>-<end>`
     - optional extracted Doxygen fields (if present in/around the construct)
-    - fenced code block with the complete construct slice (comments stripped, strings preserved)
+    - fenced code block with the complete source-as-is construct slice, including comments, with default source-line prefixes
 #### Choose the right mode
 - Project-wide scan: use find (the mandatory `--prj-base`/`--git-base` prefix is required; `--base` is forbidden)
     - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find <TAG_FILTER> <NAME_REGEX>`
     - Note: find scans all files under configured source dirs; does not take a filename.
 - Target specific files: use files-find (standalone with the mandatory `--prj-base`/`--git-base` prefix)
     - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find <TAG_FILTER> <NAME_REGEX> <FILE1> [FILE2 ...]`
-#### Enable line-numbered code for evidence citation
-Add --enable-line-numbers (code lines prefixed as `<n>:`):
-- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers find "<TAG_FILTER>" "<NAME_REGEX>"`
-- `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --enable-line-numbers files-find "<TAG_FILTER>" "<NAME_REGEX>" <FILE...>`
 #### TAGs and filters
 - TAG_FILTER: pipe-separated, case-insensitive (e.g., `CLASS|FUNCTION|IMPORT`).
 - Tags are language-dependent; the per-language tag catalog is printed on invalid TAG or non-matching filter errors. Run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --help` for the full usage surface.
@@ -149,7 +145,7 @@ Use for: string/pattern searches inside code bodies, cross-file references, conf
 ### Recommended Analysis Workflow
 1. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`** (full read) → identify execution units, call-trace paths, and function names relevant to the task.
 2. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`** (full read or targeted search) → locate candidate symbols by name/description/`@satisfies`, obtain file paths and line ranges, understand function contracts.
-3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX, file paths as files-find targets; enable --enable-line-numbers when citing evidence.
+3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX and file paths as files-find targets; cite the default line-numbered, source-as-is output including comments.
 4. **Search code bodies** via `rg`/`git grep` → find patterns, references, or values not captured by construct-level extraction.
 
 
