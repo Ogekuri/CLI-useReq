@@ -88,7 +88,7 @@ In scope: read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, implement/introduce 
 - Always strictly respect requirements.
 - Use `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, and `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` as the primary technical inputs; keep decisions traceable to requirements and repository evidence.
 - All newly written or edited content MUST be in English. Do NOT translate existing text outside the minimal change surface required by this workflow; if you detect non-English text elsewhere, report it in **Evidence** instead of rewriting it.
-- Prioritize backward compatibility. Do not introduce breaking changes; preserve existing interfaces, data formats, and features. If maintaining compatibility would require migrations/auto-upgrades conversion logic, report the conflict instead of implementing, and then terminate the execution.
+- Unless the current User's Request explicitly specifies otherwise, do not implement backward-compatibility logic or legacy support for features, commands, communication interfaces, GUI, TUI, or configurations. Requirements alone do not authorize an exception. If a requirement conflicts with this rule, report the conflict and do not implement the conflicting support.
 - If `.venv/bin/python` exists in the project root, use it for Python executions (eg, `PYTHONPATH=src .venv/bin/python -m <program name>`).
 - Non-Python tooling should use the project's standard commands.
 - Use filesystem/shell tools to read/write/delete files as needed (e.g., `cat`, `sed`, `perl -pi`, `printf > file`, `rm -f`, ...). Prefer read-only commands for analysis.
