@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.18](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.18) - 2026-11-23
+## [0.75.19](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.19) - 2026-11-23
 ### ⛰️  Features
 - Update req-static-check commnad.
 - Update prompts with skills.
@@ -97,6 +97,8 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- Update bundled prompts from v0.38.14 to v0.38.15 [useReq] *(prompts)*
+  Updated bundled prompts and document templates from CLI-Prompts version v0.38.14 to v0.38.15.
 - Update bundled prompts from v0.38.12 to v0.38.14 [useReq] *(prompts)*
   Updated bundled prompts and document templates from CLI-Prompts version v0.38.12 to v0.38.14.
 - Update bundled prompts from v0.38.11 to v0.38.12 [useReq] *(prompts)*
@@ -1681,7 +1683,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.18\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.18
+- \[0.75.19\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.19
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1757,4 +1759,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.18]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.18
+[0.75.19]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.19
