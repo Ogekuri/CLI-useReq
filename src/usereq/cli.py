@@ -3512,6 +3512,20 @@ This repository is structured exclusively for documentation or otherwise lacks a
 </system_directive>"""
 """Canonical empty-references system-directive payload emitted when no supported source file is selected (SRS-581, SRS-582)."""
 
+EMPTY_STATIC_CHECK_DIRECTIVE = """<system_directive>
+[STATUS]: SUCCESS
+[STATIC_CHECK_RESULT]: NO_SOURCE_CODE_DETECTED
+
+[CONTEXT_UPDATE]
+This repository is structured exclusively for documentation or otherwise lacks analyzable source code. Consequently, this `req-static-check` return SUCCESS by definition.
+
+[AGENT_INSTRUCTIONS]
+1. Do not attempt to search, extract, or index source code references within this project.
+2. Update current context to reflect that the `req-static-check` skill and the `/req-static-check` command are **UNNECESSARY** and **DEPRECATED** for this specific repository.
+3. Do not invoke or prompt the user to execute the `/req-static-check` command during any future interactions within this workspace.
+</system_directive>"""
+"""Canonical empty-static-check system-directive payload emitted when the static-check selection contains zero supported source files (SRS-614..SRS-617)."""
+
 
 def _collect_source_files(src_dirs: list[str], project_base: Path) -> list[str]:
     """!
@@ -4278,7 +4292,8 @@ def run_project_static_check_cmd(args: Namespace) -> int:
     """!
     @brief Execute `static-check`: run static analysis on project source and test files.
     @param args Parsed CLI namespace; requires the mandatory `--prj-base` argument.
-    @return Exit code: 0 if all checked files pass (or none are checked), 1 if any fail.
+    @return Exit code: 0 if all checked files pass, when none are checked, or when zero supported
+      source files are selected (SRS-614 payload printed to stdout); 1 if any file fails.
     @details
       Collects files from configured `src-dir` directories and the `tests-dir` directory
       (SRS-256, SRS-336), applies `EXCLUDED_DIRS` filtering and `SUPPORTED_EXTENSIONS` matching.
@@ -4307,9 +4322,12 @@ def run_project_static_check_cmd(args: Namespace) -> int:
         module-native exclusion flags (SRS-590).
       Dispatch context provides project root for checker runtime execution.
       All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-256).
+      When the selection contains zero supported source files, prints the canonical
+      `EMPTY_STATIC_CHECK_DIRECTIVE` system-directive payload to stdout and returns 0 instead
+      of raising (SRS-614..SRS-617).
       Overall exit code: max of all dispatch codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
-    @throws ReqError If no source files are found.
-    @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408, SRS-584, SRS-585, SRS-587, SRS-588, SRS-589, SRS-590, SRS-592
+    @throws ReqError Raised when `--prj-base` is absent or a configured directory value is invalid.
+    @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408, SRS-584, SRS-585, SRS-587, SRS-588, SRS-589, SRS-590, SRS-592, SRS-614, SRS-615, SRS-616, SRS-617
     """
     from .static_check import (
         STATIC_CHECK_EXT_TO_LANG,
@@ -4365,7 +4383,10 @@ def run_project_static_check_cmd(args: Namespace) -> int:
         filtered_files.append(filepath)
     files = filtered_files
     if not files:
-        raise ReqError("Error: no source files found in configured directories.", 1)
+        # SRS-614: zero supported source files print the canonical empty-static-check
+        # system-directive payload to stdout and succeed instead of failing.
+        print(EMPTY_STATIC_CHECK_DIRECTIVE)
+        return 0
 
     # SRS-588: ordered, deduplicated scan roots = configured src-dir entries plus tests-dir.
     scan_roots: list[Path] = []
