@@ -1,7 +1,8 @@
 # Changelog
 
-## [0.75.17](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.17) - 2026-11-17
+## [0.75.18](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.18) - 2026-11-23
 ### ⛰️  Features
+- Update req-static-check commnad.
 - Update prompts with skills.
 - add --write-config command persisting missing schema defaults [useReq] *(config)*
   Add the --write-config configuration command (SRS-593..SRS-597) that
@@ -32,6 +33,18 @@
 - Update prompts.
 
 ### 🐛  Bug Fixes
+- align stale tests with SRS-614 empty payload [useReq] *(static-check)*
+  Commit 8e4dd1b implemented SRS-614..SRS-617 (static-check prints the
+  canonical empty-static-check payload and exits 0 on zero selected source
+  files), leaving two stale tests asserting the removed ReqError behavior.
+  test_static_check_no_source_files_emits_empty_directive asserts exit 0
+  with [STATUS]: SUCCESS and [STATIC_CHECK_RESULT]: NO_SOURCE_CODE_DETECTED.
+  test_static_check_fail_propagates_exit_code pins the git ls-files
+  selection via subprocess.check_output so the subprocess.run checker mock
+  (which shadows check_output's internal run call) cannot empty the
+  selection; SRS-257 exit-1 propagation is now genuinely exercised.
+  Regenerated usereq/docs/REFERENCES.md via req-references.; Full suite: 2089 passed, 11 subtests passed; req-static-check clean.
+- Update .galias.conf file.
 - remove obsolete option guidance [useReq] *(prompts)*
 - align update commit subject with canonical format and versions [useReq] *(prompts-update)*
   Compose the bundled-prompts update commit subject as
@@ -84,6 +97,10 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- Update bundled prompts from v0.38.12 to v0.38.14 [useReq] *(prompts)*
+  Updated bundled prompts and document templates from CLI-Prompts version v0.38.12 to v0.38.14.
+- Update bundled prompts from v0.38.11 to v0.38.12 [useReq] *(prompts)*
+  Updated bundled prompts and document templates from CLI-Prompts version v0.38.11 to v0.38.12.
 - Update bundled prompts from v0.38.10 to v0.38.11 [useReq] *(prompts)*
   Updated bundled prompts and document templates from CLI-Prompts version v0.38.10 to v0.38.11.
 - Update bundled prompts from v0.38.9 to v0.38.10 [useReq] *(prompts)*
@@ -1664,7 +1681,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.17\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.17
+- \[0.75.18\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.18
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1740,4 +1757,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.17]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.17
+[0.75.18]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.18
