@@ -1,6 +1,6 @@
 ---
 description: "Executive skill delegated only by orchestrate.md: Build and verify an end-to-end implementation from the authoritative SRS without changing it."
-argument-hint: "No arguments utilized by the prompt logic"
+argument-hint: "User request for SRS-scoped implementation"
 usage: >
   Use only when orchestrate.md delegates this executive workflow. Build and verify an end-to-end implementation from the authoritative SRS without changing it. Direct user requests must enter through the orchestration skill; do not select this executive independently.
 ---
@@ -68,10 +68,12 @@ In scope: read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, implement/introduce 
 
 
 ## Absolute Rules, Non-Negotiable
+- **CRITICAL**: Before leaving a Step that audits all requirements, complete and record the outcome and evidence for every requirement. Iteration and context economy rules do not reduce the audit scope. Before proceeding to the next Step, verify that every requirement ID has an `OK` or `FAIL` result with the required evidence. If the audit is incomplete, continue it in bounded batches; do not stage or commit until it is complete.
 - **CRITICAL**: When instructions generate shell commands, they MUST generate only linear shell commands compatible with restrictive filtering systems, MUST verify and apply correct quoting, escaping, or option termination for literal arguments that could be parsed as options or flags, MUST use explicit option termination for `rg` and `git grep` patterns beginning with `-` or `--`, MUST NOT rely on quoting or backslash escaping alone for those patterns, and MUST NOT use command substitution (`$()` or backticks), complex variable expansion, nested substitution, shell-derived helper composition, nested shell logic, or nested pipelines.
 - **CRITICAL**: Every `req` invocation MUST carry the mandatory parameters `--prj-base={{PRJ_BASE}}` and `--git-base={{GIT_BASE}}` with the resolved values; the removed `--base` parameter MUST NOT be used.
 - **CRITICAL**: NEVER write, modify, edit, or delete files outside of the active git worktree directory, except under `/tmp`, and except for worktree operations executed through `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-create {{WORKTREE_NAME}}` and `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete {{WORKTREE_NAME}}`.
 - You MUST read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, but you MUST NOT modify it in this workflow.
+- **CRITICAL**: All final response text, including `## **Summary**` and every fixed report schema section, MUST use the language of the [User's Request](#users-request), preserving literal status keywords. Repository artifact content MUST remain in English.
 - Treat static analysis as safe. Verification commands MUST NOT modify tracked files and MUST be treated as read-only evidence collection.
 - **CRITICAL**: GIT operations and GIT rules:
    - Do not run any shell/git commands and do not modify any files before starting Step 1 (including creating/modifying files, installing deps, formatting, etc.), except the read-only repository checks required by the `## Pre-Flight: Context Keyword Resolution` section: **CRITICAL**: Check GIT Status.
@@ -85,6 +87,7 @@ In scope: read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, implement/introduce 
   
 ## Behavior
 - Do not modify `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`.
+- Integrate the information in the [User's Request](#users-request) with the specifications in `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`; preserve the SRS scope and route requests for features outside it to `req-change` or `req-new`.
 - Always strictly respect requirements.
 - Use `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, and `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` as the primary technical inputs; keep decisions traceable to requirements and repository evidence.
 - All newly written or edited content MUST be in English. Do NOT translate existing text outside the minimal change surface required by this workflow; if you detect non-English text elsewhere, report it in **Evidence** instead of rewriting it.
@@ -205,3 +208,6 @@ After successful pre-flight resolution, create internally a *check-list* for the
 10. Present results
    - PRINT, in the response, the results for a human reader using clear, easily understandable sentences and readable Markdown formatting that highlight key findings, file paths, and concise evidence. PRINT first a ## **Summary** section containing a concise, human-readable summary of the execution outcome, then the verbose report using the fixed report schema: ## **Outcome**, ## **Requirement Delta**, ## **Design Delta**, ## **Implementation Delta**, ## **Verification Delta**, ## **Evidence**, ## **Assumptions**, ## **Next Workflow**.
    - Emit exactly one terminal status keyword as the sole content of the final line of the response, after `## **Next Workflow**`: `STATUS_OK` when the workflow completed successfully, or `STATUS_ERROR` when it failed, was blocked, or ended without change; print no content after it.
+
+<h2 id="users-request">User's Request</h2>
+%%ARGS%%
