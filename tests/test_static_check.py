@@ -1580,7 +1580,13 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         self.assertFalse(any("Static-Check" in s for s in calls))
 
     def test_static_check_fail_propagates_exit_code(self) -> None:
-        """static-check returns 1 when at least one file fails."""
+        """!
+        @brief static-check returns 1 when at least one file fails (SRS-257).
+        @details `git ls-files` selection is pinned through `subprocess.check_output` so the
+          `subprocess.run` checker mock (which also shadows the module-global `run` used by
+          `check_output`) cannot empty the selection and route the run into the SRS-614
+          zero-selection exit-0 path.
+        """
         from usereq import cli
 
         _make_temp_file(self.tmp / "src", "bad.py")
@@ -1593,14 +1599,21 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         try:
             os.chdir(str(self.tmp))
             with patch("subprocess.run", return_value=mock_result):
-                with patch("builtins.print"):
-                    rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
+                with patch("subprocess.check_output", return_value="src/bad.py\n"):
+                    with patch("builtins.print"):
+                        rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
         self.assertEqual(rc, 1)
 
-    def test_static_check_no_source_files_raises(self) -> None:
-        """static-check raises ReqError when no source files found."""
+    def test_static_check_no_source_files_emits_empty_directive(self) -> None:
+        """!
+        @brief static-check prints the canonical empty-static-check payload and exits 0 on
+          zero selected source files (SRS-614, SRS-615).
+        @details Replaces the removed ReqError-on-empty-selection behavior: the selection is
+          empty in an initialized repository without supported source files, so the command
+          MUST succeed with the SRS-615 payload markers on stdout.
+        """
         from usereq import cli
 
         # src dir exists but is empty
@@ -1608,12 +1621,14 @@ class TestStaticCheckProjectScan(GlobalConfigIsolatedTestCase):
         old_cwd = os.getcwd()
         try:
             os.chdir(str(self.tmp))
-            with patch("sys.stderr", new_callable=StringIO):
-                with patch("builtins.print"):
-                    rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                rc = cli.main(["static-check", "--prj-base", str(self.tmp)])
         finally:
             os.chdir(old_cwd)
-        self.assertNotEqual(rc, 0)
+        self.assertEqual(rc, 0)
+        stdout_payload = mock_stdout.getvalue()
+        self.assertIn("[STATUS]: SUCCESS", stdout_payload)
+        self.assertIn("[STATIC_CHECK_RESULT]: NO_SOURCE_CODE_DETECTED", stdout_payload)
 
     def test_static_check_requires_prj_base(self) -> None:
         """static-check requires the mandatory --prj-base argument (SRS-396, SRS-410)."""
