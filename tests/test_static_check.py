@@ -2513,14 +2513,14 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
 
 class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
     """!
-    @brief Tests for the default static-check configuration resolution (SRS-424..SRS-426, SRS-429).
+    @brief Tests for the default static-check configuration resolution (SRS-424..SRS-426, SRS-618..SRS-620, SRS-429).
     @details Verifies the trace-derived defaults for C, C++, JavaScript, Python, and
     TypeScript and that a present `"static-check"` entry, including an empty object,
     suppresses the defaults.
     """
 
     def test_defaults_when_no_entry(self) -> None:
-        """SRS-424..SRS-426: missing file or key resolves to the default set."""
+        """SRS-424..SRS-426, SRS-618..SRS-620: missing file or key resolves to the default set."""
         from usereq import cli
 
         sc = cli.load_static_check_from_config()
@@ -2542,6 +2542,11 @@ class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
                     "cmd": "clang-format",
                     "params": ["--dry-run", "--Werror"],
                 },
+                {
+                    "module": "Command",
+                    "cmd": "flawfinder",
+                    "params": ["--minlevel=3", "--error-level=3"],
+                },
             ],
         )
         self.assertEqual(
@@ -2550,10 +2555,30 @@ class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
         )
         self.assertEqual(
             sc["JavaScript"],
-            [{"module": "Command", "cmd": "node", "params": ["--check"]}],
+            [
+                {"module": "Command", "cmd": "node", "params": ["--check"]},
+                {"module": "Command", "cmd": "eslint"},
+            ],
         )
-        self.assertEqual(sc["Python"], [{"module": "Pylance"}, {"module": "Ruff"}])
-        self.assertEqual(sc["TypeScript"], [{"module": "Command", "cmd": "eslint"}])
+        self.assertEqual(
+            sc["Python"],
+            [
+                {"module": "Pylance"},
+                {"module": "Ruff"},
+                {
+                    "module": "Command",
+                    "cmd": "bandit",
+                    "params": ["--tests", "B602,B605,B606,B506"],
+                },
+            ],
+        )
+        self.assertEqual(
+            sc["TypeScript"],
+            [
+                {"module": "Command", "cmd": "eslint"},
+                {"module": "Command", "cmd": "tsc", "params": ["--noEmit"]},
+            ],
+        )
 
     def test_defaults_are_returned_as_copy(self) -> None:
         """SRS-424: resolved defaults must not alias the module constant."""
@@ -2563,7 +2588,15 @@ class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
         sc["Python"].append({"module": "Dummy"})
         self.assertEqual(
             cli.load_static_check_from_config()["Python"],
-            [{"module": "Pylance"}, {"module": "Ruff"}],
+            [
+                {"module": "Pylance"},
+                {"module": "Ruff"},
+                {
+                    "module": "Command",
+                    "cmd": "bandit",
+                    "params": ["--tests", "B602,B605,B606,B506"],
+                },
+            ],
         )
 
     def test_present_entry_suppresses_defaults(self) -> None:

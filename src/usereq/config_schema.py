@@ -144,6 +144,11 @@ DEFAULT_STATIC_CHECK: dict[str, list[dict[str, Any]]] = {
             ],
         },
         {"module": "Command", "cmd": "clang-format", "params": ["--dry-run", "--Werror"]},
+        {
+            "module": "Command",
+            "cmd": "flawfinder",
+            "params": ["--minlevel=3", "--error-level=3"],
+        },
     ],
     "C++": [
         {
@@ -156,14 +161,33 @@ DEFAULT_STATIC_CHECK: dict[str, list[dict[str, Any]]] = {
             ],
         },
         {"module": "Command", "cmd": "clang-format", "params": ["--dry-run", "--Werror"]},
+        {
+            "module": "Command",
+            "cmd": "flawfinder",
+            "params": ["--minlevel=3", "--error-level=3"],
+        },
     ],
-    "JavaScript": [{"module": "Command", "cmd": "node", "params": ["--check"]}],
-    "Python": [{"module": "Pylance"}, {"module": "Ruff"}],
-    "TypeScript": [{"module": "Command", "cmd": "eslint"}],
+    "JavaScript": [
+        {"module": "Command", "cmd": "node", "params": ["--check"]},
+        {"module": "Command", "cmd": "eslint"},
+    ],
+    "Python": [
+        {"module": "Pylance"},
+        {"module": "Ruff"},
+        {
+            "module": "Command",
+            "cmd": "bandit",
+            "params": ["--tests", "B602,B605,B606,B506"],
+        },
+    ],
+    "TypeScript": [
+        {"module": "Command", "cmd": "eslint"},
+        {"module": "Command", "cmd": "tsc", "params": ["--noEmit"]},
+    ],
 }
 """! @brief Default static-check configuration applied when the configuration stores no
 `"static-check"` entry; a present entry, including an empty object, suppresses these
-defaults (SRS-424, SRS-425, SRS-426)."""
+defaults (SRS-424, SRS-425, SRS-426, SRS-618, SRS-619, SRS-620)."""
 
 
 @dataclass(frozen=True)

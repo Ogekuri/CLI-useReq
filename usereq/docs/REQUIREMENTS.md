@@ -1,8 +1,8 @@
 ---
 title: "useReq Requirements"
 description: "Software Requirements Specification"
-date: "2026-11-12"
-version: 1.28
+date: "2026-11-26"
+version: 1.29
 author: "Ogekuri"
 scope:
   paths:
@@ -98,7 +98,7 @@ No explicit performance optimizations identified.
 - **SRS-352**: MUST implement the following behavior: `README.md` MUST describe only currently supported CLI flags and provider syntax, and MUST NOT describe removed standalone flags or `--enable SPEC` syntax superseded by `--enable PROVIDER`.
 - **SRS-610**: MUST document in `README.md` that `files-compress`, `compress`, `files-find`, and `find` emit `<n>:`-prefixed lines by default and MUST NOT document `--enable-line-numbers`.
 - **SRS-611**: MUST document in CLI inline help that `files-compress`, `compress`, `files-find`, and `find` emit `<n>:`-prefixed lines by default without any enabling option.
-- **SRS-264**: MUST implement the following behavior: Runtime dependency declarations in `pyproject.toml` `[project].dependencies` MUST be present in the locked package set defined by `uv.lock`; `[project].dependencies` MUST include `ruff` and `pyright`; `[build-system].requires` MAY be outside `uv.lock`.
+- **SRS-264**: MUST implement the following behavior: Runtime dependency declarations in `pyproject.toml` `[project].dependencies` MUST be present in the locked package set defined by `uv.lock`; `[project].dependencies` MUST include `ruff`, `pyright`, and `bandit`; `[build-system].requires` MAY be outside `uv.lock`.
 - **SRS-064**: MUST load persisted `providers` from `~/.config/usereq/config.json` for the `install` command and the implicit installation flow; if no provider remains enabled, it MUST raise a config-invalid error.
 - **SRS-275**: MUST implement the following behavior: The CLI MUST accept a repeatable `--enable PROVIDER` argument as the sole mechanism for provider enablement, accepting only the provider CLI name exactly like `--disable PROVIDER`.
 - **SRS-364**: MUST implement the following behavior: `PROVIDER` MUST be one of `antigravity`, `claude`, `codex`, `copilot`, `openclaw`, `opencode`, `pi`.
@@ -434,8 +434,8 @@ No explicit performance optimizations identified.
 - **SRS-257**: MUST implement the following behavior: The `static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis.
 - **SRS-336**: MUST implement the following behavior: The `static-check` command MUST load the `tests-dir` value from `~/.config/usereq/config.json` and append it to the `src-dir` list for file selection; if `tests-dir` is missing or invalid the command MUST skip test directory inclusion without error.
 - **SRS-424**: MUST apply the SRS-425 and SRS-426 default static-check configuration when the configuration stores no `"static-check"` entry; a present entry, including an empty object, MUST suppress the defaults.
-- **SRS-425**: MUST default language `C` to Command `cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --std=c11` plus Command `clang-format --dry-run --Werror`, and `C++` to the same entries with `--std=c++20`.
-- **SRS-426**: MUST default language `JavaScript` to Command `node --check`, `TypeScript` to Command `eslint`, and `Python` to the `Pylance` and `Ruff` modules.
+- **SRS-425**: MUST default language `C` to Command `cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --std=c11`, Command `clang-format --dry-run --Werror`, and Command `flawfinder --minlevel=3 --error-level=3`.
+- **SRS-426**: MUST default language `JavaScript` to Command `node --check` plus Command `eslint`.
 - **SRS-427**: MUST pre-flight every static checker before execution: `Dummy` is always available, `Pylance` and `Ruff` require their module in the active interpreter, and `Command` requires `shutil.which(cmd)` resolution.
 - **SRS-428**: MUST report an unavailable checker as `Result: FAIL` with English evidence identifying the missing checker or binary, MUST NOT abort, and MUST continue executing the remaining checks.
 - **SRS-587**: MUST dispatch every `"scan-by-dir"`-false `static-check` entry per selected file under the SRS-256 selection semantics.
@@ -448,6 +448,9 @@ No explicit performance optimizations identified.
 - **SRS-615**: MUST implement the following behavior: The SRS-614 payload MUST emit exactly the literal lines `<system_directive>`, `[STATUS]: SUCCESS`, `[STATIC_CHECK_RESULT]: NO_SOURCE_CODE_DETECTED`, `[CONTEXT_UPDATE]`, `[AGENT_INSTRUCTIONS]`, and `</system_directive>`, with single blank lines between the `[STATIC_CHECK_RESULT]` line and `[CONTEXT_UPDATE]` and between the `[CONTEXT_UPDATE]` body sentence and `[AGENT_INSTRUCTIONS]`, and no source-file mapping output.
 - **SRS-616**: MUST implement the following behavior: The SRS-614 payload MUST render the `[CONTEXT_UPDATE]` section with exactly `This repository is structured exclusively for documentation or otherwise lacks analyzable source code. Consequently, this \`req-static-check\` return SUCCESS by definition.`
 - **SRS-617**: MUST implement the following behavior: The SRS-614 payload MUST render the `[AGENT_INSTRUCTIONS]` section with exactly these three numbered lines: `1. Do not attempt to search, extract, or index source code references within this project.`; `2. Update current context to reflect that the \`req-static-check\` skill and the \`/req-static-check\` command are **UNNECESSARY** and **DEPRECATED** for this specific repository.`; `3. Do not invoke or prompt the user to execute the \`/req-static-check\` command during any future interactions within this workspace.`
+- **SRS-618**: MUST default language `C++` to Command `cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --std=c++20`, Command `clang-format --dry-run --Werror`, and Command `flawfinder --minlevel=3 --error-level=3`.
+- **SRS-619**: MUST default language `TypeScript` to Command `eslint` plus Command `tsc --noEmit`.
+- **SRS-620**: MUST default language `Python` to the `Pylance` and `Ruff` modules plus Command `bandit --tests B602,B605,B606,B506`.
 ### 5.5 Static Analysis Dispatch Implementation Requirements
 - **SRS-258**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_LANG_CANONICAL` dict in `src/usereq/static_check.py` mapping lowercase language identifiers (including common aliases: `cpp` for C++, `csharp` for C#, `js` for JavaScript, `ts` for TypeScript, `sh` for Shell) to canonical language names from SRS-249.
 - **SRS-259**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_EXT_TO_LANG` dict in `src/usereq/static_check.py` mapping file extensions to canonical language names, using the same 20-language extension set as SRS-131.
@@ -457,7 +460,7 @@ No explicit performance optimizations identified.
 ### 5.6 Static Analysis Configuration and Dispatch Test Requirements
 - **SRS-262**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_static_check.py` for parser/dispatcher behavior plus multi-entry language arrays, including repeated `Command` entries for one language and sequential execution checks for `--files-static-check` and `--static-check`.
 - **SRS-337**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_static_check.py` verifying that `--static-check` includes files from both `src-dir` and `tests-dir` directories in its file selection.
-- **SRS-338**: MUST implement the following behavior: `pyproject.toml` `[project].dependencies` MUST include `ruff` and `pyright` as runtime dependencies so that static-analysis tools are distributed and installed with the package.
+- **SRS-338**: MUST implement the following behavior: `pyproject.toml` `[project].dependencies` MUST include `ruff`, `pyright`, and `bandit` as runtime dependencies so that static-analysis tools are distributed and installed with the package.
 - **SRS-339**: MUST implement the following behavior: `StaticCheckPylance` and `StaticCheckRuff` MUST invoke their respective tools via `[sys.executable, '-m', '<tool_module>', ...]` subprocess commands using the current process interpreter (uv tool/uvx runtime when executed via uv), MUST NOT require external PATH resolution, and MUST NOT require project `.venv` discovery.
 - **SRS-341**: MUST implement the following behavior: `StaticCheckPylance` MUST NOT pass any `--extra-path` argument to pyright and MUST invoke pyright using only the fixed interpreter/module command form and target filepath.
 - **SRS-340**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_dependency_manifests.py` verifying that `ruff` and `pyright` are declared in `pyproject.toml` `[project].dependencies`.

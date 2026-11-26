@@ -15,6 +15,7 @@ dependencies = [
   "pyyaml",
   "ruff",
   "pyright",
+  "bandit",
 ]
 authors = [
   { name = "Ogekuri" }
