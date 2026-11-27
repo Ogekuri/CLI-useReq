@@ -37,6 +37,7 @@ from .config_schema import (
     find_field,
     static_check_dir_scan_default,
 )
+from .table_style import bottom_border, header_separator, top_border
 
 BRANCH = "├── "
 """! @brief Structural marker for a configuration node with a later sibling (SRS-524)."""
@@ -744,7 +745,8 @@ def format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> list[
     @param rows {Sequence[Sequence[str]]} Cell values matching the header count.
     @return {list[str]} Physical table lines without structural tree prefixes.
     @details Column widths derive from the maximum display width of the header and every
-    formatted cell; all borders share the same column boundaries (SRS-539).
+    formatted cell; all borders share the same column boundaries (SRS-539). Borders use
+    the rounded-corner and double-line header separator style (SRS-636, SRS-637).
     """
     safe_headers = [_sanitize_cell(header) for header in headers]
     safe_rows = [[_sanitize_cell(cell) for cell in row] for row in rows]
@@ -756,10 +758,6 @@ def format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> list[
             ])
         )
 
-    def border(left: str, middle: str, right: str) -> str:
-        """! @brief Build one horizontal table border line. """
-        return left + middle.join("─" * (width + 2) for width in widths) + right
-
     def line(cells: Sequence[str]) -> str:
         """! @brief Build one padded table content line. """
         padded = [
@@ -768,9 +766,9 @@ def format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> list[
         ]
         return "│" + "│".join(padded) + "│"
 
-    lines = [border("┌", "┬", "┐"), line(safe_headers), border("├", "┼", "┤")]
+    lines = [top_border(widths), line(safe_headers), header_separator(widths)]
     lines.extend(line(row) for row in safe_rows)
-    lines.append(border("└", "┴", "┘"))
+    lines.append(bottom_border(widths))
     return lines
 
 

@@ -38,6 +38,13 @@ from .config_schema import (
     DEFAULT_TESTS_DIR,
     VALID_PROVIDER_NAMES,
 )
+from .table_style import (
+    TABLE_BORDER_GLYPHS,
+    bottom_border,
+    header_separator,
+    row_separator,
+    top_border,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 """! @brief The absolute path to the repository root."""
@@ -2911,7 +2918,7 @@ def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
     @brief Render one Unicode box-drawing table from headers and rows.
     @param headers {list[str]} Column header labels.
     @param rows {list[list[str]]} Cell values per row; every row matches the header count.
-    @return {str} Multi-line table with `│` separators and `─` borders, no ANSI styling.
+    @return {str} Multi-line table with rounded `╭`/`╮`/`╰`/`╯` borders, `│` separators, and the double-line `╞`/`═`/`╪`/`╡` header separator (SRS-636, SRS-637), no ANSI styling.
     @details Pure deterministic formatting used by the `show` subcommand (SRS-416, SRS-417).
     """
     widths = [len(header) for header in headers]
@@ -2926,12 +2933,9 @@ def _render_simple_table(headers: list[str], rows: list[list[str]]) -> str:
             + " │"
         )
 
-    def _border(left: str, middle: str, right: str) -> str:
-        return left + middle.join("─" * (width + 2) for width in widths) + right
-
-    lines = [_border("┌", "┬", "┐"), _line(headers), _border("├", "┼", "┤")]
+    lines = [top_border(widths), _line(headers), header_separator(widths)]
     lines.extend(_line(row) for row in rows)
-    lines.append(_border("└", "┴", "┘"))
+    lines.append(bottom_border(widths))
     return "\n".join(lines)
 
 
@@ -3414,14 +3418,14 @@ def run(args: Namespace) -> None:
         and `Skills Installed` columns (SRS-291). Rows are rendered only for providers
         whose skills were installed during the current invocation (SRS-036), in
         alphabetical order. `Skills Installed` wraps overflowing content onto
-        subsequent lines at a maximum width of 50 characters (SRS-290). Borders are
-        emitted with Unicode line-drawing characters and bright-red ANSI styling
-        (SRS-049).
+        subsequent lines at a maximum width of 50 characters (SRS-290). Borders use
+        rounded corner glyphs, the double-line header separator, single-line inter-row
+        separators, and bright-red ANSI styling (SRS-049, SRS-636, SRS-637, SRS-638).
         @note Complexity: O(C * (S log S)) where C is provider count and S is installed skills per provider.
         @note Side effects: None (pure formatting).
         @param skills_map {dict[str, set[str]]} Mapping: provider name -> installed skill identifiers.
         @return {list[str]} Fully formatted table lines (including separators) ready for printing.
-        @satisfies SRS-036, SRS-049, SRS-290, SRS-291
+        @satisfies SRS-036, SRS-049, SRS-290, SRS-291, SRS-636, SRS-637, SRS-638
         """
         columns = ("Provider", "Skills Installed")
         rows: list[tuple[str, str]] = []
@@ -3483,19 +3487,19 @@ def run(args: Namespace) -> None:
                 lines.append(f"\u2502 {provider_part} \u2502 {skill_part} \u2502")
             return lines
 
-        horizontal_provider = "\u2500" * (provider_width + 2)
-        horizontal_skills = "\u2500" * (skills_width + 2)
-        top = f"\u250c{horizontal_provider}\u252c{horizontal_skills}\u2510"
-        middle = f"\u251c{horizontal_provider}\u253c{horizontal_skills}\u2524"
-        bottom = f"\u2514{horizontal_provider}\u2534{horizontal_skills}\u2518"
+        column_widths = [provider_width, skills_width]
+        top = top_border(column_widths)
+        header_sep = header_separator(column_widths)
+        row_sep = row_separator(column_widths)
+        bottom = bottom_border(column_widths)
 
         lines: list[str] = [top]
         lines.extend(_render_row(*columns))
-        lines.append(middle)
+        lines.append(header_sep)
         for index, row in enumerate(rows):
             lines.extend(_render_row(*row))
             if index != len(rows) - 1:
-                lines.append(middle)
+                lines.append(row_sep)
         lines.append(bottom)
         return lines
 
@@ -3506,9 +3510,7 @@ def run(args: Namespace) -> None:
         @param line {str} One already-rendered table line.
         @return {str} Line with border glyphs wrapped in ANSI bright-red and reset sequences.
         """
-        border_chars = frozenset(
-            "\u250c\u252c\u2510\u251c\u253c\u2524\u2514\u2534\u2518\u2500\u2502"
-        )
+        border_chars = TABLE_BORDER_GLYPHS
         return "".join(
             f"{ANSI_BRIGHT_RED}{char}{ANSI_RESET}" if char in border_chars else char
             for char in line

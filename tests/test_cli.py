@@ -833,6 +833,9 @@ class TestInstallationSummaryTable(HomeIsolatedTestCase):
         self.assertIn("codex", output)
         self.assertIn("pi", output)
         self.assertIn("Skills Installed", output)
+        # SRS-636/SRS-637: rounded borders and double-line header separator render.
+        self.assertIn("╭", output)
+        self.assertIn("╞", output)
 
     def test_table_contains_exactly_provider_and_skills_columns(self) -> None:
         """SRS-291/SRS-294: exactly the Provider and Skills Installed columns render."""
@@ -2206,6 +2209,11 @@ class TestAuditCommand(HomeIsolatedTestCase):
         rows = self.audit_table_rows(mock_stdout.getvalue())
         self.assertEqual(rows[0], ["Language", "Static-Check", "Installed"])
         self.assertEqual(rows[1], ["Python", "usereq-audit-basic-cmd", "no"])
+        # SRS-636/SRS-637: rounded borders and double-line header separator render.
+        audit_output = mock_stdout.getvalue()
+        self.assertIn("╭", audit_output)
+        self.assertIn("╞", audit_output)
+        self.assertIn("╰", audit_output)
 
     def test_audit_loads_defaults_when_key_absent(self) -> None:
         """SRS-623: absent "static-check" key resolves the SRS-424 default entries.

@@ -210,6 +210,11 @@ No explicit performance optimizations identified.
 - **SRS-596**: MUST implement the following behavior: `--write-config` MUST bootstrap an absent `~/.config/usereq/config.json` from schema defaults per SRS-529 and MUST NOT require `--prj-base`.
 - **SRS-597**: MUST implement the following behavior: `--write-config` MUST emit no stdout payload and MUST exit with code 0 on success and 1 with an English stderr diagnostic on failure.
 
+### 3.2.2 CLI Table Rendering Style
+- **SRS-636**: MUST render the top and bottom borders of every CLI-generated table with rounded corner glyphs `╭`, `╮`, `╰`, `╯` joined by `─` segments and `┬`/`┴` column junctions.
+- **SRS-637**: MUST render the header-to-content separator of every CLI-generated table as one double line composed of `╞`, repeated `═` segments, `╪` column junctions, and `╡`.
+- **SRS-638**: MUST render inter-row separators of CLI-generated tables, when a table emits them, as single `├`/`┼`/`┤` lines so only the header separator is double.
+
 ### 3.3 Provider Resource Generation
 - **SRS-381**: MUST install provider skills into user-level CLI configuration directories under the user HOME directory and MUST NOT write into project or git-repository directories.
 - **SRS-382**: MUST install provider `claude` skills to `~/.claude/skills`.
@@ -403,6 +408,7 @@ No explicit performance optimizations identified.
 - **SRS-612**: MUST include unit tests verifying that `compress` and `files-compress` output prefixes match the original source line numbers of extracted functions.
 - **SRS-613**: MUST include unit tests verifying that `files-find` and `find` output line numbers match original source positions and construct code equals the as-is source lines including comments.
 - **SRS-630**: MUST include unit tests in `tests/test_cli.py` verifying that `audit` executes without `--prj-base`, renders the audit-table columns and language grouping, and resolves per-entry `Installed` cells for `Command` entries.
+- **SRS-639**: MUST include unit tests verifying every CLI-generated table renders the rounded corner borders of SRS-636 and the double-line header separator of SRS-637.
 
 ## 5. Static Code Analysis Requirements
 

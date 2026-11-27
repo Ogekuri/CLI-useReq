@@ -26,7 +26,7 @@ from usereq.config_cli import RenderNode, format_table, render_text
 
 TREE_MARKERS = ("├── ", "└── ")
 PREFIX_SEGMENTS = ("│   ", "    ")
-TABLE_CHARS = "│┬┼┴┌┐├┤└┘"
+TABLE_CHARS = "│┬┼┴┌┐├┤└┘╭╮╰╯╞╡╪"
 
 
 def display_width(text: str) -> int:
@@ -106,7 +106,7 @@ def validate_tables(lines: list[str]) -> int:
     position = 0
     while position < len(lines):
         segments, rest = split_prefix(lines[position])
-        if not rest.startswith("┌"):
+        if not rest.startswith("╭"):
             position += 1
             continue
         prefix = "".join(segments)
@@ -116,10 +116,10 @@ def validate_tables(lines: list[str]) -> int:
             assert "".join(current_segments) == prefix, "table owner prefix mismatch"
             block.append(current_rest)
             position += 1
-            if current_rest.startswith("└"):
+            if current_rest.startswith("╰"):
                 break
-        assert block[0].startswith("┌"), "table must start with a top border"
-        assert block[-1].startswith("└"), "table must end with a bottom border"
+        assert block[0].startswith("╭"), "table must start with a rounded top border"
+        assert block[-1].startswith("╰"), "table must end with a rounded bottom border"
         widths = {display_width(row) for row in block}
         assert len(widths) == 1, f"table rows differ in width: {sorted(widths)}"
         border_columns = None
@@ -261,11 +261,11 @@ class TestRendererGoldenOutput(unittest.TestCase):
         node.details = [format_table(["Idx", "Value"], [["0", '"a"']])]
         expected = (
             "Leaf = (2 items)\n"
-            "    ┌─────┬───────┐\n"
+            "    ╭─────┬───────╮\n"
             "    │ Idx │ Value │\n"
-            "    ├─────┼───────┤\n"
+            "    ╞═════╪═══════╡\n"
             '    │ 0   │ "a"   │\n'
-            "    └─────┴───────┘"
+            "    ╰─────┴───────╯"
         )
         self.assertEqual(render_text(node), expected)
         validate_tables(render_text(node).split("\n"))
@@ -276,9 +276,10 @@ class TestTableLayout(unittest.TestCase):
 
     def test_rectangular_ascii_table(self) -> None:
         rows = format_table(["Key", "Value"], [["a", "1"], ["bb", "22"]])
-        self.assertEqual(rows[0], "┌─────┬───────┐")
+        self.assertEqual(rows[0], "╭─────┬───────╮")
         self.assertEqual(rows[1], "│ Key │ Value │")
-        self.assertEqual(rows[2], "├─────┼───────┤")
+        self.assertEqual(rows[2], "╞═════╪═══════╡")
+        self.assertEqual(rows[-1], "╰─────┴───────╯")
         validate_tables(rows)
 
     def test_unicode_and_escaped_newline_cells(self) -> None:
