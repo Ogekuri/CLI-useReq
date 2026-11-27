@@ -407,7 +407,7 @@ No explicit performance optimizations identified.
 - **SRS-598**: MUST include unit tests in `tests/test_config_cli.py` verifying that `--write-config` adds only missing canonical defaults, preserves stored values, bootstraps an absent configuration file, rejects multi-command combinations, and reports failures on stderr with exit code 1.
 - **SRS-612**: MUST include unit tests verifying that `compress` and `files-compress` output prefixes match the original source line numbers of extracted functions.
 - **SRS-613**: MUST include unit tests verifying that `files-find` and `find` output line numbers match original source positions and construct code equals the as-is source lines including comments.
-- **SRS-630**: MUST include unit tests in `tests/test_cli.py` verifying that `audit` executes without `--prj-base`, renders the audit-table columns and language grouping, and resolves per-entry `Installed` cells for `Command` entries.
+- **SRS-630**: MUST include unit tests in `tests/test_cli.py` verifying that `audit` executes without `--prj-base`, renders the audit-table columns and language grouping, renders per-entry complete `cmd`-with-`params` commands in `Static-Check` cells, and resolves `Installed` cells for `Command` entries.
 - **SRS-639**: MUST include unit tests verifying every CLI-generated table renders the rounded corner borders of SRS-636 and the double-line header separator of SRS-637.
 
 ## 5. Static Code Analysis Requirements
@@ -486,7 +486,8 @@ No explicit performance optimizations identified.
 - **SRS-624**: MUST implement the following behavior: `audit` MUST verify only `Command` static-check entries, resolving each entry installation through `shutil.which(cmd)`.
 - **SRS-625**: MUST implement the following behavior: `audit` MUST print exactly one audit table with columns `Language`, `Static-Check`, and `Installed` containing one row per configured `Command` static-check entry.
 - **SRS-626**: MUST implement the following behavior: Audit-table rows MUST be grouped by canonical language in ascending alphabetical order and MUST preserve persisted entry insertion order within each language.
-- **SRS-627**: MUST implement the following behavior: The `Static-Check` cell MUST render the `cmd` token of the audited `Command` entry, and the `Installed` cell MUST render `yes` or `no`.
+- **SRS-627**: MUST implement the following behavior: The `Static-Check` cell MUST render the `cmd` token of the audited `Command` entry followed by every `params` element in stored order, each separated by one space.
+- **SRS-640**: MUST implement the following behavior: The audit-table `Installed` cell MUST render `yes` when the entry `cmd` resolves on `PATH` and `no` otherwise.
 - **SRS-628**: MUST implement the following behavior: `audit` MUST exit with code 0 after printing the audit table; individual unavailable checkers MUST NOT change the exit code.
 
 ## 6. Git Integration and Worktree Management Requirements

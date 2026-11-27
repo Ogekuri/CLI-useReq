@@ -2191,6 +2191,50 @@ class TestAuditCommand(HomeIsolatedTestCase):
         )
         self.assertEqual(rows, [("Python", "usereq-audit-alpha-cmd", False)])
 
+    def test_audit_renders_complete_command_with_params(self) -> None:
+        """Level 0/1 (SRS-627/SRS-630): Static-Check cells render the full command.
+
+        expected_output: audit_static_check_installation returns the complete
+        `cmd`-with-`params` label preserving stored param order, and the CLI audit
+        table renders the same complete command in the Static-Check cell while the
+        Installed cell stays no for a binary absent from PATH.
+        """
+        # Level 0: complete command label resolved from cmd plus params in order.
+        rows = audit_static_check_installation(
+            {
+                "C": [
+                    {
+                        "module": "Command",
+                        "cmd": "usereq-audit-full-cmd",
+                        "params": ["--error-exitcode=1", "--std=c11"],
+                    }
+                ]
+            }
+        )
+        self.assertEqual(
+            rows,
+            [("C", "usereq-audit-full-cmd --error-exitcode=1 --std=c11", False)],
+        )
+        # Level 1: the CLI audit table renders the complete command cell.
+        self.seed_static_check_config(
+            {
+                "C": [
+                    {
+                        "module": "Command",
+                        "cmd": "usereq-audit-full-cmd",
+                        "params": ["--error-exitcode=1", "--std=c11"],
+                    }
+                ]
+            }
+        )
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["audit"])
+        self.assertEqual(rc, 0)
+        self.assertIn(
+            ["C", "usereq-audit-full-cmd --error-exitcode=1 --std=c11", "no"],
+            self.audit_table_rows(mock_stdout.getvalue()),
+        )
+
     def test_audit_runs_without_prj_base(self) -> None:
         """SRS-621/SRS-625/SRS-627/SRS-628: bare audit prints one audit table.
 
@@ -2220,7 +2264,8 @@ class TestAuditCommand(HomeIsolatedTestCase):
 
         expected_output: the audit table contains the default Command rows for C,
         C++, JavaScript, Python, and TypeScript regardless of local binary
-        availability, and no internally implemented module rows.
+        availability, each rendered as the complete `cmd`-with-`params` command per
+        the updated SRS-627 rendering, and no internally implemented module rows.
         """
         # Act: run the audit on an isolated HOME without a configuration file.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
@@ -2229,15 +2274,17 @@ class TestAuditCommand(HomeIsolatedTestCase):
         self.assertEqual(rc, 0)
         pairs = [row[:2] for row in self.audit_table_rows(mock_stdout.getvalue())]
         for expected_pair in (
-            ["C", "cppcheck"],
-            ["C", "clang-format"],
-            ["C", "flawfinder"],
-            ["C++", "cppcheck"],
-            ["JavaScript", "node"],
+            ["C", "cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --std=c11"],
+            ["C", "clang-format --dry-run --Werror"],
+            ["C", "flawfinder --minlevel=3 --error-level=3"],
+            ["C++", "cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --std=c++20"],
+            ["C++", "clang-format --dry-run --Werror"],
+            ["C++", "flawfinder --minlevel=3 --error-level=3"],
+            ["JavaScript", "node --check"],
             ["JavaScript", "eslint"],
-            ["Python", "bandit"],
+            ["Python", "bandit --tests B602,B605,B606,B506"],
             ["TypeScript", "eslint"],
-            ["TypeScript", "tsc"],
+            ["TypeScript", "tsc --noEmit"],
         ):
             self.assertIn(expected_pair, pairs)
         # Internally implemented modules are not audited (SRS-624).

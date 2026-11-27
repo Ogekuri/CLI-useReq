@@ -402,29 +402,37 @@ def dispatch_static_check_for_directory(
 # Installation audit helpers (SRS-621..SRS-628)
 # ---------------------------------------------------------------------------
 
-def _audit_command_entry_installation(cmd_value: object) -> tuple[bool, str]:
+def _audit_command_entry_installation(entry: Mapping[str, object]) -> tuple[bool, str]:
     """!
-    @brief Resolve the installation state and audit label of one `Command` static-check entry.
-    @param cmd_value {object} Raw `"cmd"` token of the `Command` entry.
-    @return {tuple[bool, str]} Tuple `(installed, cmd_label)` where `installed` resolves
+    @brief Resolve the installation state and the complete audit command of one `Command` static-check entry.
+    @param entry {Mapping[str, object]} Raw `Command` entry mapping holding `"cmd"` and the optional `"params"` list.
+    @return {tuple[bool, str]} Tuple `(installed, command_label)` where `installed` resolves
       through the SRS-427 availability probe (`shutil.which(cmd)` `PATH` lookup) and
-      `cmd_label` is the bare `cmd` token, or the empty string when `cmd` is absent
-      or not a non-empty string.
+      `command_label` is the complete checker command: the `cmd` token followed by every
+      `params` element in stored order, each separated by one space (SRS-627), or the
+      empty string when `cmd` is absent or not a non-empty string.
     @details Reuses the `StaticCheckCommand` availability probe so the audit verdict
       matches the execution pre-flight exactly (SRS-427, SRS-624). A `Command` entry
-      without a non-empty string `cmd` resolves as not installed. No checker subprocess
-      executes: only constructor and `is_available()` calls run. Complexity: O(1).
-      Side effects: none.
+      without a non-empty string `cmd` resolves as not installed with an empty label.
+      `params` entries render through their string form in stored order so the label
+      stays deterministic; a non-list `params` contributes no tokens. No checker
+      subprocess executes: only constructor and `is_available()` calls run.
+      Complexity: O(P) over P params. Side effects: none.
     @see audit_static_check_installation
     @satisfies SRS-624, SRS-627
     """
+    cmd_value = entry.get("cmd") if isinstance(entry, Mapping) else None
     if not isinstance(cmd_value, str) or not cmd_value:
         return False, ""
+    parts: List[str] = [cmd_value]
+    params = entry.get("params")
+    if isinstance(params, (list, tuple)):
+        parts.extend(str(param) for param in params)
     checker = StaticCheckCommand(
         cmd=cmd_value, inputs=[], extra_args=None, fail_only=True
     )
     available, _reason = checker.is_available()
-    return available, cmd_value
+    return available, " ".join(parts)
 
 
 def audit_static_check_installation(
@@ -434,9 +442,11 @@ def audit_static_check_installation(
     @brief Resolve the installation audit rows of the configured `Command` static-check entries.
     @param static_check_config {Mapping[str, Sequence[Mapping[str, object]]]} Static-check
       configuration keyed by canonical language name with per-language entry lists.
-    @return {list[tuple[str, str, bool]]} One `(canonical_language, cmd, installed)` tuple per
-      configured `Command` entry, grouped by canonical language in ascending alphabetical
-      order and preserving persisted entry insertion order within each language (SRS-626).
+    @return {list[tuple[str, str, bool]]} One `(canonical_language, complete_command, installed)` tuple per
+      configured `Command` entry, where `complete_command` renders the entry `cmd` token
+      followed by every `params` element in stored order separated by one space (SRS-627);
+      tuples group by canonical language in ascending alphabetical order and preserve
+      persisted entry insertion order within each language (SRS-626).
     @details Non-mapping entries and every internally implemented module (`Dummy`,
       `Pylance`, `Ruff`, and unknown tokens) are skipped: only `Command` entries are
       audited through `shutil.which(cmd)` (SRS-624). No checker subprocess executes.
@@ -451,8 +461,8 @@ def audit_static_check_installation(
                 continue
             if str(entry.get("module", "")).lower() != "command":
                 continue
-            installed, cmd_label = _audit_command_entry_installation(entry.get("cmd"))
-            rows.append((canonical_lang, cmd_label, installed))
+            installed, command_label = _audit_command_entry_installation(entry)
+            rows.append((canonical_lang, command_label, installed))
     return rows
 
 

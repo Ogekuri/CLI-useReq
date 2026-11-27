@@ -3118,12 +3118,14 @@ def run_audit(args: Namespace) -> None:
     from `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when
     the `"static-check"` key is absent (SRS-623); audits only `Command` entries through
     `shutil.which(cmd)` (SRS-624) and prints exactly one audit table with `Language`,
-    `Static-Check`, and `Installed` columns (SRS-625, SRS-626, SRS-627). No checker
-    subprocess executes, so individual unavailable binaries never change the exit code
-    (SRS-628). Complexity: O(E) over E configured entries. Side effects: one stdout
-    audit-table emission.
+    `Static-Check`, and `Installed` columns whose `Static-Check` cells render the complete
+    checker command (`cmd` followed by every `params` element in stored order, SRS-627)
+    and whose `Installed` cells render `yes`/`no` per `PATH` resolution (SRS-640)
+    (SRS-625, SRS-626). No checker subprocess executes, so individual unavailable binaries
+    never change the exit code (SRS-628). Complexity: O(E) over E configured entries.
+    Side effects: one stdout audit-table emission.
     @throws ReqError If a provided `--prj-base` is absent or does not exist (SRS-395).
-    @satisfies SRS-621, SRS-622, SRS-623, SRS-624, SRS-625, SRS-626, SRS-627, SRS-628
+    @satisfies SRS-621, SRS-622, SRS-623, SRS-624, SRS-625, SRS-626, SRS-627, SRS-628, SRS-640
     """
     from .static_check import audit_static_check_installation
 
