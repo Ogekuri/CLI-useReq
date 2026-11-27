@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.19](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.19) - 2026-11-23
+## [0.75.20](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.20) - 2026-11-27
 ### ⛰️  Features
 - Update req-static-check commnad.
 - Update prompts with skills.
@@ -33,6 +33,7 @@
 - Update prompts.
 
 ### 🐛  Bug Fixes
+- Update .gitignore file.
 - align stale tests with SRS-614 empty payload [useReq] *(static-check)*
   Commit 8e4dd1b implemented SRS-614..SRS-617 (static-check prints the
   canonical empty-static-check payload and exits 0 on zero selected source
@@ -97,6 +98,12 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- Update bundled prompts from v0.38.16 to v0.38.17 [useReq] *(prompts)*
+  Updated bundled prompts and document templates from CLI-Prompts version v0.38.16 to v0.38.17.
+- Update bundled prompts from v0.38.15 to v0.38.16 [useReq] *(prompts)*
+  Updated bundled prompts and document templates from CLI-Prompts version v0.38.15 to v0.38.16.
+- extend default static-check tool coverage [useReq] *(static-check)*
+  Update REQUIREMENTS (SRS-425/SRS-426, add SRS-618..SRS-620, extend SRS-264/SRS-338 with bandit runtime dependency) and synchronize DEFAULT_STATIC_CHECK in config_schema.py: add Command flawfinder (--minlevel=3 --error-level=3) to C/C++, Command eslint to JavaScript, Command bandit (--tests B602,B605,B606,B506 RCE-class gate) to Python, and Command tsc --noEmit to TypeScript defaults. Rust/Go defaults intentionally omitted: cargo clippy is incompatible with the dispatch contract and go vet per-file dispatch fails on module-less external imports (experimental evidence). Synchronize tests/test_static_check.py default-resolution assertions (SRS-429). Verified: static-check exit 0, uv run pytest 2089 passed.
 - Update bundled prompts from v0.38.14 to v0.38.15 [useReq] *(prompts)*
   Updated bundled prompts and document templates from CLI-Prompts version v0.38.14 to v0.38.15.
 - Update bundled prompts from v0.38.12 to v0.38.14 [useReq] *(prompts)*
@@ -1683,7 +1690,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.19\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.19
+- \[0.75.20\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.20
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1759,4 +1766,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.19]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.19
+[0.75.20]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.20
