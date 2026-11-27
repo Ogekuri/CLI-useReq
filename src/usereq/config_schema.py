@@ -149,6 +149,11 @@ DEFAULT_STATIC_CHECK: dict[str, list[dict[str, Any]]] = {
             "cmd": "flawfinder",
             "params": ["--minlevel=3", "--error-level=3"],
         },
+        {
+            "module": "Command",
+            "cmd": "clang-tidy",
+            "params": ["-checks=-*,clang-analyzer-*,cert-*"],
+        },
     ],
     "C++": [
         {
@@ -166,6 +171,11 @@ DEFAULT_STATIC_CHECK: dict[str, list[dict[str, Any]]] = {
             "cmd": "flawfinder",
             "params": ["--minlevel=3", "--error-level=3"],
         },
+        {
+            "module": "Command",
+            "cmd": "clang-tidy",
+            "params": ["-checks=-*,clang-analyzer-*,cert-*"],
+        },
     ],
     "JavaScript": [
         {"module": "Command", "cmd": "node", "params": ["--check"]},
@@ -181,7 +191,11 @@ DEFAULT_STATIC_CHECK: dict[str, list[dict[str, Any]]] = {
         },
     ],
     "Rust": [
-        {"module": "Command", "cmd": "cargo", "params": ["clippy"]},
+        {
+            "module": "Command",
+            "cmd": "cargo",
+            "params": ["clippy", "--", "-D", "warnings"],
+        },
         {"module": "Command", "cmd": "cargo", "params": ["geiger"]},
     ],
     "TypeScript": [

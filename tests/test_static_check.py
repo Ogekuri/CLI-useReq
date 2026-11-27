@@ -2104,14 +2104,19 @@ class TestCargoCrateLevelDispatch(unittest.TestCase):
         """!
         @brief SRS-424 default resolution includes the SRS-631 Rust cargo entries.
         @details expected_output: DEFAULT_STATIC_CHECK['Rust'] equals the clippy and geiger
-          Command cargo entries in insertion order.
+          Command cargo entries in insertion order, with the clippy entry using the
+          error-promoting `-- -D warnings` arguments.
         """
         from usereq.cli import DEFAULT_STATIC_CHECK
 
         self.assertEqual(
             DEFAULT_STATIC_CHECK["Rust"],
             [
-                {"module": "Command", "cmd": "cargo", "params": ["clippy"]},
+                {
+                    "module": "Command",
+                    "cmd": "cargo",
+                    "params": ["clippy", "--", "-D", "warnings"],
+                },
                 {"module": "Command", "cmd": "cargo", "params": ["geiger"]},
             ],
         )
@@ -2655,11 +2660,24 @@ class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
                     "cmd": "flawfinder",
                     "params": ["--minlevel=3", "--error-level=3"],
                 },
+                {
+                    "module": "Command",
+                    "cmd": "clang-tidy",
+                    "params": ["-checks=-*,clang-analyzer-*,cert-*"],
+                },
             ],
         )
         self.assertEqual(
             sc["C++"][0]["params"][-1],
             "--std=c++20",
+        )
+        self.assertIn(
+            {
+                "module": "Command",
+                "cmd": "clang-tidy",
+                "params": ["-checks=-*,clang-analyzer-*,cert-*"],
+            },
+            sc["C++"],
         )
         self.assertEqual(
             sc["JavaScript"],

@@ -2046,7 +2046,7 @@ details (SRS-522, SRS-525, SRS-540).
 
 ---
 
-# config_schema.py | Python | 407L | 21 symbols | 3 imports | 30 comments
+# config_schema.py | Python | 421L | 21 symbols | 3 imports | 30 comments
 > Path: `src/usereq/config_schema.py`
 - @brief Canonical configuration schema for the user-global useReq configuration file.
 - @details Single source of truth for the persisted configuration parameter set: section and
@@ -2100,21 +2100,21 @@ from typing import Any, Optional
 - @return {bool} True exactly for SRS-584 directory-scan-capable entries, False otherwise.
 - @satisfies SRS-584, SRS-585
 
-### class `class SchemaNode` `@dataclass(frozen=True)` (L198-229)
+### class `class SchemaNode` `@dataclass(frozen=True)` (L212-243)
 - @brief Typed schema node describing one configuration token or collection element.
 - @details Nodes form an ordered tree rooted at `CONFIG_SECTION`. A node carries the exact canonical token, the node kind, a concise English description, the textual type label and constraints used by `--info`, the typed default (or `NO_DEFAULT`), enumeration metadata, and the child collection definitions used by validation and rendering (SRS-521, SRS-522, SRS-538).
-- fn `def has_default(self) -> bool` (L225-229)
+- fn `def has_default(self) -> bool` (L239-243)
   - @brief Return True when the node declares a typed default value (SRS-536).
 
-### fn `def _entry_fields() -> tuple[SchemaNode, ...]` `priv` (L230-279)
+### fn `def _entry_fields() -> tuple[SchemaNode, ...]` `priv` (L244-293)
 - @brief Build the fixed field set of one static-check dictionary entry (SRS-540).
 - @return {tuple[SchemaNode, ...]} Ordered `module`, `cmd`, `params`, and `scan-by-dir` field nodes.
 
-- var `CONFIG_SECTION = SchemaNode(` (L300)
+- var `CONFIG_SECTION = SchemaNode(` (L314)
 - @brief Array of static-check entries stored under one canonical language key (SRS-540)."""
-- var `ROOT_LABEL = "Application_Configuration"` (L377)
+- var `ROOT_LABEL = "Application_Configuration"` (L391)
 - @brief Root schema section holding every persisted configuration parameter (SRS-521)."""
-### fn `def find_field(node: SchemaNode, token: str) -> Optional[SchemaNode]` (L384-398)
+### fn `def find_field(node: SchemaNode, token: str) -> Optional[SchemaNode]` (L398-412)
 - @brief Canonical persisted configuration keys in schema order (SRS-288, SRS-521)."""
 - @brief Look up one ordered child field of a section or dictionary node.
 - @details Matching is case-sensitive and byte-exact so path resolution never depends on displayed labels or decorative text (SRS-520, SRS-522).
@@ -2122,7 +2122,7 @@ from typing import Any, Optional
 - @param token {str} Exact canonical field token to resolve.
 - @return {Optional[SchemaNode]} Matching field node, or None when the token is unknown.
 
-### fn `def canonical_path(tokens: tuple[str, ...]) -> str` (L399-408)
+### fn `def canonical_path(tokens: tuple[str, ...]) -> str` (L413-422)
 - @brief Join canonical path tokens with the colon separator.
 - @details Empty tokens are rejected by the resolver, so joining never produces an ambiguous empty path segment (SRS-520).
 - @param tokens {tuple[str, ...]} Ordered canonical path tokens without the virtual root.
@@ -2145,13 +2145,13 @@ from typing import Any, Optional
 |`STATIC_CHECK_LANGUAGES`|var|pub|73||
 |`STATIC_CHECK_MODULES`|var|pub|97||
 |`static_check_dir_scan_default`|fn|pub|109-134|def static_check_dir_scan_default(module: Any, cmd: Any =...|
-|`SchemaNode`|class|pub|198-229|class SchemaNode|
-|`SchemaNode.has_default`|fn|pub|225-229|def has_default(self) -> bool|
-|`_entry_fields`|fn|priv|230-279|def _entry_fields() -> tuple[SchemaNode, ...]|
-|`CONFIG_SECTION`|var|pub|300||
-|`ROOT_LABEL`|var|pub|377||
-|`find_field`|fn|pub|384-398|def find_field(node: SchemaNode, token: str) -> Optional[...|
-|`canonical_path`|fn|pub|399-408|def canonical_path(tokens: tuple[str, ...]) -> str|
+|`SchemaNode`|class|pub|212-243|class SchemaNode|
+|`SchemaNode.has_default`|fn|pub|239-243|def has_default(self) -> bool|
+|`_entry_fields`|fn|priv|244-293|def _entry_fields() -> tuple[SchemaNode, ...]|
+|`CONFIG_SECTION`|var|pub|314||
+|`ROOT_LABEL`|var|pub|391||
+|`find_field`|fn|pub|398-412|def find_field(node: SchemaNode, token: str) -> Optional[...|
+|`canonical_path`|fn|pub|413-422|def canonical_path(tokens: tuple[str, ...]) -> str|
 
 
 ---
