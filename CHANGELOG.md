@@ -1,7 +1,10 @@
 # Changelog
 
-## [0.75.20](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.20) - 2026-11-27
+## [0.75.21](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.21) - 2026-11-27
 ### ⛰️  Features
+- Add static-check installation audit subcommand [useReq] *(install-audit)*
+  Add SRS-621..SRS-628: bare install-audit subcommand executable without --prj-base, optional --prj-base audit context, static-check entry loading with SRS-424 default resolution, per-entry installation resolution reusing the SRS-427 availability probes, and one Language/Static-Check/Installed audit table grouped by canonical language with stable exit code 0.
+  Add SRS-629 README command documentation and SRS-630 unit tests (tests/test_cli.py::TestInstallAuditCommand, 8 cases). Update WORKFLOW.md PROC:main call trace and regenerate REFERENCES.md.
 - Update req-static-check commnad.
 - Update prompts with skills.
 - add --write-config command persisting missing schema defaults [useReq] *(config)*
@@ -98,6 +101,17 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- add cargo crate-level dispatch and Rust clippy/geiger defaults [useReq] *(static-check)*
+  SRS-631: Rust defaults to cargo clippy and cargo geiger Command entries.
+  SRS-632/SRS-633/SRS-634: crate-level dispatch for Command cargo entries anchored through the subprocess working directory, without input/target paths or fixture-exclusion flags (cargo native manifest discovery).
+  SRS-584/SRS-589: cargo joins the directory-scan capability set; directory targeting may use the subprocess cwd for cargo. SRS-424 enumerates the full default set.
+  SRS-635: unit tests for capability defaults, command composition, cwd anchoring, and Rust default resolution; WORKFLOW.md and REFERENCES.md synchronized.
+- Audit only Command static-checks with bare cmd labels [useReq] *(audit)*
+  Restrict the audit subcommand to Command-type static-check entries: internally implemented modules (Dummy, Pylance, Ruff) are no longer audited and do not appear in the table, and the Static-Check cell renders the bare cmd token resolved through the SRS-427 shutil.which probe.
+  Update SRS-624/SRS-625/SRS-627/SRS-630 scope, README audit documentation, WORKFLOW.md call trace (audit_static_check_installation/_audit_command_entry_installation), and align unit tests (295 passed).
+- Rename install-audit subcommand to audit [useReq] *(audit)*
+  Rename the install-audit bare subcommand to audit across the CLI parser, main dispatch, run_install_audit-to-run_audit symbol, README command documentation, and unit tests; no legacy alias is kept.
+  Update the SRS-621..SRS-630 command token, the WORKFLOW.md PROC:main call trace (run_audit), and regenerate REFERENCES.md; tests updated to the audit invocation (295 passed, 11 subtests).
 - Update bundled prompts from v0.38.16 to v0.38.17 [useReq] *(prompts)*
   Updated bundled prompts and document templates from CLI-Prompts version v0.38.16 to v0.38.17.
 - Update bundled prompts from v0.38.15 to v0.38.16 [useReq] *(prompts)*
@@ -1690,7 +1704,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.20\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.20
+- \[0.75.21\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.21
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1766,4 +1780,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.20]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.20
+[0.75.21]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.21
