@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.21](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.21) - 2026-11-27
+## [0.75.22](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.22) - 2026-11-27
 ### ⛰️  Features
 - Add static-check installation audit subcommand [useReq] *(install-audit)*
   Add SRS-621..SRS-628: bare install-audit subcommand executable without --prj-base, optional --prj-base audit context, static-check entry loading with SRS-424 default resolution, per-entry installation resolution reusing the SRS-427 availability probes, and one Language/Static-Check/Installed audit table grouped by canonical language with stable exit code 0.
@@ -101,6 +101,19 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- Print full checker command with params in audit Static-Check column [useReq] *(audit)*
+  The req audit Static-Check cell now renders the complete Command entry
+  invocation: the cmd token followed by every params element in stored
+  order, space separated (SRS-627); the Installed yes/no cell rendering is
+  split into the new SRS-640. run_audit documentation and the WORKFLOW.md
+  audit call-trace nodes were aligned, and tests/test_cli.py gained HDT
+  coverage for the complete-command rendering with the SRS-424 default
+  entries asserted as full commands (SRS-630).
+- Render all CLI tables with rounded borders and double-line header separator [useReq] *(tables)*
+  Add SRS-636..SRS-638 requiring rounded corner borders and the double-line header-to-content separator for every CLI-generated table, plus test requirement SRS-639.
+  Introduce src/usereq/table_style.py as the single canonical glyph set and border composer module (top_border, header_separator, row_separator, bottom_border, TABLE_BORDER_GLYPHS).
+  Migrate cli._render_simple_table, cli._format_install_table, cli._colorize_table_border and config_cli.format_table to the shared style; extend bright-red border colorization to the new glyphs (SRS-049).
+  Update table golden strings and add glyph assertions in tests/test_config_cli.py and tests/test_cli.py.
 - add cargo crate-level dispatch and Rust clippy/geiger defaults [useReq] *(static-check)*
   SRS-631: Rust defaults to cargo clippy and cargo geiger Command entries.
   SRS-632/SRS-633/SRS-634: crate-level dispatch for Command cargo entries anchored through the subprocess working directory, without input/target paths or fixture-exclusion flags (cargo native manifest discovery).
@@ -1704,7 +1717,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.21\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.21
+- \[0.75.22\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.22
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1780,4 +1793,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.21]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.21
+[0.75.22]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.22
