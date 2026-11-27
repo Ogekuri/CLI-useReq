@@ -16,11 +16,10 @@ usage: >
 - Binding: retain `{{PRJ_BASE}}`, `{{GIT_BASE}}`, active worktree root, project identity, evidence, directory existence states, and document provenance throughout this invocation. Start fresh for each invocation; replace the bindings only after a validated context transition.
 - Paths: substitute the resolved base in each prefixed path. For an installation-supplied source list, apply the base separately to every entry; preserve order and explicit list boundaries, never split on spaces or commas. Treat paths as data and quote each resulting literal argument separately, with option termination where supported.
 - Containment: validate the base and resulting paths inside the active worktree, including symlink targets and existing ancestors of prospective paths. Accept absent directories only for authorized creation or explicitly unused source/test scopes; absence is not an unresolved base. Create nothing during pre-flight.
-- Document contract below: filenames are relative to the installation-supplied documentation path under `{{PRJ_BASE}}`. Required inputs MUST exist; creatable targets MAY be absent. Load exactly the listed existing documents in full before Steps, including existing targets; defer reads of absent creatable targets until generated. Unlisted canonical documents are not prerequisites.
+- Document contract below: filenames are relative to the installation-supplied documentation path under `{{PRJ_BASE}}`. Required inputs MUST exist; creatable targets MAY be absent. Use project-bound context for the listed existing inputs and targets; defer access to absent creatable targets until generated. Unlisted canonical documents are not prerequisites.
   - Required inputs: REQUIREMENTS.md, WORKFLOW.md, REFERENCES.md.
   - Creatable targets: none.
-  - Load when present: REQUIREMENTS.md, WORKFLOW.md, REFERENCES.md.
-- Context reuse: treat injected or previously read content as loaded only when repository, worktree, project-area, path, and revision provenance match this binding. Current runtime attestation or unchanged-file evidence can establish a match; a basename alone cannot. Refresh stale or unverified content from the resolved path; reuse matching content without re-reading. After an edit, retain the verified updated content and invalidate superseded evidence.
+- Context reuse: treat injected or previously read content as loaded only when repository, worktree, project-area, path, and revision provenance match this binding. Current runtime attestation or unchanged-file evidence can establish a match; a basename alone cannot. Treat stale or unverified evidence as missing; reuse matching content under the lookup rules in Iteration and Context Economy. After an edit, retain the verified updated content and invalidate superseded evidence.
 - Operation scope: run cwd-sensitive commands and configured tools from `{{PRJ_BASE}}` only when their effective scope matches the target project; otherwise use a documented explicit-path equivalent or fail resolution.
 - Activity routing: reference all project-modification and requirements-modification activities exclusively to `{{PRJ_BASE}}`; reference only working-tree creation and git-management activities to `{{GIT_BASE}}`.
 - Context transitions: after an authorized worktree change, rebase `{{PRJ_BASE}}` to the same project-relative location in the new worktree and rebase `{{GIT_BASE}}` to the new worktree's repository root. Revalidate containment and document provenance before project operations; discard old absolute paths. Reuse document contents only with verified unchanged-file evidence. A different target project requires a fresh invocation.
@@ -54,10 +53,13 @@ In scope: patch-style edits to `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, an i
 
 ## Iteration and Context Economy
 - **CRITICAL**: Plan every Step to complete in the minimum number of iterations; batch independent reads, searches, and edits into a single response and dispatch parallel tool calls whenever no dependency forces sequencing.
-- **CRITICAL**: Reuse injected or previously read file evidence only when repository, worktree, project-area, path, and revision identity match the active binding; do not re-read matching content. Refresh stale or unverified evidence under the pre-flight context-reuse rules.
+- **CRITICAL**: Reuse injected or previously read file evidence only when repository, worktree, project-area, path, and revision identity match the active binding; use matching content directly and discard stale or unverified evidence.
 - **CRITICAL**: MUST NOT restate requirement text, prior tool output, or unchanged file contents into the context; cite them by file path, symbol, and line range, quoting only the minimal changed snippet.
 - **CRITICAL**: MUST add only information required by the active Step, a requirement ID, or explicit user-request text; omit narration, filler, restatements, and speculative commentary.
-- **CRITICAL**: MUST choose the most token-efficient evidence path in order: `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, then preferred `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` extraction with source-as-is output including comments and default line numbers, then `rg`/`git grep` fallback, reading only targeted constructs and line ranges.
+- **CRITICAL**: Before any source search, analyze the relevant information already in agent context from `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`, and `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`. After the initial context load, treat subsequent instructions to read these documents as requests for evidence, not automatic file reads.
+- Search a canonical document only for information missing from validated context or for required extraction or aggregation of its contents. Limit the lookup to that evidence. Use generic tools in this priority order: `ls` → `find` → `grep` → `read` → `bash`.
+- Only when source search is in scope and needed, use this priority order: `req-search` → `ls` → `find` → `req-files-search` → `grep` → `read` → `bash`. Invoke `req-search` and `req-files-search` as command-line programs for project-wide and file-scoped constructs, respectively; their output preserves original source text, comments, and line numbers. `ls` and `find` locate paths; `grep`, bounded `read`, and generic `bash` searches are fallbacks.
+- In either order, use the highest-priority applicable method; advance only if it cannot supply the required evidence. Stop when the evidence is sufficient. These priorities do not expand workflow scope.
 - **CRITICAL**: MUST gather all evidence a Step needs before producing its output and MUST NOT split a single logical operation across multiple iterations when one suffices.
 - **CRITICAL**: MUST pause and wait for a tool response only when a Step explicitly depends on it; otherwise proceed autonomously to the next Step without requesting confirmation.
 - **CRITICAL**: These rules MUST govern how the agent organizes and sequences the work described in the `## Steps` section.
@@ -107,7 +109,7 @@ In scope: patch-style edits to `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, an i
 Four complementary pillars provide a complete, token-efficient source code analysis pipeline. Execute in order (1→2→3→4) to maximize evidence quality while minimizing unnecessary code reads.
 
 ### 1. Runtime Model: `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`
-Compact document — read in full. Contains:
+Use the runtime model in context to identify:
 - **Execution Units Index**: all OS processes and threads with roles and entrypoints.
 - **Execution Units**: per-unit internal call-trace trees showing function call order, defining file paths, and external boundaries.
 - **Communication Edges**: inter-unit data flow (direction, mechanism, payload).
@@ -130,40 +132,11 @@ Structured index of all source-defined symbols (functions, classes, structs, obj
 
 Use to: identify candidate symbols by name, description, or `@satisfies` link; obtain exact file paths and line ranges; understand function signatures and contracts before extracting code. Cross-reference with WORKFLOW.md call-traces to narrow scope.
 
-### 3. Code Extraction: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find` / `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find`
-Extract actual source constructs as source-as-is blocks, including comments, with default line numbers. Use `find`/`files-find` as the preferred method for extracting source objects, functions, and data structures after pillars 1-2.
-#### What these commands do (and what they don't)
-- Extract named constructs (e.g., CLASS, FUNCTION, STRUCT, INTERFACE, IMPORT, …) filtered by TAG and name-regex.
-- Regex (PATTERN) matches construct name only (not body). For body-content search, use rg/git grep (pillar 4).
-- Output per file: header `@@@ <filepath> | <language>`, per-construct blocks with:
-    - `### <TAG>: <name>` + optional Signature + `Lines: <start>-<end>`
-    - optional extracted Doxygen fields (if present in/around the construct)
-    - fenced code block with the complete source-as-is construct slice, including comments, with default source-line prefixes
-#### Choose the right mode
-- Project-wide scan: use find (the mandatory `--prj-base`/`--git-base` prefix is required; `--base` is forbidden)
-    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find <TAG_FILTER> <NAME_REGEX>`
-    - Note: find scans all files under configured source dirs; does not take a filename.
-- Target specific files: use files-find (standalone with the mandatory `--prj-base`/`--git-base` prefix)
-    - Syntax: `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find <TAG_FILTER> <NAME_REGEX> <FILE1> [FILE2 ...]`
-#### TAGs and filters
-- TAG_FILTER: pipe-separated, case-insensitive (e.g., `CLASS|FUNCTION|IMPORT`).
-- Tags are language-dependent; the per-language tag catalog is printed on invalid TAG or non-matching filter errors. Run `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --help` for the full usage surface.
-- Broad cross-language TAG_FILTER: `CLASS|STRUCT|ENUM|INTERFACE|TRAIT|IMPL|FUNCTION|METHOD|MODULE|NAMESPACE|TYPE_ALIAS|TYPEDEF|IMPORT|CONSTANT|VARIABLE|MACRO|DECORATOR|COMPONENT|PROPERTY|PROTOCOL|EXTENSION|UNION`
-#### Regex rules (NAME_REGEX)
-- Regex matching follows `re.search()` semantics against construct names (tool behavior, independent of repository language).
-- Prefer anchored patterns: exact `^Foo$`, prefix `^parse_`, suffix `Service$`. Use `.*` only when scope is already constrained by files/TAGs.
-#### Failure modes you must handle
-- "No constructs found": adjust TAGs (supported?), file paths, or NAME_REGEX (valid regex?).
-- Regex-based extractor (not full AST): treat results as evidence pointers; confirm edge cases by opening referenced file/lines.
+### 3. Code Extraction
+After analyzing the canonical documents in context, use the source search order in Iteration and Context Economy. Search for named constructs by tag and name pattern; anchor the pattern for an exact name. Use the command's documented arguments. Cite only the matching source lines.
 
-### 4. Supplementary Search: `rg` / `git grep`
-Use for: string/pattern searches inside code bodies, cross-file references, configuration values, error messages, or any content not captured by construct-name-based extraction.
-
-### Recommended Analysis Workflow
-1. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md`** (full read) → identify execution units, call-trace paths, and function names relevant to the task.
-2. **Read `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md`** (full read or targeted search) → locate candidate symbols by name/description/`@satisfies`, obtain file paths and line ranges, understand function contracts.
-3. **Extract code** via `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} find`/`req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} files-find` → use symbol names from steps 1-2 as NAME_REGEX and file paths as files-find targets; cite the default line-numbered, source-as-is output including comments.
-4. **Search code bodies** via `rg`/`git grep` → find patterns, references, or values not captured by construct-level extraction.
+### 4. Supplementary Search
+For unresolved body text, references, or configuration values, follow the same fallback order and restrict the search to the relevant files or line ranges.
 
 
 ## Execution Protocol (Global vs Local)
@@ -195,6 +168,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
    - Check GIT status with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-check`. If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Git status unclear!", and then terminate the execution.
 2. **CRITICAL**: Check `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md`, `{{PRJ_BASE}}/%%DOC_PATH%%/WORKFLOW.md` and `{{PRJ_BASE}}/%%DOC_PATH%%/REFERENCES.md` file presence
    - Check required docs presence with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --docs-check`. If the command returns an error code or prints any text containing "ERROR", OUTPUT exactly "ERROR: Required docs check failed!", and then terminate the execution.
+   - For each existing file in `{{PRJ_BASE}}/%%DOC_PATH%%` named `REQUIREMENTS.md`, `REFERENCES.md`, or `WORKFLOW.md`, you MUST read its full contents into agent context. Reuse content verified for the active binding; read any missing portions from the file.
 3. **CRITICAL**: Worktree Generation & Isolation
    - Generate {{WORKTREE_NAME}} with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-name` using literal `req` commands executed sequentially without shell composition.
    - Create the dedicated isolated worktree with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-create {{WORKTREE_NAME}}`, then execute `cd {{GIT_BASE}}/../{{WORKTREE_NAME}}` before proceeding to the next step.
@@ -221,7 +195,7 @@ After successful pre-flight resolution, create internally a *check-list* for the
    -  If a migration/compatibility need is discovered but not specified in requirements, propose a requirements update describing it, then OUTPUT exactly "ERROR: Change request failed due to incompatible requirements!", delete the isolated worktree and branch with `req --prj-base={{PRJ_BASE}} --git-base={{GIT_BASE}} --git-wt-delete {{WORKTREE_NAME}}`, and then terminate the execution.
    -  IMPLEMENT the **Implementation Delta** in the source code (creating new files/directories if necessary). You may make minimal mechanical adjustments needed to fit the actual codebase (file paths, symbol names), but you MUST NOT add new features or scope beyond the **Implementation Delta**.
 6. Generate **Verification Delta** by verifying static-analysis results and implementing needed bug fixes
-   -  Read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` and cross-reference with the source code from {{PRJ_BASE}}/%%SRC_PATHS%%, {{PRJ_BASE}}/%%TEST_PATH%% to check ALL requirements, but use progressive disclosure: provide full evidence only for `FAIL` items and a compact pointer-only index for `OK` items. For each requirement, use tools (e.g., `git grep`, `find`, `ls`) to locate the relevant source code files used as evidence, read only the identified files to verify compliance and do not assume compliance without locating the specific code implementation.
+   -  Read `{{PRJ_BASE}}/%%DOC_PATH%%/REQUIREMENTS.md` and cross-reference with the source code from {{PRJ_BASE}}/%%SRC_PATHS%%, {{PRJ_BASE}}/%%TEST_PATH%% to check ALL requirements, but use progressive disclosure: provide full evidence only for `FAIL` items and a compact pointer-only index for `OK` items. For each requirement, follow the source search order in Iteration and Context Economy to locate the relevant source code files used as evidence, read only the identified files to verify compliance and do not assume compliance without locating the specific code implementation.
       - For each requirement, report `OK` if satisfied or `FAIL` if not.
       - Do not mark a requirement as `OK` without code evidence; for `OK` items provide only a compact pointer (file path + symbol + line range). For each requirement, provide a concise evidence pointer (file path + symbol + line range) excerpts only for `FAIL` requirements or when requirement is architectural, structural, or negative (e.g., "MUST NOT ..."). For such high-level requirements, cite the specific file paths or directory structures that prove compliance. Line ranges MUST be obtained from tooling output (e.g., `nl -ba` / `sed -n`) and MUST NOT be estimated. If evidence is missing, you MUST report `FAIL`. Do not assume implicit behavior.
       - For every `FAIL`, provide evidence with a short explanation. Provide file path(s) and line numbers where possible.
