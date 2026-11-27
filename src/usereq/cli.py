@@ -4292,12 +4292,14 @@ def run_files_static_check_cmd(files: list[str], args: Namespace) -> int:
       - Looks up language in the `"static-check"` config section; skips silently if absent.
       - Executes each configured language entry sequentially via
         `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`.
-      - For `Command` module entries, execution order is `<cmd> [params...] <filename>`.
+      - For `Command` module entries, execution order is `<cmd> [params...] <filename>`;
+        Command `cargo` entries dispatch crate-level `<cmd> [params...]` with the subprocess
+        working directory set to the input file's parent directory (SRS-632).
       Dispatch context provides project root for checker runtime execution.
       All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-253).
       The command ignores `"scan-by-dir"` and always dispatches per explicit input file (SRS-591).
       Overall exit code: max of all per-file codes (0=all pass, 1=any fail). (SRS-253, SRS-255)
-    @see SRS-253, SRS-254, SRS-255, SRS-341, SRS-396, SRS-408, SRS-591
+    @see SRS-253, SRS-254, SRS-255, SRS-341, SRS-396, SRS-408, SRS-591, SRS-632
     """
     from .static_check import STATIC_CHECK_EXT_TO_LANG, dispatch_static_check_for_file
 
@@ -4368,13 +4370,18 @@ def run_project_static_check_cmd(args: Namespace) -> int:
         (SRS-584, SRS-585).
       - Dispatches `"scan-by-dir"`-false entries per selected file via
         `dispatch_static_check_for_file(filepath, lang_config, fail_only=True, project_base=...)`
-        (SRS-587); for `Command` entries, execution order is `<cmd> [params...] <filename>`.
+        (SRS-587); for `Command` entries, execution order is `<cmd> [params...] <filename>`,
+        except Command `cargo` entries which dispatch crate-level `<cmd> [params...]` with the
+        subprocess working directory set to the input file's parent directory (SRS-632).
       - Dispatches `"scan-by-dir"`-true entries as exactly one recursive
         `dispatch_static_check_for_directory(root, lang_config, fail_only=True, project_base=...)`
         invocation per root containing selected files of the entry's language (SRS-588, SRS-589);
-        for `Command` entries, execution order is `<cmd> [params...] <root>`.
+        for `Command` entries, execution order is `<cmd> [params...] <root>`, except Command
+        `cargo` entries which dispatch crate-level `<cmd> [params...]` with the subprocess
+        working directory set to the scanned root (SRS-633).
       - Excludes existing fixture-corpus directories from directory invocations through
-        module-native exclusion flags (SRS-590).
+        module-native exclusion flags (SRS-590); Command `cargo` invocations receive no
+        exclusion flags and rely on cargo manifest dependency-graph discovery (SRS-634).
       Dispatch context provides project root for checker runtime execution.
       All checks execute with `fail_only=True`: passing checks produce no stdout output (SRS-256).
       When the selection contains zero supported source files, prints the canonical
@@ -4382,7 +4389,7 @@ def run_project_static_check_cmd(args: Namespace) -> int:
       of raising (SRS-614..SRS-617).
       Overall exit code: max of all dispatch codes (0=all pass, 1=any fail). (SRS-256, SRS-257)
     @throws ReqError Raised when `--prj-base` is absent or a configured directory value is invalid.
-    @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408, SRS-584, SRS-585, SRS-587, SRS-588, SRS-589, SRS-590, SRS-592, SRS-614, SRS-615, SRS-616, SRS-617
+    @see SRS-256, SRS-257, SRS-336, SRS-341, SRS-396, SRS-408, SRS-584, SRS-585, SRS-587, SRS-588, SRS-589, SRS-590, SRS-592, SRS-614, SRS-615, SRS-616, SRS-617, SRS-632, SRS-633, SRS-634
     """
     from .static_check import (
         STATIC_CHECK_EXT_TO_LANG,

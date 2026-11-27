@@ -424,7 +424,7 @@ No explicit performance optimizations identified.
 - **SRS-251**: MUST implement the following behavior: When `--enable-static-check` is specified multiple times, entries MUST be preserved in insertion order per canonical language; an entry structurally identical (`module`, `cmd`, and `params` fields all equal) to an already-accumulated entry for the same canonical language MUST be silently discarded.
 - **SRS-301**: MUST implement the following behavior: When `--enable-static-check` is invoked against an existing global configuration file, the command MUST load and preserve all pre-existing `"static-check"` entries without removal; for each new CLI-specified entry, presence MUST be decided by exact tuple match `(canonical language, module, cmd, params)` in the loaded config; if present discard, otherwise append.
 - **SRS-252**: MUST implement the following behavior: When `--enable-static-check` is used during installation or update, the global configuration file key `"static-check"` MUST be a JSON object keyed by canonical language name, and each language value MUST be a non-empty JSON array of entry objects with required `"module"` and optional `"cmd"`/`"params"`/`"scan-by-dir"` fields.
-- **SRS-584**: MUST resolve each static-check entry's directory-scan capability: `Pylance` and `Ruff` MUST be capable, `Dummy` MUST NOT be capable, and `Command` MUST be capable exactly when `cmd` is `cppcheck`, `eslint`, `ruff`, or `pyright`.
+- **SRS-584**: MUST resolve each static-check entry's directory-scan capability: `Pylance` and `Ruff` MUST be capable, `Dummy` MUST NOT be capable, and `Command` MUST be capable exactly when `cmd` is `cargo`, `cppcheck`, `eslint`, `ruff`, or `pyright`.
 - **SRS-585**: MUST persist optional boolean `"scan-by-dir"` per static-check entry; an absent value MUST resolve to true exactly for SRS-584-capable entries and to false otherwise.
 - **SRS-586**: MUST reject `"scan-by-dir": true` on an SRS-584-incapable entry with an English error and no configuration mutation.
 
@@ -435,17 +435,20 @@ No explicit performance optimizations identified.
 - **SRS-256**: MUST support `static-check` as a project-scan subcommand per SRS-408 requiring `--prj-base`, with file selection from `git ls-files` under configured `src-dir` values and the `tests-dir` value plus SRS-131/SRS-180 filtering; all checks MUST execute with `fail_only` mode active and dispatch context containing `--prj-base`.
 - **SRS-257**: MUST implement the following behavior: The `static-check` command exit code MUST be 0 when all checked files pass (or no files are checked), and 1 when at least one file fails static analysis.
 - **SRS-336**: MUST implement the following behavior: The `static-check` command MUST load the `tests-dir` value from `~/.config/usereq/config.json` and append it to the `src-dir` list for file selection; if `tests-dir` is missing or invalid the command MUST skip test directory inclusion without error.
-- **SRS-424**: MUST apply the SRS-425 and SRS-426 default static-check configuration when the configuration stores no `"static-check"` entry; a present entry, including an empty object, MUST suppress the defaults.
+- **SRS-424**: MUST apply the SRS-425, SRS-426, SRS-618, SRS-619, SRS-620, and SRS-631 default static-check configuration when the configuration stores no `"static-check"` entry; a present entry, including an empty object, MUST suppress the defaults.
 - **SRS-425**: MUST default language `C` to Command `cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --std=c11`, Command `clang-format --dry-run --Werror`, and Command `flawfinder --minlevel=3 --error-level=3`.
 - **SRS-426**: MUST default language `JavaScript` to Command `node --check` plus Command `eslint`.
 - **SRS-427**: MUST pre-flight every static checker before execution: `Dummy` is always available, `Pylance` and `Ruff` require their module in the active interpreter, and `Command` requires `shutil.which(cmd)` resolution.
 - **SRS-428**: MUST report an unavailable checker as `Result: FAIL` with English evidence identifying the missing checker or binary, MUST NOT abort, and MUST continue executing the remaining checks.
 - **SRS-587**: MUST dispatch every `"scan-by-dir"`-false `static-check` entry per selected file under the SRS-256 selection semantics.
 - **SRS-588**: MUST dispatch every `"scan-by-dir"`-true `static-check` entry as one recursive checker invocation per configured root (`src-dir` entries plus `tests-dir`) containing selected files of the entry's language.
-- **SRS-589**: MUST pass the root directory as the checker target for directory invocations and MUST aggregate them under the SRS-257 exit-code semantics.
+- **SRS-589**: MUST pass the root directory as the checker target for directory invocations (command argument, or subprocess working directory for Command `cargo` per SRS-633) and MUST aggregate them under the SRS-257 exit-code semantics.
 - **SRS-590**: MUST exclude `<tests-dir>/fixtures` from directory invocations through `--exclude` for `Pylance` and `Ruff`, `-i` for `cppcheck`, and `--ignore-pattern` for `eslint`.
 - **SRS-591**: MUST ignore `"scan-by-dir"` in `files-static-check` and dispatch every configured entry per explicit input file.
 - **SRS-592**: MUST render directory-scan blocks with the SRS-241..SRS-244 header and result format, using the directory path in place of the filename.
+- **SRS-632**: MUST dispatch per-file Command `cargo` static-check entries as a crate-level invocation `<cmd> [params...]` executed with the subprocess working directory set to the input file's parent directory.
+- **SRS-633**: MUST dispatch scan-by-dir Command `cargo` entries as one `<cmd> [params...]` invocation per scanned root executed with the subprocess working directory set to the root.
+- **SRS-634**: MUST build Command `cargo` static-check invocations without fixture-exclusion flags; fixture exclusion relies on cargo manifest dependency-graph discovery.
 - **SRS-614**: MUST implement the following behavior: When `static-check` selects zero supported source files, it MUST print the canonical empty-static-check system-directive payload to stdout and MUST exit with code 0.
 - **SRS-615**: MUST implement the following behavior: The SRS-614 payload MUST emit exactly the literal lines `<system_directive>`, `[STATUS]: SUCCESS`, `[STATIC_CHECK_RESULT]: NO_SOURCE_CODE_DETECTED`, `[CONTEXT_UPDATE]`, `[AGENT_INSTRUCTIONS]`, and `</system_directive>`, with single blank lines between the `[STATIC_CHECK_RESULT]` line and `[CONTEXT_UPDATE]` and between the `[CONTEXT_UPDATE]` body sentence and `[AGENT_INSTRUCTIONS]`, and no source-file mapping output.
 - **SRS-616**: MUST implement the following behavior: The SRS-614 payload MUST render the `[CONTEXT_UPDATE]` section with exactly `This repository is structured exclusively for documentation or otherwise lacks analyzable source code. Consequently, this \`req-static-check\` return SUCCESS by definition.`
@@ -453,6 +456,7 @@ No explicit performance optimizations identified.
 - **SRS-618**: MUST default language `C++` to Command `cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --std=c++20`, Command `clang-format --dry-run --Werror`, and Command `flawfinder --minlevel=3 --error-level=3`.
 - **SRS-619**: MUST default language `TypeScript` to Command `eslint` plus Command `tsc --noEmit`.
 - **SRS-620**: MUST default language `Python` to the `Pylance` and `Ruff` modules plus Command `bandit --tests B602,B605,B606,B506`.
+- **SRS-631**: MUST default language `Rust` to Command `cargo clippy` and Command `cargo geiger`.
 ### 5.5 Static Analysis Dispatch Implementation Requirements
 - **SRS-258**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_LANG_CANONICAL` dict in `src/usereq/static_check.py` mapping lowercase language identifiers (including common aliases: `cpp` for C++, `csharp` for C#, `js` for JavaScript, `ts` for TypeScript, `sh` for Shell) to canonical language names from SRS-249.
 - **SRS-259**: MUST implement the following behavior: The implementation MUST provide a `STATIC_CHECK_EXT_TO_LANG` dict in `src/usereq/static_check.py` mapping file extensions to canonical language names, using the same 20-language extension set as SRS-131.
@@ -467,6 +471,7 @@ No explicit performance optimizations identified.
 - **SRS-341**: MUST implement the following behavior: `StaticCheckPylance` MUST NOT pass any `--extra-path` argument to pyright and MUST invoke pyright using only the fixed interpreter/module command form and target filepath.
 - **SRS-340**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_dependency_manifests.py` verifying that `ruff` and `pyright` are declared in `pyproject.toml` `[project].dependencies`.
 - **SRS-429**: MUST include unit tests in `tests/test_static_check.py` verifying the SRS-424 default static-check resolution and the SRS-427/SRS-428 pre-flight failure and continuation behavior.
+- **SRS-635**: MUST include unit tests in `tests/test_static_check.py` verifying Command `cargo` crate-level command composition, subprocess working-directory selection, exclusion-flag omission, capability defaults, and the SRS-631 Rust default resolution.
 
 ### 5.7 Static Analysis Installation Audit
 - **SRS-621**: MUST implement the following behavior: The CLI MUST accept `audit` as a bare subcommand executable without `--prj-base`; its absence MUST NOT trigger the SRS-395 missing-argument error.

@@ -14,6 +14,9 @@
   is expressed via `**` glob syntax (e.g., `src/**/*.py`).
   Directory-scan execution (`scan-by-dir`) dispatches one recursive checker invocation per
   configured root directory instead of one invocation per file (SRS-584..SRS-592).
+  Command `cargo` entries dispatch crate-level `<cmd> [params...]` invocations with the
+  subprocess working directory anchored at the input file's parent directory (per-file)
+  or the scan root (scan-by-dir) instead of appending the input path (SRS-632..SRS-634).
 @author useReq
 @version 0.0.72
 """
@@ -119,8 +122,21 @@ _DIR_SCAN_EXCLUDE_FLAGS: dict[str, tuple[str, ...]] = {
 """!
 @brief Maps directory-scan-capable Command binaries to their exclusion flag tokens.
 @details Drives the SRS-590 fixture-corpus exclusion arguments appended to directory-scan
-  invocations; capability membership mirrors `STATIC_CHECK_DIR_SCAN_COMMANDS`.
-@see SRS-584, SRS-590
+  invocations; capability membership mirrors `STATIC_CHECK_DIR_SCAN_COMMANDS` except
+  crate-level `cargo`, which receives no exclusion flags (SRS-634).
+@see SRS-584, SRS-590, SRS-634
+"""
+
+#: Command binaries dispatched at crate/workspace level (no input path appended).
+_CRATE_LEVEL_COMMANDS: frozenset[str] = frozenset({"cargo"})
+"""!
+@brief Command `cmd` binaries dispatched at crate/workspace level instead of per input path.
+@details Members run `<cmd> [params...]` without appending the input file or scan-target
+  path; the subprocess working directory is set to the input file's parent directory
+  (per-file dispatch, SRS-632) or the scanned root directory (directory-scan dispatch,
+  SRS-633), so cargo performs its native upward `Cargo.toml` discovery. Membership is
+  matched on the lowercased `cmd` token.
+@see SRS-632, SRS-633, SRS-634
 """
 
 
@@ -592,9 +608,10 @@ class StaticCheckBase:
           unsupported directory command emits header, `Result: FAIL`, English evidence, and
           one trailing blank line in both fail_only modes, returns 1, and never raises (SRS-428).
           Otherwise executes `_directory_command(...)` exactly once with the root directory as
-          target, aggregates the subprocess exit code, and renders the SRS-241..SRS-244 block
-          shape with the directory path in place of the filename (SRS-592); when `fail_only`
-          is True a passing scan produces no output.
+          target, resolving the subprocess working directory through `_directory_cwd(target)`
+          (SRS-589, SRS-633), aggregates the subprocess exit code, and renders the
+          SRS-241..SRS-244 block shape with the directory path in place of the filename
+          (SRS-592); when `fail_only` is True a passing scan produces no output.
         @satisfies SRS-427, SRS-428, SRS-588, SRS-589, SRS-592
         """
         available, reason = self.is_available()
@@ -621,7 +638,9 @@ class StaticCheckBase:
             self._emit_line("")
             return 1
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, cwd=self._directory_cwd(target)
+            )
         except FileNotFoundError:
             self._emit_line(self._header_line(target))
             self._emit_line("Result: FAIL")
@@ -653,6 +672,20 @@ class StaticCheckBase:
         @return {Optional[List[str]]} Full subprocess argument vector; None when the module
           does not support directory scanning.
         @details Base implementation (Dummy): directory scanning is unsupported (SRS-584).
+        """
+        return None
+
+    def _directory_cwd(self, target: str) -> Optional[str]:
+        """!
+        @brief Resolve the subprocess working directory for one directory-scan invocation.
+        @param target {str} Absolute root directory path passed as the checker target.
+        @return {Optional[str]} Working directory passed to `subprocess.run`; None inherits
+          the process working directory.
+        @details Base implementation (Dummy, Pylance, Ruff): always None, so directory
+          commands keep the process working directory (SRS-588, SRS-589). Subclasses override
+          for working-directory-targeted checkers such as Command `cargo` (SRS-633).
+        @see run_directory, _directory_command
+        @satisfies SRS-589, SRS-633
         """
         return None
 
@@ -994,18 +1027,27 @@ class StaticCheckCommand(StaticCheckBase):
         @param filepath Absolute path of the file to analyse.
         @return 0 when the command exits 0, 1 otherwise.
         @details
-          Invokes `<cmd> [extra_args...] <filepath>`.
+          Classic commands invoke `<cmd> [extra_args...] <filepath>`.
+          Crate-level commands (SRS-632, `_CRATE_LEVEL_COMMANDS`) invoke
+          `<cmd> [extra_args...]` without the filepath, executing with the subprocess working
+          directory set to the input file's parent directory.
           Captures combined stdout+stderr.
           When `fail_only` is False: prints header, then `Result: OK` or `Result: FAIL` with evidence.
           When `fail_only` is True: on pass produces no output; on fail emits header, FAIL, evidence (SRS-244).
-        @satisfies SRS-244, SRS-253, SRS-256
+        @satisfies SRS-244, SRS-253, SRS-256, SRS-632
         """
-        cmd = [self._cmd] + self._extra_args + [filepath]
+        if self._cmd.strip().lower() in _CRATE_LEVEL_COMMANDS:
+            cwd: Optional[str] = str(Path(filepath).parent)
+            cmd = [self._cmd] + self._extra_args
+        else:
+            cwd = None
+            cmd = [self._cmd] + self._extra_args + [filepath]
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
+                cwd=cwd,
             )
         except FileNotFoundError:
             self._emit_line(self._header_line(filepath))
@@ -1045,12 +1087,34 @@ class StaticCheckCommand(StaticCheckBase):
         @brief Build the external command for one recursive directory-scan invocation.
         @param target {str} Absolute root directory path passed as the command target.
         @param exclude_args {Sequence[str]} SRS-590 exclusion tokens for this `cmd`.
-        @return {Optional[List[str]]} `[<cmd>, <extra_args>..., <exclude_args>..., <target>]`.
+        @return {Optional[List[str]]} `[<cmd>, <extra_args>..., <exclude_args>..., <target>]`;
+          `[<cmd>, <extra_args>...]` for crate-level commands (SRS-633).
         @details Execution order keeps the per-file form `<cmd> [params...] <target>` with the
-          root directory replacing the filename (SRS-588).
-        @satisfies SRS-588
+          root directory replacing the filename (SRS-588). Crate-level commands omit both the
+          exclusion tokens (SRS-634) and the target path; targeting happens through the
+          subprocess working directory resolved by `_directory_cwd` (SRS-633).
+        @satisfies SRS-588, SRS-633, SRS-634
         """
+        if self._cmd.strip().lower() in _CRATE_LEVEL_COMMANDS:
+            return [self._cmd, *self._extra_args]
         return [self._cmd, *self._extra_args, *exclude_args, target]
+
+    def _directory_cwd(self, target: str) -> Optional[str]:
+        """!
+        @brief Resolve the subprocess working directory for one Command directory-scan invocation.
+        @param target {str} Absolute root directory path passed as the checker target.
+        @return {Optional[str]} The scan target root for crate-level commands (`cargo`); None
+          for all other commands.
+        @details Crate-level commands target the crate through the working directory so cargo
+          performs its native upward `Cargo.toml` discovery from the scanned root (SRS-633);
+          the target root is not appended to the command vector and no exclusion flags are
+          emitted (SRS-634).
+        @see StaticCheckBase._directory_cwd, _directory_command
+        @satisfies SRS-632, SRS-633
+        """
+        if self._cmd.strip().lower() in _CRATE_LEVEL_COMMANDS:
+            return target
+        return None
 
 
 # ---------------------------------------------------------------------------

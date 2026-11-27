@@ -16,6 +16,8 @@
   - static-check project-scan dispatch (SRS-262, SRS-408, SRS-410)
   - scan-by-dir capability defaults, directory-scan dispatch, and SRS-590 exclusions
     (SRS-584..SRS-592)
+  - Command `cargo` crate-level dispatch, working-directory anchoring, and Rust defaults
+    (SRS-631..SRS-635)
   - --enable-static-check config persistence (SRS-262)
   - Language name case-insensitivity (SRS-262)
   - fail_only mode suppressing output on pass for each checker class (SRS-247)
@@ -1870,6 +1872,7 @@ class TestScanByDirResolution(unittest.TestCase):
             ("Command", "eslint", True),
             ("Command", "ruff", True),
             ("Command", "pyright", True),
+            ("Command", "cargo", True),
             ("Command", "clang-format", False),
             ("Command", "node", False),
             ("pylance", None, True),
@@ -2009,6 +2012,109 @@ class TestDirectoryScanCommand(unittest.TestCase):
                 rc = checker.run_directory(str(self.tmp))
         self.assertEqual(rc, 0)
         mock_print.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# crate-level Command `cargo` dispatch tests (SRS-631..SRS-635)
+# ---------------------------------------------------------------------------
+
+
+class TestCargoCrateLevelDispatch(unittest.TestCase):
+    """!
+    @brief Level 1 tests for crate-level Command `cargo` dispatch (SRS-631..SRS-635).
+    @details Isolates `subprocess.run` inside `usereq.static_check`; asserts the command
+      shape without the input/target path, the subprocess working-directory anchoring,
+      the SRS-634 exclusion-flag omission, and the SRS-631 Rust default entries.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = TEMP_BASE / "cargo_crate"
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+        self.tmp.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self) -> None:
+        if self.tmp.exists():
+            shutil.rmtree(self.tmp)
+
+    @staticmethod
+    def _passing_result() -> MagicMock:
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+        mock_result.stderr = ""
+        return mock_result
+
+    def test_cargo_capability_default_is_true(self) -> None:
+        """!
+        @brief Command `cargo` resolves scan-by-dir=true by default (SRS-584, SRS-635).
+        """
+        from usereq.config_schema import static_check_dir_scan_default
+
+        self.assertIs(static_check_dir_scan_default("Command", "cargo"), True)
+
+    def test_cargo_per_file_dispatch_is_crate_level(self) -> None:
+        """!
+        @brief Per-file cargo dispatch runs `<cmd> [params...]` with cwd at the file parent (SRS-632).
+        @details expected_output: rc 0; command `['cargo', 'clippy']`; kwargs cwd equals the
+          input file's parent directory; no filepath token in the command vector.
+        """
+        crate = self.tmp / "crate"
+        f = _make_temp_file(crate, "main.rs", content="fn main() {}\n")
+        with (
+            patch("shutil.which", return_value="/usr/bin/cargo"),
+            patch(
+                "usereq.static_check.subprocess.run",
+                return_value=self._passing_result(),
+            ) as mock_run,
+        ):
+            checker = StaticCheckCommand(
+                cmd="cargo", inputs=[str(f)], extra_args=["clippy"], fail_only=True
+            )
+            rc = checker.run()
+        self.assertEqual(rc, 0)
+        self.assertEqual(mock_run.call_args.args[0], ["cargo", "clippy"])
+        self.assertEqual(mock_run.call_args.kwargs.get("cwd"), str(crate))
+
+    def test_cargo_directory_scan_is_crate_level_without_exclusions(self) -> None:
+        """!
+        @brief Directory cargo scan runs `<cmd> [params...]` with cwd at the root and no
+          exclusion or target tokens (SRS-633, SRS-634).
+        @details expected_output: rc 0; command `['cargo', 'geiger']`; kwargs cwd equals the
+          scanned root; exclusion tokens absent from the command vector.
+        """
+        target = str(self.tmp)
+        fixtures = str(self.tmp / "fixtures")
+        checker = StaticCheckCommand(
+            cmd="cargo", inputs=[], extra_args=["geiger"], fail_only=True
+        )
+        with (
+            patch("shutil.which", return_value="/usr/bin/cargo"),
+            patch(
+                "usereq.static_check.subprocess.run",
+                return_value=self._passing_result(),
+            ) as mock_run,
+        ):
+            rc = checker.run_directory(target, exclude_dirs=[fixtures])
+        self.assertEqual(rc, 0)
+        self.assertEqual(mock_run.call_args.args[0], ["cargo", "geiger"])
+        self.assertEqual(mock_run.call_args.kwargs.get("cwd"), target)
+
+    def test_rust_default_entries_resolve_cargo_clippy_and_geiger(self) -> None:
+        """!
+        @brief SRS-424 default resolution includes the SRS-631 Rust cargo entries.
+        @details expected_output: DEFAULT_STATIC_CHECK['Rust'] equals the clippy and geiger
+          Command cargo entries in insertion order.
+        """
+        from usereq.cli import DEFAULT_STATIC_CHECK
+
+        self.assertEqual(
+            DEFAULT_STATIC_CHECK["Rust"],
+            [
+                {"module": "Command", "cmd": "cargo", "params": ["clippy"]},
+                {"module": "Command", "cmd": "cargo", "params": ["geiger"]},
+            ],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2513,18 +2619,20 @@ class TestEnableStaticCheckConfigPersistence(GlobalConfigIsolatedTestCase):
 
 class TestDefaultStaticCheckResolution(GlobalConfigIsolatedTestCase):
     """!
-    @brief Tests for the default static-check configuration resolution (SRS-424..SRS-426, SRS-618..SRS-620, SRS-429).
-    @details Verifies the trace-derived defaults for C, C++, JavaScript, Python, and
+    @brief Tests for the default static-check configuration resolution (SRS-424..SRS-426, SRS-618..SRS-620, SRS-631, SRS-429).
+    @details Verifies the trace-derived defaults for C, C++, JavaScript, Python, Rust, and
     TypeScript and that a present `"static-check"` entry, including an empty object,
     suppresses the defaults.
     """
 
     def test_defaults_when_no_entry(self) -> None:
-        """SRS-424..SRS-426, SRS-618..SRS-620: missing file or key resolves to the default set."""
+        """SRS-424..SRS-426, SRS-618..SRS-620, SRS-631: missing file or key resolves to the default set."""
         from usereq import cli
 
         sc = cli.load_static_check_from_config()
-        self.assertEqual(set(sc), {"C", "C++", "JavaScript", "Python", "TypeScript"})
+        self.assertEqual(
+            set(sc), {"C", "C++", "JavaScript", "Python", "Rust", "TypeScript"}
+        )
         self.assertEqual(
             sc["C"],
             [

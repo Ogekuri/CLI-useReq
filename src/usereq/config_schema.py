@@ -101,7 +101,7 @@ STATIC_CHECK_DIR_SCAN_MODULES: frozenset[str] = frozenset({"Pylance", "Ruff"})
 """! @brief Built-in static-check modules supporting recursive directory-scan execution (SRS-584)."""
 
 STATIC_CHECK_DIR_SCAN_COMMANDS: frozenset[str] = frozenset(
-    {"cppcheck", "eslint", "ruff", "pyright"}
+    {"cargo", "cppcheck", "eslint", "ruff", "pyright"}
 )
 """! @brief Command `cmd` binaries supporting recursive directory-scan execution (SRS-584)."""
 
@@ -115,8 +115,8 @@ def static_check_dir_scan_default(module: Any, cmd: Any = None) -> bool:
       `STATIC_CHECK_DIR_SCAN_COMMANDS`.
     @return {bool} True exactly for SRS-584 directory-scan-capable entries, False otherwise.
     @details Capability table: `Pylance` and `Ruff` are always capable, `Dummy` is never
-      capable, and `Command` is capable exactly when `cmd` is `cppcheck`, `eslint`, `ruff`,
-      or `pyright`. Non-string tokens are never capable. Complexity: O(1). No side effects.
+      capable, and `Command` is capable exactly when `cmd` is `cargo`, `cppcheck`, `eslint`,
+      `ruff`, or `pyright`. Non-string tokens are never capable. Complexity: O(1). No side effects.
     @satisfies SRS-584, SRS-585
     """
     if not isinstance(module, str):
@@ -180,6 +180,10 @@ DEFAULT_STATIC_CHECK: dict[str, list[dict[str, Any]]] = {
             "params": ["--tests", "B602,B605,B606,B506"],
         },
     ],
+    "Rust": [
+        {"module": "Command", "cmd": "cargo", "params": ["clippy"]},
+        {"module": "Command", "cmd": "cargo", "params": ["geiger"]},
+    ],
     "TypeScript": [
         {"module": "Command", "cmd": "eslint"},
         {"module": "Command", "cmd": "tsc", "params": ["--noEmit"]},
@@ -187,7 +191,7 @@ DEFAULT_STATIC_CHECK: dict[str, list[dict[str, Any]]] = {
 }
 """! @brief Default static-check configuration applied when the configuration stores no
 `"static-check"` entry; a present entry, including an empty object, suppresses these
-defaults (SRS-424, SRS-425, SRS-426, SRS-618, SRS-619, SRS-620)."""
+defaults (SRS-424, SRS-425, SRS-426, SRS-618, SRS-619, SRS-620, SRS-631)."""
 
 
 @dataclass(frozen=True)
