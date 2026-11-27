@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.75.22](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.22) - 2026-11-27
+## [0.75.23](https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.23) - 2026-11-27
 ### ⛰️  Features
 - Add static-check installation audit subcommand [useReq] *(install-audit)*
   Add SRS-621..SRS-628: bare install-audit subcommand executable without --prj-base, optional --prj-base audit context, static-check entry loading with SRS-424 default resolution, per-entry installation resolution reusing the SRS-427 availability probes, and one Language/Static-Check/Installed audit table grouped by canonical language with stable exit code 0.
@@ -101,6 +101,8 @@
   WORKFLOW/REFERENCES docs.
 
 ### 🚜  Changes
+- Add clang-tidy default for C/C++ and fail-on-warning clippy for Rust [useReq] *(static-check)*
+  Update SRS-425 and SRS-618 default C/C++ checkers with Command clang-tidy -checks=-*,clang-analyzer-*,cert-*; Update SRS-631 default Rust clippy invocation to cargo clippy -- -D warnings; Extend DEFAULT_STATIC_CHECK C, C++, and Rust default entries accordingly; Align tests/test_static_check.py and tests/test_cli.py default and audit expectations; Regenerate usereq/docs/REFERENCES.md symbol index
 - Print full checker command with params in audit Static-Check column [useReq] *(audit)*
   The req audit Static-Check cell now renders the complete Command entry
   invocation: the cmd token followed by every params element in stored
@@ -1717,7 +1719,7 @@
 - \[0.73.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.73.0
 - \[0.74.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.74.0
 - \[0.75.0\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.0
-- \[0.75.22\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.22
+- \[0.75.23\]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.75.23
 
 [0.1.0]: https://github.com/Ogekuri/CLI-useReq/releases/tag/v0.1.0
 [0.2.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.1.0..v0.2.0
@@ -1793,4 +1795,4 @@
 [0.73.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.72.0..v0.73.0
 [0.74.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.73.0..v0.74.0
 [0.75.0]: https://github.com/Ogekuri/CLI-useReq/compare/v0.74.0..v0.75.0
-[0.75.22]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.22
+[0.75.23]: https://github.com/Ogekuri/CLI-useReq/compare/v0.75.0..v0.75.23
