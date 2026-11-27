@@ -2,7 +2,7 @@
 - `PROC:main`
   - `type`: `Process`
   - `parent_process`: `-`
-  - `role`: `CLI orchestration for user-level provider skills installation, global configuration persistence and schema CLI tree rendering, command-line project/git base resolution, source analysis, compression, token counting, static-check dispatch, git integration, and worktree management`
+  - `role`: `CLI orchestration for user-level provider skills installation, global configuration persistence and schema CLI tree rendering, command-line project/git base resolution, source analysis, compression, token counting, static-check dispatch, static-check installation auditing, git integration, and worktree management`
   - `entrypoints`: `main(argv: Optional[list[str]] = None) -> int`
   - `defining_files`: `src/usereq/cli.py`
   - `threads`: `no explicit threads detected`
@@ -152,7 +152,7 @@
           - `_validate_enable_static_check_command_executables(...)`: validate local executability of command-based checkers [`src/usereq/cli.py`]
         - `apply_disable_static_check_specs(...)`: remove exact identity-matching entries or whole language keys, persisting the `"static-check"` object even when empty so explicit configuration suppresses the SRS-424 defaults (SRS-414, SRS-424) [`src/usereq/cli.py`]
         - `apply_auto_install_config(...)`: persist the `"auto-install"` boolean (SRS-420) [`src/usereq/cli.py`]
-    - lifecycle subcommand dispatch on `args.command` for the bare `install`, `uninstall`, and `show` subcommands (SRS-280) [`src/usereq/cli.py`]
+    - lifecycle subcommand dispatch on `args.command` for the bare `install`, `uninstall`, `show`, and `install-audit` subcommands (SRS-280, SRS-621) [`src/usereq/cli.py`]
       - `run_install(...)`: install or update the providers persisted under `"providers"` into user-level directories with the installation summary report; performs no project-side operations and does not consume `--prj-base` (SRS-418, SRS-447, SRS-448) [`src/usereq/cli.py`]
         - `run(...)`: config-driven installation/update flow [`src/usereq/cli.py`]
       - `run_uninstall_providers(...)`: remove `req-*` skill artifacts of the configured providers (SRS-419) [`src/usereq/cli.py`]
@@ -172,6 +172,12 @@
           - `provider_skills_root(...)`: resolve user-level skills root under HOME [`src/usereq/cli.py`]
         - `load_static_check_from_config(...)`: load static-check entries from `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when the `"static-check"` entry is absent [`src/usereq/cli.py`]
         - `_render_simple_table(...)`: render one Unicode box-drawing table (SRS-416, SRS-417) [`src/usereq/cli.py`]
+      - `run_install_audit(...)`: for `install-audit`, audit the installation of every configured static-check entry and print exactly one `Language`/`Static-Check`/`Installed` audit table; the optional `--prj-base` context is validated through the SRS-395 semantics when provided and is never mandatory (SRS-621, SRS-622), static-check entries load from `~/.config/usereq/config.json` with the SRS-424 default resolution when the `"static-check"` key is absent (SRS-623), no checker subprocess executes, and the exit code is 0 after printing regardless of unavailable tools (SRS-625, SRS-626, SRS-627, SRS-628) [`src/usereq/cli.py`]
+        - `_require_prj_base(...)`: validate and resolve the optional `--prj-base` context only when provided [`src/usereq/cli.py`]
+        - `load_static_check_from_config(...)`: load static-check entries with SRS-424 default resolution [`src/usereq/cli.py`]
+        - `audit_static_check_installation(...)`: resolve one `(canonical_language, label, installed)` audit row per configured entry grouped by canonical language alphabetically with persisted insertion order inside each language (SRS-624, SRS-626) [`src/usereq/static_check.py`]
+          - `_audit_entry_installation(...)`: resolve one entry's installation through the SRS-427 availability probes of the checker class hierarchy (`Dummy` always, `Pylance`/`Ruff` module lookup in the active interpreter, `Command` `shutil.which` lookup, unknown modules not installed) and its `Dummy`/`Pylance`/`Ruff`/`Command[<cmd>]` audit label [`src/usereq/static_check.py`]
+        - `_render_simple_table(...)`: render the audit table cells with `yes`/`no` installed markers (SRS-627) [`src/usereq/cli.py`]
     - analysis subcommand dispatch on `args.command` for the ten bare subcommands (SRS-408); every subcommand parser accepts optional `--prj-base` and `--git-base` before or after the subcommand token through the shared SUPPRESS-default `base_options` parent parser, `--prj-base` is enforced by the handlers that consume it (SRS-396, SRS-410), and no subcommand requires `--git-base` [`src/usereq/cli.py`]
       - `run_files_tokens(...)`: process explicit file list for token counting [`src/usereq/cli.py`]
         - `count_files_metrics(...)`: compute token and char metrics per file [`src/usereq/token_counter.py`]

@@ -6,7 +6,8 @@
   from cli.py. Also exposes `parse_enable_static_check`, `dispatch_static_check_for_file`,
   `dispatch_static_check_for_directory`, `entry_scan_by_dir`, `STATIC_CHECK_LANG_CANONICAL`,
   and `STATIC_CHECK_EXT_TO_LANG` for `--enable-static-check`, `files-static-check`
-  and `static-check` subcommand support.
+  and `static-check` subcommand support, and `audit_static_check_installation` for the
+  `install-audit` subcommand installation audit (SRS-621..SRS-628).
   Class hierarchy: StaticCheckBase (Dummy) -> StaticCheckPylance, StaticCheckRuff, StaticCheckCommand.
   File resolution supports: explicit file paths, glob patterns (with full `**` recursive expansion),
   and direct-children-only directory traversal. No custom `--recursive` flag; recursive traversal
@@ -379,6 +380,89 @@ def dispatch_static_check_for_directory(
             1,
         )
     return checker.run_directory(dirpath, exclude_dirs)
+
+
+# ---------------------------------------------------------------------------
+# Installation audit helpers (SRS-621..SRS-628)
+# ---------------------------------------------------------------------------
+
+def _audit_entry_installation(
+    module_raw: str,
+    cmd_value: object,
+    project_base: Optional[Path] = None,
+) -> tuple[bool, str]:
+    """!
+    @brief Resolve the installation state and audit label of one static-check entry.
+    @param module_raw {str} Raw `"module"` token of the entry (matched case-insensitively).
+    @param cmd_value {object} Raw `"cmd"` token of the entry; meaningful for `Command` only.
+    @param project_base {Optional[Path]} Absolute project-base runtime context forwarded to
+      the `StaticCheckPylance` construction, mirroring the per-file dispatch interface (SRS-622).
+    @return {tuple[bool, str]} Tuple `(installed, label)` where `installed` resolves through
+      the SRS-427 availability probe (`Dummy` always, `Pylance`/`Ruff` module lookup in the
+      active interpreter, `Command` through `shutil.which(cmd)`) and `label` is `Dummy`,
+      `Pylance`, `Ruff`, `Command[<cmd>]`, or the raw module token for unknown modules.
+    @details Reuses the checker class hierarchy availability probes so the audit verdict
+      matches the execution pre-flight exactly (SRS-427, SRS-624). A `Command` entry
+      without a non-empty string `cmd` and any unknown module token resolve as not
+      installed. No checker subprocess executes: only constructor and `is_available()`
+      calls run. Complexity: O(1). Side effects: none.
+    @see audit_static_check_installation
+    @satisfies SRS-622, SRS-624, SRS-627
+    """
+    module_key = module_raw.lower()
+    checker: StaticCheckBase
+    if module_key == "dummy":
+        checker = StaticCheckBase(inputs=[], extra_args=None, fail_only=True)
+    elif module_key == "pylance":
+        checker = StaticCheckPylance(
+            inputs=[], extra_args=None, fail_only=True, project_base=project_base
+        )
+    elif module_key == "ruff":
+        checker = StaticCheckRuff(inputs=[], extra_args=None, fail_only=True)
+    elif module_key == "command":
+        if not isinstance(cmd_value, str) or not cmd_value:
+            return False, "Command"
+        checker = StaticCheckCommand(
+            cmd=cmd_value, inputs=[], extra_args=None, fail_only=True
+        )
+    else:
+        return False, module_raw
+    available, _reason = checker.is_available()
+    return available, checker.LABEL
+
+
+def audit_static_check_installation(
+    static_check_config: Mapping[str, Sequence[Mapping[str, object]]],
+    project_base: Optional[Path] = None,
+) -> list[tuple[str, str, bool]]:
+    """!
+    @brief Resolve the installation audit rows of every configured static-check entry.
+    @param static_check_config {Mapping[str, Sequence[Mapping[str, object]]]} Static-check
+      configuration keyed by canonical language name with per-language entry lists.
+    @param project_base {Optional[Path]} Absolute project-base runtime context forwarded to
+      per-entry resolution (SRS-622).
+    @return {list[tuple[str, str, bool]]} One `(canonical_language, label, installed)` tuple
+      per configured entry, grouped by canonical language in ascending alphabetical order
+      and preserving persisted entry insertion order within each language (SRS-626).
+    @details Non-mapping entries are skipped; `Dummy` resolves as installed, `Pylance` and
+      `Ruff` resolve through module availability in the active interpreter, `Command`
+      resolves through `shutil.which(cmd)`, and unknown module tokens resolve as not
+      installed with the raw module label (SRS-624). No checker subprocess executes.
+      Complexity: O(L log L + E) over L languages and E entries. Side effects: none.
+    @see _audit_entry_installation
+    @satisfies SRS-623, SRS-624, SRS-626, SRS-627
+    """
+    rows: list[tuple[str, str, bool]] = []
+    for canonical_lang in sorted(static_check_config):
+        for entry in static_check_config.get(canonical_lang, []):
+            if not isinstance(entry, dict):
+                continue
+            module_raw = str(entry.get("module", ""))
+            installed, label = _audit_entry_installation(
+                module_raw, entry.get("cmd"), project_base=project_base
+            )
+            rows.append((canonical_lang, label, installed))
+    return rows
 
 
 # ---------------------------------------------------------------------------

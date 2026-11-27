@@ -98,6 +98,7 @@ No explicit performance optimizations identified.
 - **SRS-352**: MUST implement the following behavior: `README.md` MUST describe only currently supported CLI flags and provider syntax, and MUST NOT describe removed standalone flags or `--enable SPEC` syntax superseded by `--enable PROVIDER`.
 - **SRS-610**: MUST document in `README.md` that `files-compress`, `compress`, `files-find`, and `find` emit `<n>:`-prefixed lines by default and MUST NOT document `--enable-line-numbers`.
 - **SRS-611**: MUST document in CLI inline help that `files-compress`, `compress`, `files-find`, and `find` emit `<n>:`-prefixed lines by default without any enabling option.
+- **SRS-629**: MUST document in `README.md` the `install-audit` subcommand, including that `--prj-base` is optional and that the audit table reports per-checker installation status.
 - **SRS-264**: MUST implement the following behavior: Runtime dependency declarations in `pyproject.toml` `[project].dependencies` MUST be present in the locked package set defined by `uv.lock`; `[project].dependencies` MUST include `ruff`, `pyright`, and `bandit`; `[build-system].requires` MAY be outside `uv.lock`.
 - **SRS-064**: MUST load persisted `providers` from `~/.config/usereq/config.json` for the `install` command and the implicit installation flow; if no provider remains enabled, it MUST raise a config-invalid error.
 - **SRS-275**: MUST implement the following behavior: The CLI MUST accept a repeatable `--enable PROVIDER` argument as the sole mechanism for provider enablement, accepting only the provider CLI name exactly like `--disable PROVIDER`.
@@ -401,6 +402,7 @@ No explicit performance optimizations identified.
 - **SRS-598**: MUST include unit tests in `tests/test_config_cli.py` verifying that `--write-config` adds only missing canonical defaults, preserves stored values, bootstraps an absent configuration file, rejects multi-command combinations, and reports failures on stderr with exit code 1.
 - **SRS-612**: MUST include unit tests verifying that `compress` and `files-compress` output prefixes match the original source line numbers of extracted functions.
 - **SRS-613**: MUST include unit tests verifying that `files-find` and `find` output line numbers match original source positions and construct code equals the as-is source lines including comments.
+- **SRS-630**: MUST include unit tests in `tests/test_cli.py` verifying that `install-audit` executes without `--prj-base`, renders the audit-table columns and language grouping, and resolves per-module `Installed` cells.
 
 ## 5. Static Code Analysis Requirements
 
@@ -465,6 +467,16 @@ No explicit performance optimizations identified.
 - **SRS-341**: MUST implement the following behavior: `StaticCheckPylance` MUST NOT pass any `--extra-path` argument to pyright and MUST invoke pyright using only the fixed interpreter/module command form and target filepath.
 - **SRS-340**: MUST implement the following behavior: The project MUST include unit tests in `tests/test_dependency_manifests.py` verifying that `ruff` and `pyright` are declared in `pyproject.toml` `[project].dependencies`.
 - **SRS-429**: MUST include unit tests in `tests/test_static_check.py` verifying the SRS-424 default static-check resolution and the SRS-427/SRS-428 pre-flight failure and continuation behavior.
+
+### 5.7 Static Analysis Installation Audit
+- **SRS-621**: MUST implement the following behavior: The CLI MUST accept `install-audit` as a bare subcommand executable without `--prj-base`; its absence MUST NOT trigger the SRS-395 missing-argument error.
+- **SRS-622**: MUST implement the following behavior: The `install-audit` subcommand MUST accept optional `--prj-base`; when provided, it MUST be validated per SRS-395 existence semantics and supplied as the project-base context of the audit; `--prj-base` MUST NOT be mandatory.
+- **SRS-623**: MUST implement the following behavior: The `install-audit` subcommand MUST load static-check entries from the `"static-check"` key of `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when the key is absent.
+- **SRS-624**: MUST implement the following behavior: `install-audit` MUST resolve per entry installation: `Command` through `shutil.which(cmd)`, `Pylance` and `Ruff` through module availability in the active interpreter, `Dummy` as always installed, and unknown module tokens as not installed.
+- **SRS-625**: MUST implement the following behavior: `install-audit` MUST print exactly one audit table with columns `Language`, `Static-Check`, and `Installed` containing one row per configured static-check entry.
+- **SRS-626**: MUST implement the following behavior: Audit-table rows MUST be grouped by canonical language in ascending alphabetical order and MUST preserve persisted entry insertion order within each language.
+- **SRS-627**: MUST implement the following behavior: The `Static-Check` cell MUST render `Dummy`, `Pylance`, `Ruff`, or `Command[<cmd>]`, and the `Installed` cell MUST render `yes` or `no`.
+- **SRS-628**: MUST implement the following behavior: `install-audit` MUST exit with code 0 after printing the audit table; individual unavailable checkers MUST NOT change the exit code.
 
 ## 6. Git Integration and Worktree Management Requirements
 

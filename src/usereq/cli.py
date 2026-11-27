@@ -410,7 +410,9 @@ def build_parser() -> argparse.ArgumentParser:
     ``_require_prj_base``) and ``--git-base`` is never mandatory for any SRS-408 subcommand
     (SRS-392, SRS-393, SRS-396, SRS-397, SRS-410). The ``--force`` auxiliary argument is
     accepted by ``--upgrade`` (with or without ``--develop``/``--dev``) and forces full
-    package download and complete reinstallation (SRS-508, SRS-511).
+    package download and complete reinstallation (SRS-508, SRS-511). The ``install-audit``
+    subcommand accepts optional ``--prj-base`` context, audits every configured
+    static-check entry installation, and never requires ``--prj-base`` (SRS-621..SRS-628).
     """
     usage = (
         "req [-h] [--upgrade] [--develop] [--dev] [--force] [--uninstall] [--prj-base PRJ_BASE] [--git-base GIT_BASE] "
@@ -420,7 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
         "[--enable-static-check SPEC] [--disable-static-check SPEC] "
         "[--test-static-check {dummy,pylance,ruff,command} [FILES...]] "
         "[--git-check] [--docs-check] [--git-wt-name] [--git-wt-create WT_NAME] [--git-wt-delete WT_NAME] "
-        "{files-tokens,files-references,files-compress,files-find,tokens,references,compress,find,files-static-check,static-check,install,uninstall,show} ..."
+        "{files-tokens,files-references,files-compress,files-find,tokens,references,compress,find,files-static-check,static-check,install,install-audit,uninstall,show} ..."
     )
     parser = argparse.ArgumentParser(
         description="Initialize a project with useReq resources.",
@@ -743,7 +745,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar=(
             "{files-tokens,files-references,files-compress,files-find,tokens,"
             "references,compress,find,files-static-check,static-check,"
-            "install,uninstall,show}"
+            "install,install-audit,uninstall,show}"
         ),
     )
 
@@ -877,6 +879,19 @@ def build_parser() -> argparse.ArgumentParser:
             "Print the active configuration, enabled providers in alphabetical "
             "order with their hardcoded skills path and installation status, "
             "and enabled static-check entries as tables."
+        ),
+    )
+
+    # install-audit (SRS-621..SRS-628): audits the installation of every configured
+    # static-check entry; --prj-base is optional context and is never mandatory.
+    sub = subparsers.add_parser(
+        "install-audit",
+        parents=[base_options],
+        usage="req install-audit",
+        help=(
+            "Audit the installation of every configured static-check tool and "
+            "print one table with Language, Static-Check, and Installed columns; "
+            "--prj-base is optional context."
         ),
     )
     return parser
@@ -3089,6 +3104,46 @@ def run_show(args: Namespace) -> None:
         print("(none)")
 
 
+def run_install_audit(args: Namespace) -> None:
+    """!
+    @brief Execute install-audit: audit configured static-check tool installation as a table.
+    @param args Parsed CLI namespace carrying the optional `--prj-base` value.
+    @return {None} Function return value.
+    @details Resolves the optional `--prj-base` through the SRS-395 existence validation
+    when provided and never requires it (SRS-621, SRS-622); loads the static-check entries
+    from `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when
+    the `"static-check"` key is absent (SRS-623); prints exactly one audit table with
+    `Language`, `Static-Check`, and `Installed` columns (SRS-625, SRS-626, SRS-627).
+    No checker subprocess executes, so individual unavailable tools never change the
+    exit code (SRS-628). Complexity: O(E) over E configured entries. Side effects: one
+    stdout audit-table emission.
+    @throws ReqError If a provided `--prj-base` is absent or does not exist (SRS-395).
+    @satisfies SRS-621, SRS-622, SRS-623, SRS-624, SRS-625, SRS-626, SRS-627, SRS-628
+    """
+    from .static_check import audit_static_check_installation
+
+    prj_base = getattr(args, "prj_base", None)
+    project_base = _require_prj_base(args) if prj_base is not None else None
+    static_check_config = load_static_check_from_config()
+    audit_rows = audit_static_check_installation(
+        static_check_config, project_base=project_base
+    )
+    table_rows = [
+        [language, label, "yes" if installed else "no"]
+        for language, label, installed in audit_rows
+    ]
+    print()
+    print("Static Checks Installation Audit")
+    if table_rows:
+        print(
+            _render_simple_table(
+                ["Language", "Static-Check", "Installed"], table_rows
+            )
+        )
+    else:
+        print("(none)")
+
+
 def _maybe_auto_install_after_upgrade(argv_list: list[str]) -> None:
     """!
     @brief Run the provider installation flow after a successful `--upgrade`.
@@ -4663,6 +4718,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 0
         if command == "show":
             run_show(args)
+            return 0
+        if command == "install-audit":
+            run_install_audit(args)
             return 0
         # Bare analysis subcommands (SRS-408); --prj-base is enforced by the handlers
         # that consume it (SRS-396, SRS-410) and no subcommand requires --git-base.

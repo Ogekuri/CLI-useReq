@@ -18,7 +18,8 @@ SRS-371/374 (flowchart artifacts), SRS-381..390 (user-level install,
 global config, model removal), SRS-391 (runtime git resolution),
 SRS-462..SRS-494 (show providers table, installation status, alphabetical
 order, skills path), SRS-495 (packaged templates directory), SRS-513..SRS-517
-(compact post-installation resource report).
+(compact post-installation resource report), SRS-621..SRS-630 (install-audit
+static-check installation audit).
 """
 
 import json
@@ -33,6 +34,7 @@ from unittest.mock import patch
 
 # Imports the CLI module to test.
 from usereq import cli
+from usereq.static_check import audit_static_check_installation
 
 ALL_PROVIDERS = [
     "--enable",
@@ -2127,6 +2129,215 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
         rc = self.run_cli(["uninstall"])
         self.assertEqual(rc, 0)
         self.assertFalse((self.HOME / ".pi" / "agent" / "skills").exists())
+
+
+class TestInstallAuditCommand(HomeIsolatedTestCase):
+    """SRS-621..SRS-630: install-audit subcommand auditing static-check tool installation."""
+
+    AUDIT_HEADING = "Static Checks Installation Audit"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-install-audit-"))
+        self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
+
+    def seed_static_check_config(self, static_check: dict) -> None:
+        """Persist a raw static-check section in the isolated user-global configuration."""
+        config_path = cli.get_global_config_path()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        payload: dict = {}
+        if config_path.is_file():
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+        payload["static-check"] = static_check
+        config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def audit_table_rows(self, output: str) -> list[list[str]]:
+        """Extract the audit-table rows (header first) from captured stdout."""
+        section = output.split(self.AUDIT_HEADING, 1)[1]
+        return [
+            [cell.strip() for cell in line.split("\u2502")[1:-1]]
+            for line in section.splitlines()
+            if line.startswith("\u2502 ")
+        ]
+
+    def make_executable(self, name: str) -> Path:
+        """Create one deterministic passing executable stub in a private bin directory."""
+        bin_dir = self.TEST_DIR / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        executable = bin_dir / name
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o755)
+        return executable
+
+    def test_audit_static_check_installation_resolves_modules(self) -> None:
+        """Level 0 (SRS-624/SRS-626/SRS-627): per-entry resolution, grouping, and labels.
+
+        expected_output: one (language, label, installed) tuple per configured entry,
+        languages sorted alphabetically, entries in persisted insertion order, Dummy
+        always installed, unknown modules not installed with the raw module label.
+        """
+        rows = audit_static_check_installation(
+            {
+                "Rust": [{"module": "Dummy"}],
+                "Python": [
+                    {"module": "Command", "cmd": "usereq-audit-alpha-cmd"},
+                    {"module": "Mystery"},
+                ],
+            }
+        )
+        self.assertEqual(
+            rows,
+            [
+                ("Python", "Command[usereq-audit-alpha-cmd]", False),
+                ("Python", "Mystery", False),
+                ("Rust", "Dummy", True),
+            ],
+        )
+
+    def test_install_audit_runs_without_prj_base(self) -> None:
+        """SRS-621/SRS-625/SRS-627/SRS-628: bare install-audit prints one audit table.
+
+        expected_output: exit code 0 and exactly one table with the Language,
+        Static-Check, and Installed columns reporting the Dummy entry as yes.
+        """
+        # Arrange: persist one always-installed entry.
+        self.seed_static_check_config({"Python": [{"module": "Dummy"}]})
+        # Act: run the audit without --prj-base.
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["install-audit"])
+        # Assert: exit 0, one table, expected header and row.
+        self.assertEqual(rc, 0)
+        rows = self.audit_table_rows(mock_stdout.getvalue())
+        self.assertEqual(rows[0], ["Language", "Static-Check", "Installed"])
+        self.assertEqual(rows[1], ["Python", "Dummy", "yes"])
+
+    def test_install_audit_loads_defaults_when_key_absent(self) -> None:
+        """SRS-623: absent "static-check" key resolves the SRS-424 default entries.
+
+        expected_output: the audit table contains the default C, C++, JavaScript,
+        Python, and TypeScript rows regardless of local binary availability.
+        """
+        # Act: run the audit on an isolated HOME without a configuration file.
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["install-audit"])
+        # Assert: exit 0 and the expected default rows are present.
+        self.assertEqual(rc, 0)
+        pairs = [row[:2] for row in self.audit_table_rows(mock_stdout.getvalue())]
+        for expected_pair in (
+            ["C", "Command[cppcheck]"],
+            ["C++", "Command[clang-format]"],
+            ["JavaScript", "Command[node]"],
+            ["Python", "Pylance"],
+            ["Python", "Ruff"],
+            ["TypeScript", "Command[eslint]"],
+        ):
+            self.assertIn(expected_pair, pairs)
+
+    def test_install_audit_reports_command_binary_presence(self) -> None:
+        """SRS-624/SRS-627/SRS-628: Command entries resolve through PATH; exit 0 kept.
+
+        expected_output: the configured present binary reports yes, the persisted
+        missing binary reports no, and the exit code remains 0.
+        """
+        # Arrange: one resolvable binary on PATH and one persisted missing binary.
+        executable = self.make_executable("usereq-audit-present-cmd")
+        self.seed_static_check_config(
+            {
+                "Python": [{"module": "Command", "cmd": "usereq-audit-present-cmd"}],
+                "Shell": [{"module": "Command", "cmd": "usereq-audit-missing-cmd"}],
+            }
+        )
+        path_env = os.environ.get("PATH", "")
+        # Act: run the audit with the stub bin directory prepended to PATH.
+        with patch.dict(
+            os.environ, {"PATH": f"{executable.parent}{os.pathsep}{path_env}"}
+        ):
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                rc = self.run_cli(["install-audit"])
+        # Assert: yes for the present binary, no for the missing one, exit code 0.
+        self.assertEqual(rc, 0)
+        rows = self.audit_table_rows(mock_stdout.getvalue())
+        self.assertIn(["Python", "Command[usereq-audit-present-cmd]", "yes"], rows)
+        self.assertIn(["Shell", "Command[usereq-audit-missing-cmd]", "no"], rows)
+
+    def test_install_audit_groups_rows_by_language(self) -> None:
+        """SRS-626: rows group by canonical language alphabetically; insertion kept.
+
+        expected_output: Python rows precede the Rust row although the persisted
+        configuration lists Rust first, and the within-language order is preserved.
+        """
+        # Arrange: persisted language keys in non-alphabetical insertion order.
+        self.seed_static_check_config(
+            {
+                "Rust": [{"module": "Dummy"}],
+                "Python": [
+                    {"module": "Command", "cmd": "usereq-audit-alpha-cmd"},
+                    {"module": "Command", "cmd": "usereq-audit-beta-cmd"},
+                ],
+            }
+        )
+        # Act: run the audit.
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["install-audit"])
+        # Assert: grouped and ordered rows.
+        self.assertEqual(rc, 0)
+        data_rows = self.audit_table_rows(mock_stdout.getvalue())[1:]
+        self.assertEqual(
+            [row[:2] for row in data_rows],
+            [
+                ["Python", "Command[usereq-audit-alpha-cmd]"],
+                ["Python", "Command[usereq-audit-beta-cmd]"],
+                ["Rust", "Dummy"],
+            ],
+        )
+
+    def test_install_audit_accepts_optional_prj_base(self) -> None:
+        """SRS-622: provided --prj-base is accepted and the audit still exits 0.
+
+        expected_output: exit code 0 with the audit table when --prj-base points
+        to an existing directory placed before the subcommand token.
+        """
+        # Arrange: one configured entry and an existing project directory.
+        self.seed_static_check_config({"Python": [{"module": "Dummy"}]})
+        # Act: run the audit with --prj-base before the subcommand token.
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["--prj-base", str(self.TEST_DIR), "install-audit"])
+        # Assert: exit 0 with the configured row.
+        self.assertEqual(rc, 0)
+        self.assertIn(
+            ["Python", "Dummy", "yes"],
+            self.audit_table_rows(mock_stdout.getvalue()),
+        )
+
+    def test_install_audit_rejects_absent_prj_base_path(self) -> None:
+        """SRS-622/SRS-395: a provided --prj-base that does not exist fails validation.
+
+        expected_output: exit code 2 with an English stderr diagnostic naming the
+        missing path (SRS-395 semantics of _require_prj_base).
+        """
+        # Act: run the audit with a non-existent --prj-base path.
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            rc = self.run_cli(
+                ["install-audit", "--prj-base", str(self.TEST_DIR / "absent")]
+            )
+        # Assert: non-zero exit with a diagnostic mentioning the missing path.
+        self.assertEqual(rc, 2)
+        self.assertIn("does not exist", mock_stderr.getvalue())
+
+    def test_install_audit_reports_empty_configuration(self) -> None:
+        """SRS-625: an explicitly emptied static-check configuration yields no rows.
+
+        expected_output: exit code 0 with the audit heading and the (none) marker.
+        """
+        # Arrange: persisted empty static-check object suppressing the defaults.
+        self.seed_static_check_config({})
+        # Act: run the audit.
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["install-audit"])
+        # Assert: exit 0 with the (none) marker.
+        self.assertEqual(rc, 0)
+        self.assertIn(self.AUDIT_HEADING, mock_stdout.getvalue())
+        self.assertIn("(none)", mock_stdout.getvalue())
 
 
 if __name__ == "__main__":
