@@ -386,70 +386,46 @@ def dispatch_static_check_for_directory(
 # Installation audit helpers (SRS-621..SRS-628)
 # ---------------------------------------------------------------------------
 
-def _audit_entry_installation(
-    module_raw: str,
-    cmd_value: object,
-    project_base: Optional[Path] = None,
-) -> tuple[bool, str]:
+def _audit_command_entry_installation(cmd_value: object) -> tuple[bool, str]:
     """!
-    @brief Resolve the installation state and audit label of one static-check entry.
-    @param module_raw {str} Raw `"module"` token of the entry (matched case-insensitively).
-    @param cmd_value {object} Raw `"cmd"` token of the entry; meaningful for `Command` only.
-    @param project_base {Optional[Path]} Absolute project-base runtime context forwarded to
-      the `StaticCheckPylance` construction, mirroring the per-file dispatch interface (SRS-622).
-    @return {tuple[bool, str]} Tuple `(installed, label)` where `installed` resolves through
-      the SRS-427 availability probe (`Dummy` always, `Pylance`/`Ruff` module lookup in the
-      active interpreter, `Command` through `shutil.which(cmd)`) and `label` is `Dummy`,
-      `Pylance`, `Ruff`, `Command[<cmd>]`, or the raw module token for unknown modules.
-    @details Reuses the checker class hierarchy availability probes so the audit verdict
+    @brief Resolve the installation state and audit label of one `Command` static-check entry.
+    @param cmd_value {object} Raw `"cmd"` token of the `Command` entry.
+    @return {tuple[bool, str]} Tuple `(installed, cmd_label)` where `installed` resolves
+      through the SRS-427 availability probe (`shutil.which(cmd)` `PATH` lookup) and
+      `cmd_label` is the bare `cmd` token, or the empty string when `cmd` is absent
+      or not a non-empty string.
+    @details Reuses the `StaticCheckCommand` availability probe so the audit verdict
       matches the execution pre-flight exactly (SRS-427, SRS-624). A `Command` entry
-      without a non-empty string `cmd` and any unknown module token resolve as not
-      installed. No checker subprocess executes: only constructor and `is_available()`
-      calls run. Complexity: O(1). Side effects: none.
+      without a non-empty string `cmd` resolves as not installed. No checker subprocess
+      executes: only constructor and `is_available()` calls run. Complexity: O(1).
+      Side effects: none.
     @see audit_static_check_installation
-    @satisfies SRS-622, SRS-624, SRS-627
+    @satisfies SRS-624, SRS-627
     """
-    module_key = module_raw.lower()
-    checker: StaticCheckBase
-    if module_key == "dummy":
-        checker = StaticCheckBase(inputs=[], extra_args=None, fail_only=True)
-    elif module_key == "pylance":
-        checker = StaticCheckPylance(
-            inputs=[], extra_args=None, fail_only=True, project_base=project_base
-        )
-    elif module_key == "ruff":
-        checker = StaticCheckRuff(inputs=[], extra_args=None, fail_only=True)
-    elif module_key == "command":
-        if not isinstance(cmd_value, str) or not cmd_value:
-            return False, "Command"
-        checker = StaticCheckCommand(
-            cmd=cmd_value, inputs=[], extra_args=None, fail_only=True
-        )
-    else:
-        return False, module_raw
+    if not isinstance(cmd_value, str) or not cmd_value:
+        return False, ""
+    checker = StaticCheckCommand(
+        cmd=cmd_value, inputs=[], extra_args=None, fail_only=True
+    )
     available, _reason = checker.is_available()
-    return available, checker.LABEL
+    return available, cmd_value
 
 
 def audit_static_check_installation(
     static_check_config: Mapping[str, Sequence[Mapping[str, object]]],
-    project_base: Optional[Path] = None,
 ) -> list[tuple[str, str, bool]]:
     """!
-    @brief Resolve the installation audit rows of every configured static-check entry.
+    @brief Resolve the installation audit rows of the configured `Command` static-check entries.
     @param static_check_config {Mapping[str, Sequence[Mapping[str, object]]]} Static-check
       configuration keyed by canonical language name with per-language entry lists.
-    @param project_base {Optional[Path]} Absolute project-base runtime context forwarded to
-      per-entry resolution (SRS-622).
-    @return {list[tuple[str, str, bool]]} One `(canonical_language, label, installed)` tuple
-      per configured entry, grouped by canonical language in ascending alphabetical order
-      and preserving persisted entry insertion order within each language (SRS-626).
-    @details Non-mapping entries are skipped; `Dummy` resolves as installed, `Pylance` and
-      `Ruff` resolve through module availability in the active interpreter, `Command`
-      resolves through `shutil.which(cmd)`, and unknown module tokens resolve as not
-      installed with the raw module label (SRS-624). No checker subprocess executes.
+    @return {list[tuple[str, str, bool]]} One `(canonical_language, cmd, installed)` tuple per
+      configured `Command` entry, grouped by canonical language in ascending alphabetical
+      order and preserving persisted entry insertion order within each language (SRS-626).
+    @details Non-mapping entries and every internally implemented module (`Dummy`,
+      `Pylance`, `Ruff`, and unknown tokens) are skipped: only `Command` entries are
+      audited through `shutil.which(cmd)` (SRS-624). No checker subprocess executes.
       Complexity: O(L log L + E) over L languages and E entries. Side effects: none.
-    @see _audit_entry_installation
+    @see _audit_command_entry_installation
     @satisfies SRS-623, SRS-624, SRS-626, SRS-627
     """
     rows: list[tuple[str, str, bool]] = []
@@ -457,11 +433,10 @@ def audit_static_check_installation(
         for entry in static_check_config.get(canonical_lang, []):
             if not isinstance(entry, dict):
                 continue
-            module_raw = str(entry.get("module", ""))
-            installed, label = _audit_entry_installation(
-                module_raw, entry.get("cmd"), project_base=project_base
-            )
-            rows.append((canonical_lang, label, installed))
+            if str(entry.get("module", "")).lower() != "command":
+                continue
+            installed, cmd_label = _audit_command_entry_installation(entry.get("cmd"))
+            rows.append((canonical_lang, cmd_label, installed))
     return rows
 
 

@@ -2170,11 +2170,12 @@ class TestAuditCommand(HomeIsolatedTestCase):
         return executable
 
     def test_audit_static_check_installation_resolves_modules(self) -> None:
-        """Level 0 (SRS-624/SRS-626/SRS-627): per-entry resolution, grouping, and labels.
+        """Level 0 (SRS-624/SRS-626/SRS-627): Command-only resolution and grouping.
 
-        expected_output: one (language, label, installed) tuple per configured entry,
-        languages sorted alphabetically, entries in persisted insertion order, Dummy
-        always installed, unknown modules not installed with the raw module label.
+        expected_output: one (language, cmd, installed) tuple per configured Command
+        entry, languages sorted alphabetically, entries in persisted insertion order,
+        and every internally implemented module (Dummy, Pylance, Ruff, unknown)
+        excluded from the rows.
         """
         rows = audit_static_check_installation(
             {
@@ -2185,59 +2186,62 @@ class TestAuditCommand(HomeIsolatedTestCase):
                 ],
             }
         )
-        self.assertEqual(
-            rows,
-            [
-                ("Python", "Command[usereq-audit-alpha-cmd]", False),
-                ("Python", "Mystery", False),
-                ("Rust", "Dummy", True),
-            ],
-        )
+        self.assertEqual(rows, [("Python", "usereq-audit-alpha-cmd", False)])
 
     def test_audit_runs_without_prj_base(self) -> None:
         """SRS-621/SRS-625/SRS-627/SRS-628: bare audit prints one audit table.
 
         expected_output: exit code 0 and exactly one table with the Language,
-        Static-Check, and Installed columns reporting the Dummy entry as yes.
+        Static-Check, and Installed columns reporting the Command entry as no.
         """
-        # Arrange: persist one always-installed entry.
-        self.seed_static_check_config({"Python": [{"module": "Dummy"}]})
+        # Arrange: persist one Command entry whose binary is not on PATH.
+        self.seed_static_check_config(
+            {"Python": [{"module": "Command", "cmd": "usereq-audit-basic-cmd"}]}
+        )
         # Act: run the audit without --prj-base.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["audit"])
-        # Assert: exit 0, one table, expected header and row.
+        # Assert: exit 0, one table, expected header and bare-cmd row.
         self.assertEqual(rc, 0)
         rows = self.audit_table_rows(mock_stdout.getvalue())
         self.assertEqual(rows[0], ["Language", "Static-Check", "Installed"])
-        self.assertEqual(rows[1], ["Python", "Dummy", "yes"])
+        self.assertEqual(rows[1], ["Python", "usereq-audit-basic-cmd", "no"])
 
     def test_audit_loads_defaults_when_key_absent(self) -> None:
         """SRS-623: absent "static-check" key resolves the SRS-424 default entries.
 
-        expected_output: the audit table contains the default C, C++, JavaScript,
-        Python, and TypeScript rows regardless of local binary availability.
+        expected_output: the audit table contains the default Command rows for C,
+        C++, JavaScript, Python, and TypeScript regardless of local binary
+        availability, and no internally implemented module rows.
         """
         # Act: run the audit on an isolated HOME without a configuration file.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["audit"])
-        # Assert: exit 0 and the expected default rows are present.
+        # Assert: exit 0 and the expected default Command rows are present.
         self.assertEqual(rc, 0)
         pairs = [row[:2] for row in self.audit_table_rows(mock_stdout.getvalue())]
         for expected_pair in (
-            ["C", "Command[cppcheck]"],
-            ["C++", "Command[clang-format]"],
-            ["JavaScript", "Command[node]"],
-            ["Python", "Pylance"],
-            ["Python", "Ruff"],
-            ["TypeScript", "Command[eslint]"],
+            ["C", "cppcheck"],
+            ["C", "clang-format"],
+            ["C", "flawfinder"],
+            ["C++", "cppcheck"],
+            ["JavaScript", "node"],
+            ["JavaScript", "eslint"],
+            ["Python", "bandit"],
+            ["TypeScript", "eslint"],
+            ["TypeScript", "tsc"],
         ):
             self.assertIn(expected_pair, pairs)
+        # Internally implemented modules are not audited (SRS-624).
+        self.assertNotIn(["Python", "Pylance"], pairs)
+        self.assertNotIn(["Python", "Ruff"], pairs)
 
     def test_audit_reports_command_binary_presence(self) -> None:
         """SRS-624/SRS-627/SRS-628: Command entries resolve through PATH; exit 0 kept.
 
-        expected_output: the configured present binary reports yes, the persisted
-        missing binary reports no, and the exit code remains 0.
+        expected_output: the configured present binary reports yes and the persisted
+        missing binary reports no, both under their bare cmd labels, with the exit
+        code remaining 0.
         """
         # Arrange: one resolvable binary on PATH and one persisted missing binary.
         executable = self.make_executable("usereq-audit-present-cmd")
@@ -2257,14 +2261,15 @@ class TestAuditCommand(HomeIsolatedTestCase):
         # Assert: yes for the present binary, no for the missing one, exit code 0.
         self.assertEqual(rc, 0)
         rows = self.audit_table_rows(mock_stdout.getvalue())
-        self.assertIn(["Python", "Command[usereq-audit-present-cmd]", "yes"], rows)
-        self.assertIn(["Shell", "Command[usereq-audit-missing-cmd]", "no"], rows)
+        self.assertIn(["Python", "usereq-audit-present-cmd", "yes"], rows)
+        self.assertIn(["Shell", "usereq-audit-missing-cmd", "no"], rows)
 
     def test_audit_groups_rows_by_language(self) -> None:
         """SRS-626: rows group by canonical language alphabetically; insertion kept.
 
-        expected_output: Python rows precede the Rust row although the persisted
-        configuration lists Rust first, and the within-language order is preserved.
+        expected_output: Python Command rows precede any later-language rows although
+        the persisted configuration lists Rust first, the within-language order is
+        preserved, and the Dummy-only Rust language yields no rows.
         """
         # Arrange: persisted language keys in non-alphabetical insertion order.
         self.seed_static_check_config(
@@ -2279,15 +2284,14 @@ class TestAuditCommand(HomeIsolatedTestCase):
         # Act: run the audit.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["audit"])
-        # Assert: grouped and ordered rows.
+        # Assert: grouped and ordered rows; non-Command languages are excluded.
         self.assertEqual(rc, 0)
         data_rows = self.audit_table_rows(mock_stdout.getvalue())[1:]
         self.assertEqual(
             [row[:2] for row in data_rows],
             [
-                ["Python", "Command[usereq-audit-alpha-cmd]"],
-                ["Python", "Command[usereq-audit-beta-cmd]"],
-                ["Rust", "Dummy"],
+                ["Python", "usereq-audit-alpha-cmd"],
+                ["Python", "usereq-audit-beta-cmd"],
             ],
         )
 
@@ -2297,15 +2301,17 @@ class TestAuditCommand(HomeIsolatedTestCase):
         expected_output: exit code 0 with the audit table when --prj-base points
         to an existing directory placed before the subcommand token.
         """
-        # Arrange: one configured entry and an existing project directory.
-        self.seed_static_check_config({"Python": [{"module": "Dummy"}]})
+        # Arrange: one configured Command entry and an existing project directory.
+        self.seed_static_check_config(
+            {"Python": [{"module": "Command", "cmd": "usereq-audit-ctx-cmd"}]}
+        )
         # Act: run the audit with --prj-base before the subcommand token.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["--prj-base", str(self.TEST_DIR), "audit"])
         # Assert: exit 0 with the configured row.
         self.assertEqual(rc, 0)
         self.assertIn(
-            ["Python", "Dummy", "yes"],
+            ["Python", "usereq-audit-ctx-cmd", "no"],
             self.audit_table_rows(mock_stdout.getvalue()),
         )
 
@@ -2325,18 +2331,32 @@ class TestAuditCommand(HomeIsolatedTestCase):
         self.assertIn("does not exist", mock_stderr.getvalue())
 
     def test_audit_reports_empty_configuration(self) -> None:
-        """SRS-625: an explicitly emptied static-check configuration yields no rows.
+        """SRS-624/SRS-625: configurations without Command entries yield no rows.
 
-        expected_output: exit code 0 with the audit heading and the (none) marker.
+        expected_output: exit code 0 with the audit heading and the (none) marker
+        for an explicitly emptied configuration and for a configuration holding
+        only internally implemented (non-Command) modules.
         """
-        # Arrange: persisted empty static-check object suppressing the defaults.
+        # Arrange/Act/Assert: emptied static-check object suppresses the defaults.
         self.seed_static_check_config({})
-        # Act: run the audit.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             rc = self.run_cli(["audit"])
-        # Assert: exit 0 with the (none) marker.
         self.assertEqual(rc, 0)
         self.assertIn(self.AUDIT_HEADING, mock_stdout.getvalue())
+        self.assertIn("(none)", mock_stdout.getvalue())
+        # Arrange/Act/Assert: only internally implemented modules are excluded.
+        self.seed_static_check_config(
+            {
+                "Python": [
+                    {"module": "Pylance"},
+                    {"module": "Ruff"},
+                    {"module": "Dummy"},
+                ]
+            }
+        )
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = self.run_cli(["audit"])
+        self.assertEqual(rc, 0)
         self.assertIn("(none)", mock_stdout.getvalue())
 
 

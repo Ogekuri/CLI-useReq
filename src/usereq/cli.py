@@ -3112,22 +3112,22 @@ def run_audit(args: Namespace) -> None:
     @details Resolves the optional `--prj-base` through the SRS-395 existence validation
     when provided and never requires it (SRS-621, SRS-622); loads the static-check entries
     from `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when
-    the `"static-check"` key is absent (SRS-623); prints exactly one audit table with
-    `Language`, `Static-Check`, and `Installed` columns (SRS-625, SRS-626, SRS-627).
-    No checker subprocess executes, so individual unavailable tools never change the
-    exit code (SRS-628). Complexity: O(E) over E configured entries. Side effects: one
-    stdout audit-table emission.
+    the `"static-check"` key is absent (SRS-623); audits only `Command` entries through
+    `shutil.which(cmd)` (SRS-624) and prints exactly one audit table with `Language`,
+    `Static-Check`, and `Installed` columns (SRS-625, SRS-626, SRS-627). No checker
+    subprocess executes, so individual unavailable binaries never change the exit code
+    (SRS-628). Complexity: O(E) over E configured entries. Side effects: one stdout
+    audit-table emission.
     @throws ReqError If a provided `--prj-base` is absent or does not exist (SRS-395).
     @satisfies SRS-621, SRS-622, SRS-623, SRS-624, SRS-625, SRS-626, SRS-627, SRS-628
     """
     from .static_check import audit_static_check_installation
 
     prj_base = getattr(args, "prj_base", None)
-    project_base = _require_prj_base(args) if prj_base is not None else None
+    if prj_base is not None:
+        _require_prj_base(args)
     static_check_config = load_static_check_from_config()
-    audit_rows = audit_static_check_installation(
-        static_check_config, project_base=project_base
-    )
+    audit_rows = audit_static_check_installation(static_check_config)
     table_rows = [
         [language, label, "yes" if installed else "no"]
         for language, label, installed in audit_rows

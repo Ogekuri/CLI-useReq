@@ -258,8 +258,8 @@ A standalone testbed is available: `req --test-static-check {dummy,pylance,ruff,
 req audit    # audit static-check tool installation; --prj-base is optional
 ```
 
-- `req audit` loads the configured static-check entries from `~/.config/usereq/config.json` (applying the default static-check configuration when the `"static-check"` key is absent) and prints exactly one table with the `Language`, `Static-Check`, and `Installed` columns, one row per configured entry.
-- Rows are grouped by canonical language in alphabetical order; entries of the same language keep their persisted insertion order. The `Static-Check` cell shows the module label (`Dummy`, `Pylance`, `Ruff`, or `Command[<cmd>]`); the `Installed` cell shows `yes` or `no` according to the same availability rules used by the checker pre-flight: `Command` binaries through a `PATH` lookup, `Pylance`/`Ruff` through their module in the active interpreter, `Dummy` always installed; unknown module tokens report `no`.
+- `req audit` loads the configured static-check entries from `~/.config/usereq/config.json` (applying the default static-check configuration when the `"static-check"` key is absent) and prints exactly one table with the `Language`, `Static-Check`, and `Installed` columns, one row per configured `Command` entry. Only static-checks of type `Command` (external executables invoked as commands) are audited; internally implemented modules (`Dummy`, `Pylance`, `Ruff`) run through the active Python interpreter and are not audited.
+- Rows are grouped by canonical language in alphabetical order; entries of the same language keep their persisted insertion order. The `Static-Check` cell shows the external binary name (the entry's `cmd` token, for example `cppcheck`); the `Installed` cell shows `yes` or `no` according to a `PATH` lookup of that binary.
 - `--prj-base` is optional: the command runs without it; when provided, it is validated and used as the project-base context of the audit. The audit never executes any checker, so unavailable tools are reported in the table without changing the exit code (always 0).
 
 ## Command Reference

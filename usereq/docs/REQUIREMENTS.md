@@ -402,7 +402,7 @@ No explicit performance optimizations identified.
 - **SRS-598**: MUST include unit tests in `tests/test_config_cli.py` verifying that `--write-config` adds only missing canonical defaults, preserves stored values, bootstraps an absent configuration file, rejects multi-command combinations, and reports failures on stderr with exit code 1.
 - **SRS-612**: MUST include unit tests verifying that `compress` and `files-compress` output prefixes match the original source line numbers of extracted functions.
 - **SRS-613**: MUST include unit tests verifying that `files-find` and `find` output line numbers match original source positions and construct code equals the as-is source lines including comments.
-- **SRS-630**: MUST include unit tests in `tests/test_cli.py` verifying that `audit` executes without `--prj-base`, renders the audit-table columns and language grouping, and resolves per-module `Installed` cells.
+- **SRS-630**: MUST include unit tests in `tests/test_cli.py` verifying that `audit` executes without `--prj-base`, renders the audit-table columns and language grouping, and resolves per-entry `Installed` cells for `Command` entries.
 
 ## 5. Static Code Analysis Requirements
 
@@ -472,10 +472,10 @@ No explicit performance optimizations identified.
 - **SRS-621**: MUST implement the following behavior: The CLI MUST accept `audit` as a bare subcommand executable without `--prj-base`; its absence MUST NOT trigger the SRS-395 missing-argument error.
 - **SRS-622**: MUST implement the following behavior: The `audit` subcommand MUST accept optional `--prj-base`; when provided, it MUST be validated per SRS-395 existence semantics and supplied as the project-base context of the audit; `--prj-base` MUST NOT be mandatory.
 - **SRS-623**: MUST implement the following behavior: The `audit` subcommand MUST load static-check entries from the `"static-check"` key of `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when the key is absent.
-- **SRS-624**: MUST implement the following behavior: `audit` MUST resolve per entry installation: `Command` through `shutil.which(cmd)`, `Pylance` and `Ruff` through module availability in the active interpreter, `Dummy` as always installed, and unknown module tokens as not installed.
-- **SRS-625**: MUST implement the following behavior: `audit` MUST print exactly one audit table with columns `Language`, `Static-Check`, and `Installed` containing one row per configured static-check entry.
+- **SRS-624**: MUST implement the following behavior: `audit` MUST verify only `Command` static-check entries, resolving each entry installation through `shutil.which(cmd)`.
+- **SRS-625**: MUST implement the following behavior: `audit` MUST print exactly one audit table with columns `Language`, `Static-Check`, and `Installed` containing one row per configured `Command` static-check entry.
 - **SRS-626**: MUST implement the following behavior: Audit-table rows MUST be grouped by canonical language in ascending alphabetical order and MUST preserve persisted entry insertion order within each language.
-- **SRS-627**: MUST implement the following behavior: The `Static-Check` cell MUST render `Dummy`, `Pylance`, `Ruff`, or `Command[<cmd>]`, and the `Installed` cell MUST render `yes` or `no`.
+- **SRS-627**: MUST implement the following behavior: The `Static-Check` cell MUST render the `cmd` token of the audited `Command` entry, and the `Installed` cell MUST render `yes` or `no`.
 - **SRS-628**: MUST implement the following behavior: `audit` MUST exit with code 0 after printing the audit table; individual unavailable checkers MUST NOT change the exit code.
 
 ## 6. Git Integration and Worktree Management Requirements
