@@ -255,10 +255,10 @@ A standalone testbed is available: `req --test-static-check {dummy,pylance,ruff,
 ### Static-check installation audit
 
 ```bash
-req install-audit    # audit static-check tool installation; --prj-base is optional
+req audit    # audit static-check tool installation; --prj-base is optional
 ```
 
-- `req install-audit` loads the configured static-check entries from `~/.config/usereq/config.json` (applying the default static-check configuration when the `"static-check"` key is absent) and prints exactly one table with the `Language`, `Static-Check`, and `Installed` columns, one row per configured entry.
+- `req audit` loads the configured static-check entries from `~/.config/usereq/config.json` (applying the default static-check configuration when the `"static-check"` key is absent) and prints exactly one table with the `Language`, `Static-Check`, and `Installed` columns, one row per configured entry.
 - Rows are grouped by canonical language in alphabetical order; entries of the same language keep their persisted insertion order. The `Static-Check` cell shows the module label (`Dummy`, `Pylance`, `Ruff`, or `Command[<cmd>]`); the `Installed` cell shows `yes` or `no` according to the same availability rules used by the checker pre-flight: `Command` binaries through a `PATH` lookup, `Pylance`/`Ruff` through their module in the active interpreter, `Dummy` always installed; unknown module tokens report `no`.
 - `--prj-base` is optional: the command runs without it; when provided, it is validated and used as the project-base context of the audit. The audit never executes any checker, so unavailable tools are reported in the table without changing the exit code (always 0).
 
@@ -266,7 +266,7 @@ req install-audit    # audit static-check tool installation; --prj-base is optio
 
 `req` can be run from any directory. Two path arguments drive location resolution:
 
-- `--prj-base <project-folder>` — mandatory for commands that read or write project files (`--docs-check`, `--set-*-dir`, and the project-scan subcommands `tokens`, `references`, `compress`, `find`, `static-check`, `files-static-check`); the `install` subcommand neither requires nor accepts it, while `install-audit` accepts it as optional context.
+- `--prj-base <project-folder>` — mandatory for commands that read or write project files (`--docs-check`, `--set-*-dir`, and the project-scan subcommands `tokens`, `references`, `compress`, `find`, `static-check`, `files-static-check`); the `install` subcommand neither requires nor accepts it, while `audit` accepts it as optional context.
 - `--git-base <git-repository-folder>` — mandatory for the git commands (`--git-check`, `--git-wt-name`, `--git-wt-create`, `--git-wt-delete`); not required by any analysis subcommand.
 - `--prj-base` and `--git-base` are never persisted in `~/.config/usereq/config.json`.
 - The configuration commands `--print`, `--info`, `--print-raw`, `--get`, `--set`, and `--unset` require neither base argument; paths are resolved from the configuration schema, not from a project.

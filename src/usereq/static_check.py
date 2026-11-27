@@ -7,7 +7,7 @@
   `dispatch_static_check_for_directory`, `entry_scan_by_dir`, `STATIC_CHECK_LANG_CANONICAL`,
   and `STATIC_CHECK_EXT_TO_LANG` for `--enable-static-check`, `files-static-check`
   and `static-check` subcommand support, and `audit_static_check_installation` for the
-  `install-audit` subcommand installation audit (SRS-621..SRS-628).
+  `audit` subcommand installation audit (SRS-621..SRS-628).
   Class hierarchy: StaticCheckBase (Dummy) -> StaticCheckPylance, StaticCheckRuff, StaticCheckCommand.
   File resolution supports: explicit file paths, glob patterns (with full `**` recursive expansion),
   and direct-children-only directory traversal. No custom `--recursive` flag; recursive traversal

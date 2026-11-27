@@ -18,7 +18,7 @@ SRS-371/374 (flowchart artifacts), SRS-381..390 (user-level install,
 global config, model removal), SRS-391 (runtime git resolution),
 SRS-462..SRS-494 (show providers table, installation status, alphabetical
 order, skills path), SRS-495 (packaged templates directory), SRS-513..SRS-517
-(compact post-installation resource report), SRS-621..SRS-630 (install-audit
+(compact post-installation resource report), SRS-621..SRS-630 (audit
 static-check installation audit).
 """
 
@@ -2131,14 +2131,14 @@ class TestShowInstallUninstallCommands(HomeIsolatedTestCase):
         self.assertFalse((self.HOME / ".pi" / "agent" / "skills").exists())
 
 
-class TestInstallAuditCommand(HomeIsolatedTestCase):
-    """SRS-621..SRS-630: install-audit subcommand auditing static-check tool installation."""
+class TestAuditCommand(HomeIsolatedTestCase):
+    """SRS-621..SRS-630: audit subcommand auditing static-check tool installation."""
 
     AUDIT_HEADING = "Static Checks Installation Audit"
 
     def setUp(self) -> None:
         super().setUp()
-        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-install-audit-"))
+        self.TEST_DIR = Path(tempfile.mkdtemp(prefix="usereq-audit-"))
         self.addCleanup(shutil.rmtree, self.TEST_DIR, ignore_errors=True)
 
     def seed_static_check_config(self, static_check: dict) -> None:
@@ -2194,8 +2194,8 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
             ],
         )
 
-    def test_install_audit_runs_without_prj_base(self) -> None:
-        """SRS-621/SRS-625/SRS-627/SRS-628: bare install-audit prints one audit table.
+    def test_audit_runs_without_prj_base(self) -> None:
+        """SRS-621/SRS-625/SRS-627/SRS-628: bare audit prints one audit table.
 
         expected_output: exit code 0 and exactly one table with the Language,
         Static-Check, and Installed columns reporting the Dummy entry as yes.
@@ -2204,14 +2204,14 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
         self.seed_static_check_config({"Python": [{"module": "Dummy"}]})
         # Act: run the audit without --prj-base.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-            rc = self.run_cli(["install-audit"])
+            rc = self.run_cli(["audit"])
         # Assert: exit 0, one table, expected header and row.
         self.assertEqual(rc, 0)
         rows = self.audit_table_rows(mock_stdout.getvalue())
         self.assertEqual(rows[0], ["Language", "Static-Check", "Installed"])
         self.assertEqual(rows[1], ["Python", "Dummy", "yes"])
 
-    def test_install_audit_loads_defaults_when_key_absent(self) -> None:
+    def test_audit_loads_defaults_when_key_absent(self) -> None:
         """SRS-623: absent "static-check" key resolves the SRS-424 default entries.
 
         expected_output: the audit table contains the default C, C++, JavaScript,
@@ -2219,7 +2219,7 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
         """
         # Act: run the audit on an isolated HOME without a configuration file.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-            rc = self.run_cli(["install-audit"])
+            rc = self.run_cli(["audit"])
         # Assert: exit 0 and the expected default rows are present.
         self.assertEqual(rc, 0)
         pairs = [row[:2] for row in self.audit_table_rows(mock_stdout.getvalue())]
@@ -2233,7 +2233,7 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
         ):
             self.assertIn(expected_pair, pairs)
 
-    def test_install_audit_reports_command_binary_presence(self) -> None:
+    def test_audit_reports_command_binary_presence(self) -> None:
         """SRS-624/SRS-627/SRS-628: Command entries resolve through PATH; exit 0 kept.
 
         expected_output: the configured present binary reports yes, the persisted
@@ -2253,14 +2253,14 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
             os.environ, {"PATH": f"{executable.parent}{os.pathsep}{path_env}"}
         ):
             with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-                rc = self.run_cli(["install-audit"])
+                rc = self.run_cli(["audit"])
         # Assert: yes for the present binary, no for the missing one, exit code 0.
         self.assertEqual(rc, 0)
         rows = self.audit_table_rows(mock_stdout.getvalue())
         self.assertIn(["Python", "Command[usereq-audit-present-cmd]", "yes"], rows)
         self.assertIn(["Shell", "Command[usereq-audit-missing-cmd]", "no"], rows)
 
-    def test_install_audit_groups_rows_by_language(self) -> None:
+    def test_audit_groups_rows_by_language(self) -> None:
         """SRS-626: rows group by canonical language alphabetically; insertion kept.
 
         expected_output: Python rows precede the Rust row although the persisted
@@ -2278,7 +2278,7 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
         )
         # Act: run the audit.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-            rc = self.run_cli(["install-audit"])
+            rc = self.run_cli(["audit"])
         # Assert: grouped and ordered rows.
         self.assertEqual(rc, 0)
         data_rows = self.audit_table_rows(mock_stdout.getvalue())[1:]
@@ -2291,7 +2291,7 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
             ],
         )
 
-    def test_install_audit_accepts_optional_prj_base(self) -> None:
+    def test_audit_accepts_optional_prj_base(self) -> None:
         """SRS-622: provided --prj-base is accepted and the audit still exits 0.
 
         expected_output: exit code 0 with the audit table when --prj-base points
@@ -2301,7 +2301,7 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
         self.seed_static_check_config({"Python": [{"module": "Dummy"}]})
         # Act: run the audit with --prj-base before the subcommand token.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-            rc = self.run_cli(["--prj-base", str(self.TEST_DIR), "install-audit"])
+            rc = self.run_cli(["--prj-base", str(self.TEST_DIR), "audit"])
         # Assert: exit 0 with the configured row.
         self.assertEqual(rc, 0)
         self.assertIn(
@@ -2309,7 +2309,7 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
             self.audit_table_rows(mock_stdout.getvalue()),
         )
 
-    def test_install_audit_rejects_absent_prj_base_path(self) -> None:
+    def test_audit_rejects_absent_prj_base_path(self) -> None:
         """SRS-622/SRS-395: a provided --prj-base that does not exist fails validation.
 
         expected_output: exit code 2 with an English stderr diagnostic naming the
@@ -2318,13 +2318,13 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
         # Act: run the audit with a non-existent --prj-base path.
         with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
             rc = self.run_cli(
-                ["install-audit", "--prj-base", str(self.TEST_DIR / "absent")]
+                ["audit", "--prj-base", str(self.TEST_DIR / "absent")]
             )
         # Assert: non-zero exit with a diagnostic mentioning the missing path.
         self.assertEqual(rc, 2)
         self.assertIn("does not exist", mock_stderr.getvalue())
 
-    def test_install_audit_reports_empty_configuration(self) -> None:
+    def test_audit_reports_empty_configuration(self) -> None:
         """SRS-625: an explicitly emptied static-check configuration yields no rows.
 
         expected_output: exit code 0 with the audit heading and the (none) marker.
@@ -2333,7 +2333,7 @@ class TestInstallAuditCommand(HomeIsolatedTestCase):
         self.seed_static_check_config({})
         # Act: run the audit.
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
-            rc = self.run_cli(["install-audit"])
+            rc = self.run_cli(["audit"])
         # Assert: exit 0 with the (none) marker.
         self.assertEqual(rc, 0)
         self.assertIn(self.AUDIT_HEADING, mock_stdout.getvalue())

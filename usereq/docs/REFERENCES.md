@@ -313,7 +313,7 @@ endpoint; PyPI is the sole source for version verification and default self-upgr
 
 ### fn `def build_parser() -> argparse.ArgumentParser` (L400-599)
 - @brief Builds the CLI argument parser.
-- @details Defines all supported CLI arguments, flags, and help texts. Provider enablement is configured exclusively via the repeatable ``--enable PROVIDER`` argument, which accepts only the provider CLI name exactly like ``--disable PROVIDER`` (SRS-275, SRS-034); skills are the only supported artifact type. Every SRS-408 analysis subcommand accepts the global base arguments ``--prj-base`` and ``--git-base`` both before and after the subcommand token; ``--prj-base`` is mandatory only for the SRS-396 project-scan subcommands (enforced by ``_require_prj_base``) and ``--git-base`` is never mandatory for any SRS-408 subcommand (SRS-392, SRS-393, SRS-396, SRS-397, SRS-410). The ``--force`` auxiliary argument is accepted by ``--upgrade`` (with or without ``--develop``/``--dev``) and forces full package download and complete reinstallation (SRS-508, SRS-511). The ``install-audit`` subcommand accepts optional ``--prj-base`` context, audits every configured static-check entry installation, and never requires ``--prj-base`` (SRS-621..SRS-628).
+- @details Defines all supported CLI arguments, flags, and help texts. Provider enablement is configured exclusively via the repeatable ``--enable PROVIDER`` argument, which accepts only the provider CLI name exactly like ``--disable PROVIDER`` (SRS-275, SRS-034); skills are the only supported artifact type. Every SRS-408 analysis subcommand accepts the global base arguments ``--prj-base`` and ``--git-base`` both before and after the subcommand token; ``--prj-base`` is mandatory only for the SRS-396 project-scan subcommands (enforced by ``_require_prj_base``) and ``--git-base`` is never mandatory for any SRS-408 subcommand (SRS-392, SRS-393, SRS-396, SRS-397, SRS-410). The ``--force`` auxiliary argument is accepted by ``--upgrade`` (with or without ``--develop``/``--dev``) and forces full package download and complete reinstallation (SRS-508, SRS-511). The ``audit`` subcommand accepts optional ``--prj-base`` context, audits every configured static-check entry installation, and never requires ``--prj-base`` (SRS-621..SRS-628).
 - @return Configured ArgumentParser instance.
 
 ### fn `def parse_args(argv: Optional[list[str]] = None) -> Namespace` (L900-909)
@@ -919,8 +919,8 @@ to a tuple preserving order, and non-list params are treated as empty.
 - @throws ReqError If persisted provider names are invalid.
 - @satisfies SRS-416, SRS-417, SRS-462, SRS-463, SRS-485, SRS-488, SRS-489, SRS-490, SRS-491
 
-### fn `def run_install_audit(args: Namespace) -> None` (L3107-3146)
-- @brief Execute install-audit: audit configured static-check tool installation as a table.
+### fn `def run_audit(args: Namespace) -> None` (L3107-3146)
+- @brief Execute audit: audit configured static-check tool installation as a table.
 - @details Resolves the optional `--prj-base` through the SRS-395 existence validation when provided and never requires it (SRS-621, SRS-622); loads the static-check entries from `~/.config/usereq/config.json`, resolving the SRS-424 default configuration when the `"static-check"` key is absent (SRS-623); prints exactly one audit table with `Language`, `Static-Check`, and `Installed` columns (SRS-625, SRS-626, SRS-627). No checker subprocess executes, so individual unavailable tools never change the exit code (SRS-628). Complexity: O(E) over E configured entries. Side effects: one stdout audit-table emission.
 - @param args Parsed CLI namespace carrying the optional `--prj-base` value.
 - @return {None} Function return value.
@@ -1383,7 +1383,7 @@ emitted with Unicode line-drawing characters and bright-red ANSI styling
 |`run_install`|fn|pub|2971-2986|def run_install(args: Namespace) -> None|
 |`run_uninstall_providers`|fn|pub|2987-3004|def run_uninstall_providers(args: Namespace) -> None|
 |`run_show`|fn|pub|3005-3106|def run_show(args: Namespace) -> None|
-|`run_install_audit`|fn|pub|3107-3146|def run_install_audit(args: Namespace) -> None|
+|`run_audit`|fn|pub|3107-3146|def run_audit(args: Namespace) -> None|
 |`_maybe_auto_install_after_upgrade`|fn|priv|3147-3171|def _maybe_auto_install_after_upgrade(argv_list: list[str...|
 |`run_set_directories`|fn|pub|3172-3236|def run_set_directories(args: Namespace) -> None|
 |`_validate_enable_static_check_command_executables`|fn|priv|3237-3240|def _validate_enable_static_check_command_executables(|
@@ -2746,7 +2746,7 @@ from cli.py. Also exposes `parse_enable_static_check`, `dispatch_static_check_fo
 `dispatch_static_check_for_directory`, `entry_scan_by_dir`, `STATIC_CHECK_LANG_CANONICAL`,
 and `STATIC_CHECK_EXT_TO_LANG` for `--enable-static-check`, `files-static-check`
 and `static-check` subcommand support, and `audit_static_check_installation` for the
-`install-audit` subcommand installation audit (SRS-621..SRS-628).
+`audit` subcommand installation audit (SRS-621..SRS-628).
 Class hierarchy: StaticCheckBase (Dummy) -> StaticCheckPylance, StaticCheckRuff, StaticCheckCommand.
 File resolution supports: explicit file paths, glob patterns (with full `**` recursive expansion),
 and direct-children-only directory traversal. No custom `--recursive` flag; recursive traversal
